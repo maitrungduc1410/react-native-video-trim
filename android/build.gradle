@@ -81,6 +81,7 @@ android {
 repositories {
   mavenCentral()
   google()
+  jcenter()
 }
 
 
@@ -89,6 +90,10 @@ dependencies {
   // For > 0.71, this will be replaced by `com.facebook.react:react-android:$version` by react gradle plugin
   //noinspection GradleDynamicVersion
   implementation "com.facebook.react:react-native:+"
+  implementation 'com.github.iknow4:android-utils-sdk:1.1.2'
+  implementation 'nl.bravobit:android-ffmpeg:1.1.7'
+  implementation 'androidx.recyclerview:recyclerview:1.1.0'
+  implementation 'com.guolindev.permissionx:permissionx:1.7.1'
 }
 
 if (isNewArchitectureEnabled()) {

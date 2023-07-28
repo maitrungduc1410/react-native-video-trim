@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools"
+  tools:ignore="MissingTranslation">
+  <string name="app_name">Video Trim</string>
+  <string name="trimmed_done">video trim completed！</string>
+  <string name="trimming">Trimming video...</string>
+  <string name="compressing">Compressing video...</string>
+  <string name="compressed_done">video compression completed！</string>
+  <string name="open_permission">Open permission</string>
+  <string name="video_record_des">To record a video, you need to give the camera and microphone access.</string>
+  <string name="recording">RECORD</string>
+  <string name="cancel">Cancel</string>
+  <string name="save">Save</string>
+</resources>

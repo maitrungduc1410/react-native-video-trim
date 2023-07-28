@@ -17,6 +17,19 @@ const VideoTrim = NativeModules.VideoTrim
       }
     );
 
-export function multiply(a: number, b: number): Promise<number> {
-  return VideoTrim.multiply(a, b);
+export interface EditorConfig {
+  saveToPhoto?: boolean;
+  maxDuration?: number;
+}
+
+export function showEditor(videoPath: string, config: EditorConfig = {}): void {
+  const { maxDuration, saveToPhoto = true } = config;
+  VideoTrim.showEditor(videoPath, {
+    saveToPhoto,
+    maxDuration,
+  });
+}
+
+export function isValidVideo(videoPath: string): Promise<boolean> {
+  return VideoTrim.isValidVideo(videoPath);
 }
