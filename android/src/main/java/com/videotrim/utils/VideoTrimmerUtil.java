@@ -4,7 +4,16 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
+import android.util.Log;
 
+import com.arthenica.ffmpegkit.FFmpegKit;
+import com.arthenica.ffmpegkit.FFmpegSession;
+import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback;
+import com.arthenica.ffmpegkit.LogCallback;
+import com.arthenica.ffmpegkit.ReturnCode;
+import com.arthenica.ffmpegkit.SessionState;
+import com.arthenica.ffmpegkit.Statistics;
+import com.arthenica.ffmpegkit.StatisticsCallback;
 import com.videotrim.interfaces.VideoTrimListener;
 
 import java.text.SimpleDateFormat;
@@ -15,8 +24,6 @@ import iknow.android.utils.DeviceUtil;
 import iknow.android.utils.UnitConverter;
 import iknow.android.utils.callback.SingleCallback;
 import iknow.android.utils.thread.BackgroundExecutor;
-import nl.bravobit.ffmpeg.ExecuteBinaryResponseHandler;
-import nl.bravobit.ffmpeg.FFmpeg;
 
 public class VideoTrimmerUtil {
 
@@ -34,28 +41,37 @@ public class VideoTrimmerUtil {
   public static final int THUMB_HEIGHT = UnitConverter.dpToPx(50); // x2 for better resolution
   private static final int THUMB_RESOLUTION_RES = 2; // double thumb resolution for better quality
 
-  public static void trim(Context context, String inputFile, String outputFile, long startMs, long endMs, final VideoTrimListener callback) {
+  public static void trim(Context context, String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
     final String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
     final String outputName = "trimmedVideo_" + timeStamp + ".mp4";
     outputFile = outputFile + "/" + outputName;
 
     String cmd = "-i " + inputFile + " -ss " + startMs + "ms" + " -to " + endMs + "ms -c copy " + outputFile;
     String[] command = cmd.split(" ");
-    try {
-      final String tempOutFile = outputFile;
-      FFmpeg.getInstance(context).execute(command, new ExecuteBinaryResponseHandler() {
+    final String tempOutFile = outputFile;
 
-        @Override public void onSuccess(String s) {
-          callback.onFinishTrim(tempOutFile);
-        }
+    callback.onStartTrim();
+    FFmpegKit.executeAsync(cmd, session -> {
+      SessionState state = session.getState();
+      ReturnCode returnCode = session.getReturnCode();
 
-        @Override public void onStart() {
-          callback.onStartTrim();
-        }
-      });
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+      Log.d(TAG, String.format("FFmpeg process exited with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace()));
+
+      if (state.equals(SessionState.COMPLETED)) {
+        callback.onFinishTrim(tempOutFile);
+      } else {
+        callback.onError();
+      }
+    }, log -> {
+
+    }, statistics -> {
+      int timeInMilliseconds = statistics.getTime();
+      if (timeInMilliseconds > 0) {
+        int completePercentage =
+          (timeInMilliseconds * 100) / videoDuration;
+        callback.onTrimmingProgress(Math.min(Math.max(completePercentage, 0), 100));
+      }
+    });
   }
 
   public static void shootVideoThumbInBackground(final Context context, final Uri videoUri, final int totalThumbsCount, final long startPosition,

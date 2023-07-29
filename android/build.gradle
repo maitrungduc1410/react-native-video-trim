@@ -91,9 +91,9 @@ dependencies {
   //noinspection GradleDynamicVersion
   implementation "com.facebook.react:react-native:+"
   implementation 'com.github.iknow4:android-utils-sdk:1.1.2'
-  implementation 'nl.bravobit:android-ffmpeg:1.1.7'
   implementation 'androidx.recyclerview:recyclerview:1.1.0'
   implementation 'com.guolindev.permissionx:permissionx:1.7.1'
+  implementation 'com.arthenica:ffmpeg-kit-full:5.1.LTS'
 }
 
 if (isNewArchitectureEnabled()) {

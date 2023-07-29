@@ -1,14 +1,25 @@
 package com.videotrim;
 
 import static com.facebook.react.bridge.UiThreadUtil.runOnUiThread;
+
+import android.Manifest;
 import android.app.Activity;
-import android.app.ProgressDialog;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
+import android.os.Build;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.fragment.app.FragmentActivity;
+
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
@@ -20,12 +31,14 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
+import com.permissionx.guolindev.PermissionX;
 import com.videotrim.interfaces.VideoTrimListener;
 import com.videotrim.utils.StorageUtil;
 import com.videotrim.widgets.VideoTrimmerView;
+
+import java.io.File;
 import java.io.IOException;
 import iknow.android.utils.BaseUtils;
-import nl.bravobit.ffmpeg.FFmpeg;
 
 @ReactModule(name = VideoTrimModule.NAME)
 public class VideoTrimModule extends ReactContextBaseJavaModule implements VideoTrimListener, LifecycleEventListener {
@@ -33,7 +46,8 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private static Boolean isInit = false;
   private VideoTrimmerView trimmerView;
   private AlertDialog alertDialog;
-  private ProgressDialog mProgressDialog;
+  private AlertDialog mProgressDialog;
+  private ProgressBar mProgressBar;
   private Boolean mSaveToPhoto = true;
   private int mMaxDuration = 0;
   private int listenerCount = 0;
@@ -89,6 +103,17 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
       alertDialog.setView(trimmerView);
       alertDialog.show();
 
+
+      if (this.mSaveToPhoto) {
+        // some how this is not fired when user first install app and tap Allow
+        // so that we just request permission first, and later it'll be able to save to Gallery immediately
+        PermissionX.init((FragmentActivity) getReactApplicationContext().getCurrentActivity())
+          .permissions(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+          .request((allGranted, grantedList, deniedList) -> {
+
+          });
+      }
+
       // this is to ensure to release resource if dialog is dismissed in unexpected way (Eg. open control/notification center by dragging from top of screen)
       alertDialog.setOnDismissListener(dialog -> {
         // This is called in same thread as the trimmer view -> UI thread
@@ -107,12 +132,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     isInit = true;
     // we have to init this before create videoTrimmerView
     BaseUtils.init(getReactApplicationContext());
-    if (!FFmpeg.getInstance(getReactApplicationContext()).isSupported()) {
-      // we have to call this for FFMPEG to initialize, otherwise it'll throw can't open ffmpeg (no such file or dir)
-      WritableMap mapE = Arguments.createMap();
-      mapE.putString("message", "Android CPU arch not supported");
-      sendEvent(getReactApplicationContext(), "onError", mapE);
-    }
   }
 
   @Override
@@ -136,25 +155,58 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   @Override public void onStartTrim() {
     sendEvent(getReactApplicationContext(), "onStartTrimming", null);
     runOnUiThread(() -> {
-      buildDialog(getReactApplicationContext().getResources().getString(R.string.trimming)).show();
+      buildDialog();
     });
   }
 
-  @Override public void onFinishTrim(String in) {
-    if (mProgressDialog.isShowing()) mProgressDialog.dismiss();
-    WritableMap map = Arguments.createMap();
-    map.putString("outputPath", in);
-    sendEvent(getReactApplicationContext(), "onFinishTrimming", map);
-    if (mSaveToPhoto) {
-      try {
-        StorageUtil.saveVideoToGallery(getReactApplicationContext(), in);
-      } catch (IOException e) {
-        e.printStackTrace();
-        WritableMap mapE = Arguments.createMap();
-        mapE.putString("message", "Fail to save to Gallery. Please check if you have correct permission");
-        sendEvent(getReactApplicationContext(), "onError", mapE);
-      }
+  @Override public void onTrimmingProgress(int percentage) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+      mProgressBar.setProgress(percentage, true);
+    } else {
+      mProgressBar.setProgress(percentage);
     }
+  }
+
+
+  @Override public void onFinishTrim(String in) {
+    runOnUiThread(() -> {
+      if (mSaveToPhoto) {
+        PermissionX.init((FragmentActivity) getReactApplicationContext().getCurrentActivity())
+          .permissions(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+          .request((allGranted, grantedList, deniedList) -> {
+            // some how this is not fired when user first tap Allow
+            if (allGranted) {
+              try {
+                StorageUtil.saveVideoToGallery(getReactApplicationContext(), in);
+                WritableMap map = Arguments.createMap();
+                map.putString("outputPath", in);
+                sendEvent(getReactApplicationContext(), "onFinishTrimming", map);
+              } catch (IOException e) {
+                e.printStackTrace();
+                WritableMap mapE = Arguments.createMap();
+                mapE.putString("message", "Fail while copying file to Gallery");
+                sendEvent(getReactApplicationContext(), "onError", mapE);
+              }
+
+              this.hideDialog();
+            } else {
+              WritableMap mapE = Arguments.createMap();
+              mapE.putString("message", "Fail to save to Gallery. Please check if you have correct permission");
+              sendEvent(getReactApplicationContext(), "onError", mapE);
+            }
+          });
+      } else {
+        WritableMap map = Arguments.createMap();
+        map.putString("outputPath", in);
+        sendEvent(getReactApplicationContext(), "onFinishTrimming", map);
+      }
+    });
+  }
+
+  @Override public void onError() {
+    WritableMap map = Arguments.createMap();
+    map.putString("message", "Error when trimming, please try again");
+    sendEvent(getReactApplicationContext(), "onError", map);
     this.hideDialog();
   }
 
@@ -164,6 +216,12 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   }
 
   private void hideDialog() {
+    if (mProgressDialog != null) {
+      if (mProgressDialog.isShowing()) mProgressDialog.dismiss();
+      mProgressBar = null;
+      mProgressDialog = null;
+    }
+
     if (alertDialog != null) {
       if(alertDialog.isShowing()) {
         alertDialog.dismiss();
@@ -172,12 +230,45 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     }
   }
 
-  private ProgressDialog buildDialog(String msg) {
-    if (mProgressDialog == null) {
-      mProgressDialog = ProgressDialog.show(getReactApplicationContext().getCurrentActivity(), "", msg);
-    }
-    mProgressDialog.setMessage(msg);
-    return mProgressDialog;
+  private void buildDialog() {
+    Activity activity =  getReactApplicationContext().getCurrentActivity();
+    // Create the parent layout for the dialog
+    LinearLayout layout = new LinearLayout(activity);
+    layout.setLayoutParams(new ViewGroup.LayoutParams(
+      ViewGroup.LayoutParams.WRAP_CONTENT,
+      ViewGroup.LayoutParams.WRAP_CONTENT
+    ));
+    layout.setOrientation(LinearLayout.VERTICAL);
+    layout.setGravity(Gravity.CENTER_HORIZONTAL);
+    layout.setPadding(16, 32, 16, 32);
+
+    // Create and add the TextView
+    TextView textView = new TextView(activity);
+    textView.setLayoutParams(new ViewGroup.LayoutParams(
+      ViewGroup.LayoutParams.WRAP_CONTENT,
+      ViewGroup.LayoutParams.WRAP_CONTENT
+    ));
+    textView.setText(getReactApplicationContext().getResources().getString(R.string.trimming));
+    textView.setTextSize(18);
+    layout.addView(textView);
+
+    // Create and add the ProgressBar
+    mProgressBar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+    mProgressBar.setLayoutParams(new ViewGroup.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT,
+      ViewGroup.LayoutParams.WRAP_CONTENT
+    ));
+    mProgressBar.setProgressTintList(ColorStateList.valueOf(Color.parseColor("#2196F3")));
+    layout.addView(mProgressBar);
+
+    // Create the AlertDialog
+    AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+    builder.setCancelable(false);
+    builder.setView(layout);
+
+    // Show the dialog
+    mProgressDialog = builder.create();
+    mProgressDialog.show();
   }
 
   @ReactMethod
@@ -201,6 +292,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
         .emit("VideoTrim", map);
     }
   }
+
 
   public boolean _isValidVideo(String filePath) {
     MediaMetadataRetriever retriever = new MediaMetadataRetriever();

@@ -62,7 +62,7 @@ export default function App() {
           );
 
           showEditor(result.assets![0]?.uri || '', {
-            // maxDuration: 20,
+            maxDuration: 300,
           });
         }}
         style={{ padding: 10, backgroundColor: 'red' }}

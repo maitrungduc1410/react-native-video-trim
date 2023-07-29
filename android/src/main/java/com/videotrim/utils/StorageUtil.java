@@ -202,27 +202,19 @@ public class StorageUtil {
   }
 
   public static void saveVideoToGallery(ReactApplicationContext context, String videoFilePath) throws IOException {
-    PermissionX.init((FragmentActivity) context.getCurrentActivity())
-      .permissions(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-      .request((allGranted, grantedList, deniedList) -> {
-        if (allGranted) {
-          File videoFile = new File(videoFilePath);
+    File videoFile = new File(videoFilePath);
 
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // For Android 10 and higher (API >= 29)
-            saveVideoUsingMediaStore(context, videoFile);
-          } else {
-            // For Android 9 and below (API < 29)
-            try {
-              saveVideoUsingTraditionalStorage(context, videoFile);
-            } catch (IOException e) {
-              throw new RuntimeException(e);
-            }
-          }
-        } else {
-          throw new RuntimeException();
-        }
-      });
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      // For Android 10 and higher (API >= 29)
+      saveVideoUsingMediaStore(context, videoFile);
+    } else {
+      // For Android 9 and below (API < 29)
+      try {
+        saveVideoUsingTraditionalStorage(context, videoFile);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
   }
 
   // Save video using MediaStore for API level >= 29
