@@ -1,6 +1,5 @@
 package com.videotrim.utils;
 
-import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.ContentValues;
 import android.content.Context;
@@ -11,12 +10,7 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Log;
-
-import androidx.fragment.app.FragmentActivity;
-
 import com.facebook.react.bridge.ReactApplicationContext;
-import com.permissionx.guolindev.PermissionX;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;

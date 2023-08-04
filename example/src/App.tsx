@@ -58,12 +58,14 @@ export default function App() {
           });
 
           isValidVideo(result.assets![0]?.uri || '').then((res) =>
-            console.log(res)
+            console.log('isValidVideo:', res)
           );
 
           showEditor(result.assets![0]?.uri || '', {
-            maxDuration: 300,
-          });
+            maxDuration: 20,
+          })
+            .then((res) => console.log(res))
+            .catch((e) => console.log(e));
         }}
         style={{ padding: 10, backgroundColor: 'red' }}
       >

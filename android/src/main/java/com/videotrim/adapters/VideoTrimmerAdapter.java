@@ -1,6 +1,5 @@
 package com.videotrim.adapters;
 
-
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.view.LayoutInflater;
@@ -8,23 +7,18 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
-
 import com.videotrim.R;
 import com.videotrim.utils.VideoTrimmerUtil;
-
 import java.util.ArrayList;
 import java.util.List;
 
 public class VideoTrimmerAdapter extends RecyclerView.Adapter {
-  private List<Bitmap> mBitmaps = new ArrayList<>();
-  private LayoutInflater mInflater;
-  private Context context;
+  private final List<Bitmap> mBitmaps = new ArrayList<>();
+  private final LayoutInflater mInflater;
 
   public VideoTrimmerAdapter(Context context) {
-    this.context = context;
     this.mInflater = LayoutInflater.from(context);
   }
 
@@ -42,12 +36,10 @@ public class VideoTrimmerAdapter extends RecyclerView.Adapter {
 
   public void addBitmaps(Bitmap bitmap) {
     mBitmaps.add(bitmap);
-
-    // TODO: review this
-    notifyDataSetChanged();
+    notifyItemInserted(mBitmaps.size() - 1);
   }
 
-  private final class TrimmerViewHolder extends RecyclerView.ViewHolder {
+  private static final class TrimmerViewHolder extends RecyclerView.ViewHolder {
     ImageView thumbImageView;
 
     TrimmerViewHolder(View itemView) {

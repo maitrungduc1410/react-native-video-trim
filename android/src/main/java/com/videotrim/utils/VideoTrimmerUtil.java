@@ -32,10 +32,10 @@ public class VideoTrimmerUtil {
 //  public static final int VIDEO_MAX_TIME = 10;// max 10 seconds for trimming
 //  public static final long MAX_SHOOT_DURATION = VIDEO_MAX_TIME * 1000L;
   public static long maxShootDuration = 10 * 1000L;
-  public static final int MAX_COUNT_RANGE = 10;  // how many images in the highlight range of seek bar
-  public static final int SCREEN_WIDTH_FULL = DeviceUtil.getDeviceWidth();
+  public static int MAX_COUNT_RANGE = 10;  // how many images in the highlight range of seek bar
+  public static int SCREEN_WIDTH_FULL = DeviceUtil.getDeviceWidth();
   public static final int RECYCLER_VIEW_PADDING = UnitConverter.dpToPx(35);
-  public static final int VIDEO_FRAMES_WIDTH = SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2;
+  public static int VIDEO_FRAMES_WIDTH = SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2;
 //  public static final int THUMB_WIDTH = (SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2) / VIDEO_MAX_TIME;
   public static int mThumbWidth = 0; // make it automatic
   public static final int THUMB_HEIGHT = UnitConverter.dpToPx(50); // x2 for better resolution
@@ -88,10 +88,6 @@ public class VideoTrimmerUtil {
             Bitmap bitmap = mediaMetadataRetriever.getFrameAtTime(frameTime * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
             if(bitmap == null) continue;
             try {
-              if (mThumbWidth <= 0) { // only take first item
-                int width = THUMB_HEIGHT * bitmap.getWidth() / bitmap.getHeight();
-                mThumbWidth = width;
-              }
               bitmap = Bitmap.createScaledBitmap(bitmap, mThumbWidth * THUMB_RESOLUTION_RES, THUMB_HEIGHT * THUMB_RESOLUTION_RES, false);
             } catch (final Throwable t) {
               t.printStackTrace();

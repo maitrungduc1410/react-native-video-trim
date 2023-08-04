@@ -1,11 +1,14 @@
 package com.videotrim.widgets;
 
-import static com.videotrim.utils.VideoTrimmerUtil.MAX_COUNT_RANGE;
 import static com.videotrim.utils.VideoTrimmerUtil.RECYCLER_VIEW_PADDING;
 import static com.videotrim.utils.VideoTrimmerUtil.VIDEO_FRAMES_WIDTH;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Handler;
@@ -33,6 +36,7 @@ import com.videotrim.interfaces.VideoTrimListener;
 import com.videotrim.utils.StorageUtil;
 import com.videotrim.utils.VideoTrimmerUtil;
 
+import iknow.android.utils.DeviceUtil;
 import iknow.android.utils.thread.BackgroundExecutor;
 import iknow.android.utils.thread.UiThreadExecutor;
 
@@ -76,6 +80,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private Boolean mIsPrepared = false;
   private int mMaxDuration = 0;
 
+
   public VideoTrimmerView(ReactApplicationContext context, AttributeSet attrs) {
     this(context, attrs, 0);
   }
@@ -91,6 +96,9 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private void init(ReactApplicationContext context) {
     this.mContext = context;
+
+    // listen to onConfigurationChanged doesn't work for this, it runs too soon
+    context.getCurrentActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
     LayoutInflater.from(context).inflate(R.layout.video_trimmer_view, this, true);
 
     mLinearVideo = findViewById(R.id.layout_surface_view);
@@ -110,13 +118,19 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private void initRangeSeekBarView() {
     if(mRangeSeekBarView != null) return;
     mLeftProgressPos = 0;
+
+    VideoTrimmerUtil.SCREEN_WIDTH_FULL = this.getScreenWidthInPortraitMode();
+    VideoTrimmerUtil.VIDEO_FRAMES_WIDTH = VideoTrimmerUtil.SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2;
+    VideoTrimmerUtil.MAX_COUNT_RANGE = Math.max(((int) VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.mThumbWidth),  VideoTrimmerUtil.MAX_COUNT_RANGE);
+
     if (mDuration <= VideoTrimmerUtil.maxShootDuration) {
-      mThumbsTotalCount = MAX_COUNT_RANGE;
+      mThumbsTotalCount = VideoTrimmerUtil.MAX_COUNT_RANGE;
       mRightProgressPos = mDuration;
     } else {
-      mThumbsTotalCount = (int) (mDuration * 1.0f / (VideoTrimmerUtil.maxShootDuration * 1.0f) * MAX_COUNT_RANGE);
+      mThumbsTotalCount = (int) (mDuration * 1.0f / (VideoTrimmerUtil.maxShootDuration * 1.0f) * VideoTrimmerUtil.MAX_COUNT_RANGE);
       mRightProgressPos = VideoTrimmerUtil.maxShootDuration;
     }
+
     mVideoThumbRecyclerView.addItemDecoration(new SpacesItemDecoration2(RECYCLER_VIEW_PADDING, mThumbsTotalCount));
     mRangeSeekBarView = new RangeSeekBarView(mContext, mLeftProgressPos, mRightProgressPos);
     mRangeSeekBarView.setSelectedMinValue(mLeftProgressPos);
@@ -126,8 +140,8 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     mRangeSeekBarView.setNotifyWhileDragging(true);
     mRangeSeekBarView.setOnRangeSeekBarChangeListener(mOnRangeSeekBarChangeListener);
     mSeekBarLayout.addView(mRangeSeekBarView);
-    if(mThumbsTotalCount - MAX_COUNT_RANGE > 0) {
-      mAverageMsPx = (mDuration - VideoTrimmerUtil.maxShootDuration) / (float) (mThumbsTotalCount - MAX_COUNT_RANGE);
+    if(mThumbsTotalCount - VideoTrimmerUtil.MAX_COUNT_RANGE > 0) {
+      mAverageMsPx = (mDuration - VideoTrimmerUtil.maxShootDuration) / (float) (mThumbsTotalCount - VideoTrimmerUtil.MAX_COUNT_RANGE);
     } else {
       mAverageMsPx = 0f;
     }
@@ -174,6 +188,14 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     mDuration = mVideoView.getDuration();
 
     VideoTrimmerUtil.maxShootDuration = mMaxDuration > 0 ? Math.min(mMaxDuration * 1000L, mDuration) : mDuration;
+
+    MediaMetadataRetriever mediaMetadataRetriever = new MediaMetadataRetriever();
+    mediaMetadataRetriever.setDataSource(mContext, mSourceUri);
+    // take first frame
+    Bitmap bitmap = mediaMetadataRetriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+    int width = VideoTrimmerUtil.THUMB_HEIGHT * bitmap.getWidth() / bitmap.getHeight();
+    VideoTrimmerUtil.mThumbWidth = width;
+
     if (!getRestoreState()) {
       seekTo((int) mRedProgressBarPos);
     } else {
@@ -434,11 +456,33 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     }
   }
 
+  @Override
+  protected void onDetachedFromWindow() {
+    super.onDetachedFromWindow();
+    mContext.getCurrentActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+  }
+
   /**
-   * Cancel trim thread execut action when finish
+   * Cancel trim thread execute action when finish
    */
   @Override public void onDestroy() {
     BackgroundExecutor.cancelAll("", true);
     UiThreadExecutor.cancelAll("");
+    mContext.getCurrentActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+  }
+
+  private int getScreenWidthInPortraitMode() {
+    int screenWidth = DeviceUtil.getDeviceWidth();
+    int screenHeight = DeviceUtil.getDeviceHeight();
+
+    // Check the current orientation
+    int currentOrientation = getResources().getConfiguration().orientation;
+
+    // Swap width and height if the current orientation is landscape
+    if (currentOrientation == Configuration.ORIENTATION_LANDSCAPE) {
+      return screenHeight;
+    }
+
+    return screenWidth;
   }
 }

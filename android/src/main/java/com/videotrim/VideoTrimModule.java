@@ -2,7 +2,6 @@ package com.videotrim;
 
 import static com.facebook.react.bridge.UiThreadUtil.runOnUiThread;
 
-import android.Manifest;
 import android.app.Activity;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -18,7 +17,6 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
-import androidx.fragment.app.FragmentActivity;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.LifecycleEventListener;
@@ -31,12 +29,10 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
-import com.permissionx.guolindev.PermissionX;
 import com.videotrim.interfaces.VideoTrimListener;
 import com.videotrim.utils.StorageUtil;
 import com.videotrim.widgets.VideoTrimmerView;
 
-import java.io.File;
 import java.io.IOException;
 import iknow.android.utils.BaseUtils;
 
@@ -52,6 +48,8 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private int mMaxDuration = 0;
   private int listenerCount = 0;
 
+  private Promise showEditorPromise;
+
   public VideoTrimModule(ReactApplicationContext reactContext) {
     super(reactContext);
   }
@@ -64,7 +62,8 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
 
 
   @ReactMethod
-  public void showEditor(String videoPath, ReadableMap config) {
+  public void showEditor(String videoPath, ReadableMap config, Promise promise) {
+    showEditorPromise = promise;
     if (trimmerView != null || alertDialog != null) {
       return;
     }
@@ -102,17 +101,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
       alertDialog = builder.create();
       alertDialog.setView(trimmerView);
       alertDialog.show();
-
-
-      if (this.mSaveToPhoto) {
-        // some how this is not fired when user first install app and tap Allow
-        // so that we just request permission first, and later it'll be able to save to Gallery immediately
-        PermissionX.init((FragmentActivity) getReactApplicationContext().getCurrentActivity())
-          .permissions(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-          .request((allGranted, grantedList, deniedList) -> {
-
-          });
-      }
 
       // this is to ensure to release resource if dialog is dismissed in unexpected way (Eg. open control/notification center by dragging from top of screen)
       alertDialog.setOnDismissListener(dialog -> {
@@ -170,35 +158,13 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
 
   @Override public void onFinishTrim(String in) {
     runOnUiThread(() -> {
+      WritableMap map = Arguments.createMap();
+      map.putString("outputPath", in);
+      sendEvent(getReactApplicationContext(), "onFinishTrimming", map);
       if (mSaveToPhoto) {
-        PermissionX.init((FragmentActivity) getReactApplicationContext().getCurrentActivity())
-          .permissions(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-          .request((allGranted, grantedList, deniedList) -> {
-            // some how this is not fired when user first tap Allow
-            if (allGranted) {
-              try {
-                StorageUtil.saveVideoToGallery(getReactApplicationContext(), in);
-                WritableMap map = Arguments.createMap();
-                map.putString("outputPath", in);
-                sendEvent(getReactApplicationContext(), "onFinishTrimming", map);
-              } catch (IOException e) {
-                e.printStackTrace();
-                WritableMap mapE = Arguments.createMap();
-                mapE.putString("message", "Fail while copying file to Gallery");
-                sendEvent(getReactApplicationContext(), "onError", mapE);
-              }
-
-              this.hideDialog();
-            } else {
-              WritableMap mapE = Arguments.createMap();
-              mapE.putString("message", "Fail to save to Gallery. Please check if you have correct permission");
-              sendEvent(getReactApplicationContext(), "onError", mapE);
-            }
-          });
+        showEditorPromise.resolve(in);
       } else {
-        WritableMap map = Arguments.createMap();
-        map.putString("outputPath", in);
-        sendEvent(getReactApplicationContext(), "onFinishTrimming", map);
+        hideDialog();
       }
     });
   }
@@ -215,6 +181,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     this.hideDialog();
   }
 
+  @ReactMethod
   private void hideDialog() {
     if (mProgressDialog != null) {
       if (mProgressDialog.isShowing()) mProgressDialog.dismiss();
@@ -311,5 +278,20 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   @ReactMethod
   private void isValidVideo(String filePath, Promise promise) {
     promise.resolve(_isValidVideo(filePath));
+  }
+
+  @ReactMethod
+  private void saveVideo(String filePath, Promise promise) {
+    try {
+      StorageUtil.saveVideoToGallery(getReactApplicationContext(), filePath);
+    } catch (IOException e) {
+      e.printStackTrace();
+      WritableMap mapE = Arguments.createMap();
+      mapE.putString("message", "Fail while copying file to Gallery");
+      sendEvent(getReactApplicationContext(), "onError", mapE);
+    }
+
+    this.hideDialog();
+    promise.resolve(null);
   }
 }

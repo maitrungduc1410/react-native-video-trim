@@ -1,4 +1,4 @@
-# react-native-video-trim
+# React Native Video Trim
 <div align="center">
 <h2>Video trimmer for your React Native app</h2>
 
@@ -28,7 +28,7 @@ repositories {
 Next install CocoaPods deps:
 
 ```
-cd ios & pod install
+npx pod-install ios
 ```
 
 ## Usage

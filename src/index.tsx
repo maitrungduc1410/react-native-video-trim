@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 
 const LINKING_ERROR =
   `The package 'react-native-video-trim' doesn't seem to be linked. Make sure: \n\n` +
@@ -22,12 +22,38 @@ export interface EditorConfig {
   maxDuration?: number;
 }
 
-export function showEditor(videoPath: string, config: EditorConfig = {}): void {
+export async function showEditor(
+  videoPath: string,
+  config: EditorConfig = {}
+): Promise<void> {
   const { maxDuration, saveToPhoto = true } = config;
-  VideoTrim.showEditor(videoPath, {
+  const outputPath = await VideoTrim.showEditor(videoPath, {
     saveToPhoto,
     maxDuration,
   });
+
+  if (Platform.OS === 'android' && saveToPhoto) {
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
+        {
+          title: 'Video Trimmer Camera Access Required',
+          message: 'Grant access to your Camera to write output Video',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        }
+      );
+      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+        await VideoTrim.saveVideo(outputPath);
+      } else {
+        VideoTrim.hideDialog();
+        throw new Error('Camera permission denied');
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
 }
 
 export function isValidVideo(videoPath: string): Promise<boolean> {
