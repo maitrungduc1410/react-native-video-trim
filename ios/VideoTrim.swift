@@ -7,6 +7,7 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
     private var mSaveToPhoto = true
     private var mMaxDuration: Int?
     private var hasListeners = false
+    private var shouldFireFinishEvent = true
     
     @objc
     static override func requiresMainQueueSetup() -> Bool {
@@ -79,9 +80,14 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
     
     func videoEditorController(_ editor: UIVideoEditorController,
                                didSaveEditedVideoToPath editedVideoPath: String) {
+        if (!shouldFireFinishEvent) {
+            return
+        }
+        shouldFireFinishEvent = false
+        
         let eventPayload: [String: Any] = ["outputPath": editedVideoPath]
         self.emitEventToJS("onFinishTrimming", eventData: eventPayload)
-        
+
         if (mSaveToPhoto) {
             PHPhotoLibrary.requestAuthorization { status in
                 guard status == .authorized else {
@@ -89,7 +95,7 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
                     self.emitEventToJS("onError", eventData: eventPayload)
                     return
                 }
-                
+
                 PHPhotoLibrary.shared().performChanges({
                     let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: URL(fileURLWithPath: editedVideoPath))
                     request?.creationDate = Date()
@@ -103,14 +109,18 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
                 }
             }
         }
-        
+
         // the edit has a known bug where it fires "didSaveEditedVideoToPath" twice, so we have to set its delete to nil right after first call
-        editor.delegate = nil
+//        editor.delegate = nil
         
-        
+        // but with the above solution, somehow it'll close React Native Modal when the editor controller dismissed
+        // so we have to create a flag shouldFireFinishEvent here
+
+
         editor.dismiss(animated: true, completion: {
             self.emitEventToJS("onHide", eventData: nil)
             self.isShowing = false
+            self.shouldFireFinishEvent = true // reset this flag to true once dismiss
         })
     }
     

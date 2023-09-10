@@ -7,12 +7,15 @@ import {
   TouchableOpacity,
   NativeEventEmitter,
   NativeModules,
+  Modal,
 } from 'react-native';
 import { isValidVideo, showEditor } from 'react-native-video-trim';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function App() {
+  const [modalVisible, setModalVisible] = useState(false);
+
   useEffect(() => {
     const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
     const subscription = eventEmitter.addListener('VideoTrim', (event) => {
@@ -69,7 +72,7 @@ export default function App() {
         }}
         style={{ padding: 10, backgroundColor: 'red' }}
       >
-        <Text>Launch Library</Text>
+        <Text style={{ color: 'white' }}>Launch Library</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => {
@@ -81,8 +84,64 @@ export default function App() {
           marginTop: 20,
         }}
       >
-        <Text>Check Video Valid</Text>
+        <Text style={{ color: 'white' }}>Check Video Valid</Text>
       </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => {
+          setModalVisible(true);
+        }}
+        style={{
+          padding: 10,
+          backgroundColor: 'blue',
+          marginTop: 20,
+        }}
+      >
+        <Text style={{ color: 'white' }}>Open Modal</Text>
+      </TouchableOpacity>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => {
+          setModalVisible(!modalVisible);
+        }}
+      >
+        <View style={[styles.container, { backgroundColor: 'white' }]}>
+          <TouchableOpacity
+            onPress={async () => {
+              const result = await launchImageLibrary({
+                mediaType: 'video',
+              });
+
+              isValidVideo(result.assets![0]?.uri || '').then((res) =>
+                console.log('isValidVideo:', res)
+              );
+
+              showEditor(result.assets![0]?.uri || '', {
+                maxDuration: 20,
+              })
+                .then((res) => console.log(res))
+                .catch((e) => console.log(e));
+            }}
+            style={{ padding: 10, backgroundColor: 'red' }}
+          >
+            <Text style={{ color: 'white' }}>Launch Library</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setModalVisible(false);
+            }}
+            style={{
+              padding: 10,
+              backgroundColor: 'blue',
+              marginTop: 20,
+            }}
+          >
+            <Text style={{ color: 'white' }}>Close Modal</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
