@@ -76,7 +76,9 @@ export default function App() {
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => {
-          isValidVideo('invalid file path').then((res) => console.log(res));
+          isValidVideo(
+            '/storage/emulated/0/Android/data/com.videotrimexample/cache/trimmedVideo_20230910_111719.mp4'
+          ).then((res) => console.log(res));
         }}
         style={{
           padding: 10,

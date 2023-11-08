@@ -37,8 +37,8 @@ export async function showEditor(
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
         {
-          title: 'Video Trimmer Camera Access Required',
-          message: 'Grant access to your Camera to write output Video',
+          title: 'Video Trimmer Photos Access Required',
+          message: 'Grant access to your Photos to write output Video',
           buttonNeutral: 'Ask Me Later',
           buttonNegative: 'Cancel',
           buttonPositive: 'OK',
@@ -48,7 +48,7 @@ export async function showEditor(
         await VideoTrim.saveVideo(outputPath);
       } else {
         VideoTrim.hideDialog();
-        throw new Error('Camera permission denied');
+        throw new Error('Photos Library permission denied');
       }
     } catch (err) {
       throw err;

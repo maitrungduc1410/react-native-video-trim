@@ -7,13 +7,8 @@ import android.net.Uri;
 import android.util.Log;
 
 import com.arthenica.ffmpegkit.FFmpegKit;
-import com.arthenica.ffmpegkit.FFmpegSession;
-import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback;
-import com.arthenica.ffmpegkit.LogCallback;
 import com.arthenica.ffmpegkit.ReturnCode;
 import com.arthenica.ffmpegkit.SessionState;
-import com.arthenica.ffmpegkit.Statistics;
-import com.arthenica.ffmpegkit.StatisticsCallback;
 import com.videotrim.interfaces.VideoTrimListener;
 
 import java.text.SimpleDateFormat;
@@ -47,7 +42,6 @@ public class VideoTrimmerUtil {
     outputFile = outputFile + "/" + outputName;
 
     String cmd = "-i " + inputFile + " -ss " + startMs + "ms" + " -to " + endMs + "ms -c copy " + outputFile;
-    String[] command = cmd.split(" ");
     final String tempOutFile = outputFile;
 
     callback.onStartTrim();

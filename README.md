@@ -15,16 +15,6 @@ npm install react-native-video-trim
 
 yarn add react-native-video-trim
 ```
-
-Next for Android, under `android/app/build.gradle`, add `jcenter` to `repositories` this:
-
-```
-repositories {
-    ... other repos if any
-    jcenter()
-}
-```
-
 Next install CocoaPods deps:
 
 ```
