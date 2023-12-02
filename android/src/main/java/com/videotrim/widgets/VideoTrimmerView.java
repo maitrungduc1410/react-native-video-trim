@@ -493,14 +493,14 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       this.mMaxDuration = config.getInt("maxDuration");
     }
 
-    if (config.hasKey("leftButtonText")) {
+    if (config.hasKey("cancelButtonText")) {
       TextView tv = findViewById(R.id.cancelBtn);
-      tv.setText(config.getString("leftButtonText"));
+      tv.setText(config.getString("cancelButtonText"));
     }
 
-    if (config.hasKey("rightButtonText")) {
+    if (config.hasKey("saveButtonText")) {
       TextView tv = findViewById(R.id.saveBtn);
-      tv.setText(config.getString("rightButtonText"));
+      tv.setText(config.getString("saveButtonText"));
     }
   }
 }

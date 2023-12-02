@@ -21,8 +21,8 @@ export interface EditorConfig {
   saveToPhoto?: boolean;
   maxDuration?: number;
   title?: string;
-  leftButtonText?: string;
-  rightButtonText?: string;
+  cancelButtonText?: string;
+  saveButtonText?: string;
 }
 
 export async function showEditor(

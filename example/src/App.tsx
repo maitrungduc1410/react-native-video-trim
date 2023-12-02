@@ -66,8 +66,8 @@ export default function App() {
 
           showEditor(result.assets![0]?.uri || '', {
             maxDuration: 30,
-            leftButtonText: 'hello',
-            rightButtonText: 'world',
+            cancelButtonText: 'hello',
+            saveButtonText: 'world',
             title: 'JAMESSSS',
           })
             .then((res) => console.log(res))

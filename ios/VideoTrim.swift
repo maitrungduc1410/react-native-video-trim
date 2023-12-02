@@ -74,12 +74,12 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
                                 // when it comes to bar button customization
                                 // we can't customize text of original buttons here, we can only set attrs like enabled/hidden
                                 // to customize text we need to create new button
-                                if let leftBtnText = config["leftButtonText"] as? String, !leftBtnText.isEmpty {
-                                    topItem.leftBarButtonItem = UIBarButtonItem(title: leftBtnText, style: topItem.leftBarButtonItem?.style ?? .plain, target: topItem.leftBarButtonItem?.target, action: topItem.leftBarButtonItem?.action)
+                                if let cancelBtnText = config["cancelButtonText"] as? String, !cancelBtnText.isEmpty {
+                                    topItem.leftBarButtonItem = UIBarButtonItem(title: cancelBtnText, style: topItem.leftBarButtonItem?.style ?? .plain, target: topItem.leftBarButtonItem?.target, action: topItem.leftBarButtonItem?.action)
                                 }
                                 
-                                if let rightBtnText = config["rightButtonText"] as? String, !rightBtnText.isEmpty {
-                                    topItem.rightBarButtonItem = UIBarButtonItem(title: rightBtnText, style: topItem.rightBarButtonItem?.style ?? .plain, target: topItem.rightBarButtonItem?.target, action: topItem.rightBarButtonItem?.action)
+                                if let saveBtnText = config["saveButtonText"] as? String, !saveBtnText.isEmpty {
+                                    topItem.rightBarButtonItem = UIBarButtonItem(title: saveBtnText, style: topItem.rightBarButtonItem?.style ?? .plain, target: topItem.rightBarButtonItem?.target, action: topItem.rightBarButtonItem?.action)
                                 }
                             }
                         })

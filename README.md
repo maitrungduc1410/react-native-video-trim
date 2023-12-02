@@ -147,8 +147,8 @@ Main method to show Video Editor UI.
 
   - `saveToPhoto` (optional, `default = true`): whether to save video to photo/gallery after editing
   - `maxDuration` (optional): maximum duration for the trimmed video
-  - `leftButtonText` (optional): text of left button in Editor dialog
-  - `rightButtonText` (optional): text of right button in Editor dialog
+  - `cancelButtonText` (optional): text of left button in Editor dialog
+  - `saveButtonText` (optional): text of right button in Editor dialog
   - `title` (optional, iOS only): title of Editor dialog
 
 If `saveToPhoto = true`, you must ensure that you have request permission to write to photo/gallery
