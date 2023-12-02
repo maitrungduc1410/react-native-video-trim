@@ -22,6 +22,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
@@ -29,6 +30,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReadableMap;
 import com.videotrim.R;
 import com.videotrim.adapters.VideoTrimmerAdapter;
 import com.videotrim.interfaces.IVideoTrimmerView;
@@ -82,19 +84,18 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
 
   public VideoTrimmerView(ReactApplicationContext context, AttributeSet attrs) {
-    this(context, attrs, 0);
+    this(context, attrs, 0, null);
   }
-  public VideoTrimmerView(ReactApplicationContext context, int maxDuration, AttributeSet attrs) {
-    this(context, attrs, 0);
-    this.mMaxDuration = maxDuration;
+  public VideoTrimmerView(ReactApplicationContext context, ReadableMap config, AttributeSet attrs) {
+    this(context, attrs, 0, config);
   }
 
-  public VideoTrimmerView(ReactApplicationContext context, AttributeSet attrs, int defStyleAttr) {
+  public VideoTrimmerView(ReactApplicationContext context, AttributeSet attrs, int defStyleAttr, ReadableMap config) {
     super(context, attrs, defStyleAttr);
-    init(context);
+    init(context, config);
   }
 
-  private void init(ReactApplicationContext context) {
+  private void init(ReactApplicationContext context, ReadableMap config) {
     this.mContext = context;
 
     // listen to onConfigurationChanged doesn't work for this, it runs too soon
@@ -112,6 +113,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     mVideoThumbRecyclerView.setAdapter(mVideoThumbAdapter);
     mVideoThumbRecyclerView.addOnScrollListener(mOnScrollListener);
 
+    configure(config);
     setUpListeners();
   }
 
@@ -484,5 +486,21 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     }
 
     return screenWidth;
+  }
+
+  private void configure(ReadableMap config) {
+    if (config.hasKey("maxDuration")) {
+      this.mMaxDuration = config.getInt("maxDuration");
+    }
+
+    if (config.hasKey("leftButtonText")) {
+      TextView tv = findViewById(R.id.cancelBtn);
+      tv.setText(config.getString("leftButtonText"));
+    }
+
+    if (config.hasKey("rightButtonText")) {
+      TextView tv = findViewById(R.id.saveBtn);
+      tv.setText(config.getString("rightButtonText"));
+    }
   }
 }

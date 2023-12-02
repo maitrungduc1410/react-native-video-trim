@@ -65,10 +65,13 @@ export default function App() {
           );
 
           showEditor(result.assets![0]?.uri || '', {
-            maxDuration: 20,
+            maxDuration: 30,
+            leftButtonText: 'hello',
+            rightButtonText: 'world',
+            title: 'JAMESSSS',
           })
             .then((res) => console.log(res))
-            .catch((e) => console.log(e));
+            .catch((e) => console.log(e, 1111));
         }}
         style={{ padding: 10, backgroundColor: 'red' }}
       >
@@ -109,7 +112,7 @@ export default function App() {
           setModalVisible(!modalVisible);
         }}
       >
-        <View style={[styles.container, { backgroundColor: 'white' }]}>
+        <View style={[styles.container, { backgroundColor: 'gray' }]}>
           <TouchableOpacity
             onPress={async () => {
               const result = await launchImageLibrary({
@@ -121,7 +124,7 @@ export default function App() {
               );
 
               showEditor(result.assets![0]?.uri || '', {
-                maxDuration: 20,
+                maxDuration: 30,
               })
                 .then((res) => console.log(res))
                 .catch((e) => console.log(e));
@@ -153,5 +156,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'white',
   },
 });

@@ -45,7 +45,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private AlertDialog mProgressDialog;
   private ProgressBar mProgressBar;
   private Boolean mSaveToPhoto = true;
-  private int mMaxDuration = 0;
   private int listenerCount = 0;
 
   private Promise showEditorPromise;
@@ -71,9 +70,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     if (config.hasKey("saveToPhoto")) {
       this.mSaveToPhoto = config.getBoolean("saveToPhoto");
     }
-    if (config.hasKey("maxDuration")) {
-      this.mMaxDuration = config.getInt("maxDuration");
-    }
 
     if (!_isValidVideo(videoPath)) {
       WritableMap map = Arguments.createMap();
@@ -92,7 +88,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     // here is NOT main thread, we need to create VideoTrimmerView on UI thread, so that later we can update it using same thread
 
     runOnUiThread(() -> {
-      trimmerView = new VideoTrimmerView(getReactApplicationContext(), mMaxDuration, null);
+      trimmerView = new VideoTrimmerView(getReactApplicationContext(), config, null);
       trimmerView.setOnTrimVideoListener(this);
       trimmerView.initVideoByURI(Uri.parse(videoPath));
 
@@ -161,11 +157,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
       WritableMap map = Arguments.createMap();
       map.putString("outputPath", in);
       sendEvent(getReactApplicationContext(), "onFinishTrimming", map);
-      if (mSaveToPhoto) {
-        showEditorPromise.resolve(in);
-      } else {
-        hideDialog();
-      }
+      showEditorPromise.resolve(in);
     });
   }
 
