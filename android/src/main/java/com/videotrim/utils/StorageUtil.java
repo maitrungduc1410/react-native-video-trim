@@ -222,15 +222,8 @@ public class StorageUtil {
     if (uri != null) {
       try {
         OutputStream outputStream = context.getContentResolver().openOutputStream(uri);
-        if (outputStream != null) {
-          // Copy the video file to the output stream
-          // Here, you can use the method you have to copy the file contents
-          // For example, you can use FileInputStream to read from videoFile and write to outputStream
-
-          outputStream.close();
-          // Notify the media scanner that a new video has been added to the gallery
-          MediaScannerConnection.scanFile(context, new String[]{videoFile.getAbsolutePath()}, new String[]{"video/*"}, null);
-        }
+        copyFile(videoFile, outputStream);
+        MediaScannerConnection.scanFile(context, new String[]{uri.toString()}, new String[]{"video/*"}, null);
       } catch (IOException e) {
         e.printStackTrace();
       }
@@ -245,14 +238,19 @@ public class StorageUtil {
     MediaScannerConnection.scanFile(context, new String[]{destinationFile.getAbsolutePath()}, new String[]{"video/*"}, null);
   }
 
+  private static void copyFile(File sourceFile, OutputStream outputStream) throws IOException {
+    InputStream inputStream = new FileInputStream(sourceFile);
+    copyFile(inputStream, outputStream);
+  }
+
   private static void copyFile(File sourceFile, File destFile) throws IOException {
-    InputStream inputStream = null;
-    OutputStream outputStream = null;
+    InputStream inputStream = new FileInputStream(sourceFile);
+    OutputStream outputStream = new FileOutputStream(destFile);
+    copyFile(inputStream, outputStream);
+  }
 
+  private static void copyFile(InputStream inputStream, OutputStream outputStream) throws IOException {
     try {
-      inputStream = new FileInputStream(sourceFile);
-      outputStream = new FileOutputStream(destFile);
-
       byte[] buffer = new byte[1024];
       int length;
       while ((length = inputStream.read(buffer)) > 0) {
