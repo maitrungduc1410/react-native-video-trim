@@ -59,7 +59,7 @@ public class VideoTrimmerUtil {
     }, log -> {
 
     }, statistics -> {
-      int timeInMilliseconds = statistics.getTime();
+      int timeInMilliseconds = (int) statistics.getTime();
       if (timeInMilliseconds > 0) {
         int completePercentage =
           (timeInMilliseconds * 100) / videoDuration;

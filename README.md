@@ -204,6 +204,18 @@ useEffect(() => {
   };
 }, []);
 ```
+# FFMPEG Version
+This library uses FFMPEG-Kit Android under the hood, by default FFMPEG-min is used, which gives smallest bundle size: https://github.com/arthenica/ffmpeg-kit#9-packages
 
+If you ever need to use other version of FFMPEG-Kit for Android, you can do the following, in your `android/build.gradle` > `buildscript` > `ext`:
+
+```gradle
+buildscript {
+    ext {
+        ffmpegKitPackage = "full" // default "min", if followed by lts then LTS version is use. Eg "full-lts"
+
+        ffmpegKitPackageVersion = "5.1.LTS" // use exact version, highest precedence, default 6.0-2 if ignored
+    }
+```
 # Thanks
 Android part is created by modified + fix bugs from  [original project](Android-Video-Trimmer)
