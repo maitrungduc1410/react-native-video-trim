@@ -65,8 +65,13 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
                         root.present(editController, animated: true, completion: {
                             self.emitEventToJS("onShow", eventData: nil)
                             self.isShowing = true
-                                                        
-                            if let topItem = editController.navigationBar.topItem{
+                        })
+                        
+                        // run "during" presenting so that user sees texts update immediately
+                        // putting inside "present" will briefly show old texts then changed to new one, user can clearly see this
+                        // with out DispatchQueue.main.asyncAfter, topItem is still nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            if let topItem = editController.navigationBar.topItem {
                                 if let title = config["title"] as? String, !title.isEmpty {
                                     topItem.title = title
                                 }
@@ -82,7 +87,7 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
                                     topItem.rightBarButtonItem = UIBarButtonItem(title: saveBtnText, style: topItem.rightBarButtonItem?.style ?? .plain, target: topItem.rightBarButtonItem?.target, action: topItem.rightBarButtonItem?.action)
                                 }
                             }
-                        })
+                        }
                     }
                 }
             } else {
