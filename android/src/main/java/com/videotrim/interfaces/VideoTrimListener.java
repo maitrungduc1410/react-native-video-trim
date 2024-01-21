@@ -6,4 +6,5 @@ public interface VideoTrimListener {
   void onFinishTrim(String url);
   void onError();
   void onCancel();
+  void onSave();
 }

@@ -23,6 +23,7 @@ import iknow.android.utils.thread.BackgroundExecutor;
 public class VideoTrimmerUtil {
 
   private static final String TAG = VideoTrimmerUtil.class.getSimpleName();
+  public static final String FILE_PREFIX = "trimmedVideo";
   public static final long MIN_SHOOT_DURATION = 3000L;// min 3 seconds for trimming
 //  public static final int VIDEO_MAX_TIME = 10;// max 10 seconds for trimming
 //  public static final long MAX_SHOOT_DURATION = VIDEO_MAX_TIME * 1000L;
@@ -37,22 +38,13 @@ public class VideoTrimmerUtil {
   private static final int THUMB_RESOLUTION_RES = 2; // double thumb resolution for better quality
 
   public static void trim(Context context, String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
-    final String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-    final String outputName = "trimmedVideo_" + timeStamp + ".mp4";
-    outputFile = outputFile + "/" + outputName;
-
     String cmd = "-i " + inputFile + " -ss " + startMs + "ms" + " -to " + endMs + "ms -c copy " + outputFile;
-    final String tempOutFile = outputFile;
-
     callback.onStartTrim();
     FFmpegKit.executeAsync(cmd, session -> {
       SessionState state = session.getState();
-      ReturnCode returnCode = session.getReturnCode();
-
-      Log.d(TAG, String.format("FFmpeg process exited with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace()));
 
       if (state.equals(SessionState.COMPLETED)) {
-        callback.onFinishTrim(tempOutFile);
+        callback.onFinishTrim(outputFile);
       } else {
         callback.onError();
       }

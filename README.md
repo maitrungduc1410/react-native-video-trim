@@ -146,18 +146,38 @@ Main method to show Video Editor UI.
 - `config` (optional): 
 
   - `saveToPhoto` (optional, `default = true`): whether to save video to photo/gallery after editing
+  - `removeAfterSavedToPhoto` (optional, `default = false`): whether to remove output file from storage after saved to Photo
   - `maxDuration` (optional): maximum duration for the trimmed video
   - `cancelButtonText` (optional): text of left button in Editor dialog
   - `saveButtonText` (optional): text of right button in Editor dialog
-  - `title` (optional, iOS only): title of Editor dialog
+  -  `enableCancelDialog` (optional, `default = true`): whether to show alert dialog on press Cancel
+  -  `cancelDialogTitle` (optional, `default = "Warning!"`)
+  -  `cancelDialogMessage` (optional, `default = "Are you sure want to cancel?"`)
+  -  `cancelDialogCancelText` (optional, `default = "Close"`)
+  -  `cancelDialogConfirmText` (optional, `default = "Proceed"`)
+  -  `enableSaveDialog` (optional, `default = true`): whether to show alert dialog on press Save
+  -  `saveDialogTitle` (optional, `default = "Confirmation!"`)
+  -  `saveDialogMessage` (optional, `default = "Are you sure want to save?"`)
+  -  `saveDialogCancelText` (optional, `default = "Close"`)
+  -  `saveDialogConfirmText` (optional, `default = "Proceed"`)
+  -  `trimmingText` (optional, `default = "Trimming video..."`): trimming text on the progress dialog
 
 If `saveToPhoto = true`, you must ensure that you have request permission to write to photo/gallery
 - For Android: you need to have `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />` in AndroidManifest.xml
 - For iOS: you need `NSPhotoLibraryUsageDescription` in Info.plist
 
-## isValidVideo (videoPath: string)
+## isValidVideo(videoPath: string)
 
-This method is to check if a path is a actual video. It returns `Promise<boolean>`
+This method is to check if a path is a actual video and editable. It returns `Promise<boolean>`
+
+## listFiles()
+Return array of generated output files in app storage. (`Promise<string[]>`)
+
+## cleanFiles()
+Clean all generated output files in app storage. Return number of successfully deleted files (`Promise<number>`)
+
+## deleteFile()
+Delete a file in app storage. Return `true` if success
 
 # Events
 To listen for events you interest, do the following:
@@ -177,7 +197,7 @@ useEffect(() => {
         break;
       }
       case 'onStartTrimming': {
-        // Android only: on start trimming
+        // on start trimming
         console.log('onStartTrimming', event);
         break;
       }
@@ -218,4 +238,5 @@ buildscript {
     }
 ```
 # Thanks
-Android part is created by modified + fix bugs from  [original project](Android-Video-Trimmer)
+- Android part is created by modified + fix bugs from: https://github.com/iknow4/Android-Video-Trimmer
+- iOS UI is created from: https://github.com/AndreasVerhoeven/VideoTrimmerControl

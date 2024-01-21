@@ -10,6 +10,7 @@ PODS:
     - React-Core (= 0.72.3)
     - React-jsi (= 0.72.3)
     - ReactCommon/turbomodule/core (= 0.72.3)
+  - ffmpeg-kit-ios-min (6.0)
   - Flipper (0.182.0):
     - Flipper-Folly (~> 2.6)
   - Flipper-Boost-iOSX (1.76.0.1.11)
@@ -377,7 +378,8 @@ PODS:
     - glog
   - react-native-image-picker (5.6.0):
     - React-Core
-  - react-native-video-trim (0.1.0):
+  - react-native-video-trim (1.0.10):
+    - ffmpeg-kit-ios-min (~> 6.0)
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
   - React-NativeModulesApple (0.72.3):
@@ -565,6 +567,7 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - CocoaAsyncSocket
+    - ffmpeg-kit-ios-min
     - Flipper
     - Flipper-Boost-iOSX
     - Flipper-DoubleConversion
@@ -670,6 +673,7 @@ SPEC CHECKSUMS:
   DoubleConversion: 5189b271737e1565bdce30deb4a08d647e3f5f54
   FBLazyVector: 4cce221dd782d3ff7c4172167bba09d58af67ccb
   FBReactNativeSpec: c6bd9e179757b3c0ecf815864fae8032377903ef
+  ffmpeg-kit-ios-min: 4e9a088f4ee9629435960b9d68e54848975f1931
   Flipper: 6edb735e6c3e332975d1b17956bcc584eccf5818
   Flipper-Boost-iOSX: fd1e2b8cbef7e662a122412d7ac5f5bea715403c
   Flipper-DoubleConversion: 2dc99b02f658daf147069aad9dbd29d8feb06d30
@@ -699,7 +703,7 @@ SPEC CHECKSUMS:
   React-jsinspector: b511447170f561157547bc0bef3f169663860be7
   React-logger: c5b527272d5f22eaa09bb3c3a690fee8f237ae95
   react-native-image-picker: db60857e03d63721f19b6f4027de20429ddd9cba
-  react-native-video-trim: e19808f52a40dec0a7b67f4f7debc6b9ae106161
+  react-native-video-trim: 78275e522da1a38174864c61e35cb99219e9d158
   React-NativeModulesApple: c57f3efe0df288a6532b726ad2d0322a9bf38472
   React-perflogger: 6bd153e776e6beed54c56b0847e1220a3ff92ba5
   React-RCTActionSheet: c0b62af44e610e69d9a2049a682f5dba4e9dff17

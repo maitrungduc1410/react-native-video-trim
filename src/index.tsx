@@ -19,18 +19,40 @@ const VideoTrim = NativeModules.VideoTrim
 
 export interface EditorConfig {
   saveToPhoto?: boolean;
+  removeAfterSavedToPhoto?: boolean;
   maxDuration?: number;
-  title?: string;
   cancelButtonText?: string;
   saveButtonText?: string;
+  enableCancelDialog?: boolean;
+  cancelDialogTitle?: string;
+  cancelDialogMessage?: string;
+  cancelDialogCancelText?: string;
+  cancelDialogConfirmText?: string;
+  enableSaveDialog?: boolean;
+  saveDialogTitle?: string;
+  saveDialogMessage?: string;
+  saveDialogCancelText?: string;
+  saveDialogConfirmText?: string;
+  trimmingText?: string;
 }
 
+/**
+ * Delete a file
+ *
+ * @param {string} videoPath: absolute non-empty file path to edit
+ * @param {EditorConfig} config: editor configuration
+ * @returns {void} A **Promise** which resolves `void`
+ */
 export async function showEditor(
-  videoPath: string,
+  filePath: string,
   config: EditorConfig = {}
 ): Promise<void> {
+  if (!filePath?.trim().length) {
+    throw new Error('File path cannot be empty!');
+  }
+
   const { saveToPhoto = true } = config;
-  const outputPath = await VideoTrim.showEditor(videoPath, config);
+  const outputPath = await VideoTrim.showEditor(filePath, config);
 
   if (Platform.OS === 'android') {
     if (saveToPhoto) {
@@ -38,6 +60,10 @@ export async function showEditor(
         if (Platform.Version >= 33) {
           // since android 13 it's not needed to request permission for write storage: https://github.com/facebook/react-native/issues/36714#issuecomment-1491338276
           await VideoTrim.saveVideo(outputPath);
+
+          if (config.removeAfterSavedToPhoto) {
+            deleteFile(outputPath);
+          }
         } else {
           const granted = await PermissionsAndroid.request(
             PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
@@ -51,6 +77,10 @@ export async function showEditor(
           );
           if (granted === PermissionsAndroid.RESULTS.GRANTED) {
             await VideoTrim.saveVideo(outputPath);
+
+            if (config.removeAfterSavedToPhoto) {
+              deleteFile(outputPath);
+            }
           } else {
             throw new Error('Photos Library permission denied');
           }
@@ -66,6 +96,46 @@ export async function showEditor(
   }
 }
 
-export function isValidVideo(videoPath: string): Promise<boolean> {
-  return VideoTrim.isValidVideo(videoPath);
+/**
+ * Delete a file
+ *
+ * @param {string} filePath: absolute non-empty file path to check if editable
+ * @returns {Promise} A **Promise** which resolves `true` if editable
+ */
+export function isValidVideo(filePath: string): Promise<boolean> {
+  if (!filePath?.trim().length) {
+    throw new Error('File path cannot be empty!');
+  }
+  return VideoTrim.isValidVideo(filePath);
+}
+
+/**
+ * Clean output files generated at all time
+ *
+ * @returns {Promise<string[]>} A **Promise** which resolves to array of files
+ */
+export function listFiles(): Promise<string[]> {
+  return VideoTrim.listFiles();
+}
+
+/**
+ * Clean output files generated at all time
+ *
+ * @returns {Promise} A **Promise** which resolves to number of deleted files
+ */
+export function cleanFiles(): Promise<number> {
+  return VideoTrim.cleanFiles();
+}
+
+/**
+ * Delete a file
+ *
+ * @param {string} filePath: absolute non-empty file path to delete
+ * @returns {Promise} A **Promise** which resolves `true` if successful
+ */
+export function deleteFile(filePath: string): Promise<boolean> {
+  if (!filePath?.trim().length) {
+    throw new Error('File path cannot be empty!');
+  }
+  return VideoTrim.deleteFile(filePath);
 }

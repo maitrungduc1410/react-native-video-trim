@@ -1,13 +1,26 @@
 import React
 import Photos
+import ffmpegkit
 
 @objc(VideoTrim)
-class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationControllerDelegate {
-    private var isShowing = false
-    private var mSaveToPhoto = true
-    private var mMaxDuration: Int?
+class VideoTrim: RCTEventEmitter {
+    private let FILE_PREFIX = "trimmedVideo"
     private var hasListeners = false
-    private var shouldFireFinishEvent = true
+    private var isShowing = false
+    
+    private var saveToPhoto = true
+    private var removeAfterSavedToPhoto = false
+    private var enableCancelDialog = true
+    private var cancelDialogTitle = "Warning!"
+    private var cancelDialogMessage = "Are you sure want to cancel?"
+    private var cancelDialogCancelText = "Close"
+    private var cancelDialogConfirmText = "Proceed"
+    private var enableSaveDialog = true
+    private var saveDialogTitle = "Confirmation!"
+    private var saveDialogMessage = "Are you sure want to save?"
+    private var saveDialogCancelText = "Close"
+    private var saveDialogConfirmText  = "Proceed"
+    private var trimmingText = "Trimming video..."
     
     @objc
     static override func requiresMainQueueSetup() -> Bool {
@@ -29,7 +42,8 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
     @objc(isValidVideo:withResolver:withRejecter:)
     func isValidVideo(uri: String, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
         if let destPath = copyFileToDocumentDir(uri: uri) {
-            resolve(UIVideoEditorController.canEditVideo(atPath: destPath))
+            resolve(UIVideoEditorController.canEditVideo(atPath: destPath.path))
+            let _ = deleteFile(url: destPath) // remove the file we just copied to document directory
         } else {
             resolve(false)
         }
@@ -40,53 +54,118 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
         if isShowing {
             return
         }
+  
+        saveToPhoto = config["saveToPhoto"] as? Bool ?? true
+        removeAfterSavedToPhoto = config["removeAfterSavedToPhoto"] as? Bool ?? false
         
-        if let saveToPhoto = config["saveToPhoto"] as? Bool {
-            self.mSaveToPhoto = saveToPhoto
-        }
+        // since RN Module is singleton, so we need to reset values everytime instead of reassign
+        // Eg. this will not work if change: cancelDialogTitle = config["cancelDialogTitle"] as? String ?? cancelDialogTitle
+        // because if we change cancelDialogTitle, the value is still there, and if from RN side we pass undefined, it'll still have previous value
+        enableCancelDialog = config["enableCancelDialog"] as? Bool ?? true
+        cancelDialogTitle = config["cancelDialogTitle"] as? String ?? "Warning!"
+        cancelDialogMessage = config["cancelDialogMessage"] as? String ?? "Are you sure want to cancel?"
+        cancelDialogCancelText = config["cancelDialogCancelText"] as? String ?? "Close"
+        cancelDialogConfirmText =  config["cancelDialogConfirmText"] as? String ?? "Proceed"
+
+        enableSaveDialog = config["enableSaveDialog"] as? Bool ?? true
+        saveDialogTitle = config["saveDialogTitle"] as? String ?? "Confirmation!"
+        saveDialogMessage = config["saveDialogMessage"] as? String ?? "Are you sure want to save?"
+        saveDialogCancelText = config["saveDialogCancelText"] as? String ?? "Close"
+        saveDialogConfirmText =  config["saveDialogConfirmText"] as? String ?? "Proceed"
+        trimmingText =  config["trimmingText"] as? String ?? "Trimming video..."
         
-        if let maxDuration = config["maxDuration"] as? Int {
-            self.mMaxDuration = maxDuration
-        }
-    
         if let destPath = copyFileToDocumentDir(uri: uri) {
-            if UIVideoEditorController.canEditVideo(atPath: destPath) {
+            if UIVideoEditorController.canEditVideo(atPath: destPath.path) {
                 DispatchQueue.main.async {
-                    let editController = UIVideoEditorController()
-                    editController.videoPath = destPath
-                    editController.videoQuality = .typeHigh
-                    
-                    if (self.mMaxDuration != nil) {
-                        editController.videoMaximumDuration = Double(self.mMaxDuration!)
-                    }
-                    
-                    editController.delegate = self
-                    if let root = RCTPresentedViewController() {
-                        root.present(editController, animated: true, completion: {
-                            self.emitEventToJS("onShow", eventData: nil)
-                            self.isShowing = true
-                        })
+                    if #available(iOS 13.0, *) {
+                        let vc = VideoTrimmerViewController()
+                        vc.asset = AVURLAsset(url: destPath, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
                         
-                        // run "during" presenting so that user sees texts update immediately
-                        // putting inside "present" will briefly show old texts then changed to new one, user can clearly see this
-                        // with out DispatchQueue.main.asyncAfter, topItem is still nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            if let topItem = editController.navigationBar.topItem {
-                                if let title = config["title"] as? String, !title.isEmpty {
-                                    topItem.title = title
-                                }
+                        if let maxDuration = config["maxDuration"] as? Int {
+                            vc.maximumDuration = maxDuration
+                        }
+                        
+                        if let cancelBtnText = config["cancelButtonText"] as? String, !cancelBtnText.isEmpty {
+                            vc.cancelBtnText = cancelBtnText
+                        }
+                        
+                        if let saveButtonText = config["saveButtonText"] as? String, !saveButtonText.isEmpty {
+                            vc.saveButtonText = saveButtonText
+                        }
+                        
+                        vc.cancelBtnClicked = {
+                            if !self.enableCancelDialog {
+                                let _ = self.deleteFile(url: destPath) // remove the file we just copied to document directory
+                                self.emitEventToJS("onCancelTrimming", eventData: nil)
                                 
-                                // when it comes to bar button customization
-                                // we can't customize text of original buttons here, we can only set attrs like enabled/hidden
-                                // to customize text we need to create new button
-                                if let cancelBtnText = config["cancelButtonText"] as? String, !cancelBtnText.isEmpty {
-                                    topItem.leftBarButtonItem = UIBarButtonItem(title: cancelBtnText, style: topItem.leftBarButtonItem?.style ?? .plain, target: topItem.leftBarButtonItem?.target, action: topItem.leftBarButtonItem?.action)
-                                }
-                                
-                                if let saveBtnText = config["saveButtonText"] as? String, !saveBtnText.isEmpty {
-                                    topItem.rightBarButtonItem = UIBarButtonItem(title: saveBtnText, style: topItem.rightBarButtonItem?.style ?? .plain, target: topItem.rightBarButtonItem?.target, action: topItem.rightBarButtonItem?.action)
-                                }
+                                vc.dismiss(animated: true, completion: {
+                                    self.emitEventToJS("onHide", eventData: nil)
+                                    self.isShowing = false
+                                })
+                                return
                             }
+                            
+                            // Create Alert
+                            let dialogMessage = UIAlertController(title: self.cancelDialogTitle, message: self.cancelDialogMessage, preferredStyle: .alert)
+
+                            // Create OK button with action handler
+                            let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive, handler: { (action) -> Void in
+                                let _ = self.deleteFile(url: destPath) // remove the file we just copied to document directory
+                                self.emitEventToJS("onCancelTrimming", eventData: nil)
+                                
+                                vc.dismiss(animated: true, completion: {
+                                    self.emitEventToJS("onHide", eventData: nil)
+                                    self.isShowing = false
+                                })
+                            })
+
+                            // Create Cancel button with action handlder
+                            let cancel = UIAlertAction(title: self.cancelDialogCancelText, style: .cancel)
+
+                            //Add OK and Cancel button to an Alert object
+                            dialogMessage.addAction(ok)
+                            dialogMessage.addAction(cancel)
+
+                            // Present alert message to user
+                            if let root = RCTPresentedViewController() {
+                                root.present(dialogMessage, animated: true, completion: nil)
+                            }
+                        }
+                        
+                        vc.saveBtnClicked = {(selectedRange: CMTimeRange) in
+                            if !self.enableSaveDialog {
+                                self.trim(viewController: vc,inputFile: destPath, videoDuration: vc.asset.duration.seconds, startTime: selectedRange.start.seconds, endTime: selectedRange.end.seconds)
+                                return
+                            }
+                            
+                            // Create Alert
+                            let dialogMessage = UIAlertController(title: self.saveDialogTitle, message: self.saveDialogMessage, preferredStyle: .alert)
+
+                            // Create OK button with action handler
+                            let ok = UIAlertAction(title: self.saveDialogConfirmText, style: .default, handler: { (action) -> Void in
+                                self.trim(viewController: vc,inputFile: destPath, videoDuration: vc.asset.duration.seconds, startTime: selectedRange.start.seconds, endTime: selectedRange.end.seconds)
+                            })
+
+                            // Create Cancel button with action handlder
+                            let cancel = UIAlertAction(title: self.saveDialogCancelText, style: .cancel)
+
+                            //Add OK and Cancel button to an Alert object
+                            dialogMessage.addAction(ok)
+                            dialogMessage.addAction(cancel)
+
+                            // Present alert message to user
+                            if let root = RCTPresentedViewController() {
+                                root.present(dialogMessage, animated: true, completion: nil)
+                            }
+                        }
+                        
+                        vc.isModalInPresentation = true // prevent modal closed by swipe down
+                        
+                        if let root = RCTPresentedViewController() {
+                            root.present(vc, animated: true, completion: {
+                                self.emitEventToJS("onShow", eventData: nil)
+                                self.isShowing = true
+                            })
                         }
                     }
                 }
@@ -100,72 +179,7 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
         }
     }
     
-    func videoEditorController(_ editor: UIVideoEditorController,
-                               didSaveEditedVideoToPath editedVideoPath: String) {
-        if (!shouldFireFinishEvent) {
-            return
-        }
-        shouldFireFinishEvent = false
-        
-        let eventPayload: [String: Any] = ["outputPath": editedVideoPath]
-        self.emitEventToJS("onFinishTrimming", eventData: eventPayload)
-
-        if (mSaveToPhoto) {
-            PHPhotoLibrary.requestAuthorization { status in
-                guard status == .authorized else {
-                    let eventPayload: [String: Any] = ["message": "Permission to access Photo Library is not granted"]
-                    self.emitEventToJS("onError", eventData: eventPayload)
-                    return
-                }
-
-                PHPhotoLibrary.shared().performChanges({
-                    let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: URL(fileURLWithPath: editedVideoPath))
-                    request?.creationDate = Date()
-                }) { success, error in
-                    if success {
-                        print("Edited video saved to Photo Library successfully.")
-                    } else {
-                        let eventPayload: [String: Any] = ["message": "Failed to save edited video to Photo Library: \(error?.localizedDescription ?? "Unknown error")"]
-                        self.emitEventToJS("onError", eventData: eventPayload)
-                    }
-                }
-            }
-        }
-
-        // the edit has a known bug where it fires "didSaveEditedVideoToPath" twice, so we have to set its delete to nil right after first call
-//        editor.delegate = nil
-        
-        // but with the above solution, somehow it'll close React Native Modal when the editor controller dismissed
-        // so we have to create a flag shouldFireFinishEvent here
-
-
-        editor.dismiss(animated: true, completion: {
-            self.emitEventToJS("onHide", eventData: nil)
-            self.isShowing = false
-            self.shouldFireFinishEvent = true // reset this flag to true once dismiss
-        })
-    }
-    
-    func videoEditorControllerDidCancel(_ editor: UIVideoEditorController) {
-        self.emitEventToJS("onCancelTrimming", eventData: nil)
-        editor.dismiss(animated: true, completion: {
-            self.emitEventToJS("onHide", eventData: nil)
-            self.isShowing = false
-        })
-    }
-    
-    func videoEditorController(_ editor: UIVideoEditorController,
-                               didFailWithError error: Error) {
-        let eventPayload: [String: Any] = ["message": error.localizedDescription]
-        self.emitEventToJS("onError", eventData: eventPayload)
-        editor.dismiss(animated: true, completion: {
-            self.emitEventToJS("onHide", eventData: nil)
-            self.isShowing = false
-        })
-    }
-
-    
-    private func copyFileToDocumentDir(uri: String) -> String? {
+    private func copyFileToDocumentDir(uri: String) -> URL? {
         if let videoURL = URL(string: uri) {
             // Save the video to the document directory
             let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -173,20 +187,17 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
             let fileExtension = videoURL.pathExtension
             
             // Define the filename with the correct file extension
-            let destinationURL = documentsDirectory.appendingPathComponent("editedVideo.\(fileExtension)")
+            let timestamp = Int(Date().timeIntervalSince1970)
+            let destinationURL = documentsDirectory.appendingPathComponent("\(FILE_PREFIX)_original_\(timestamp).\(fileExtension)")
             
             do {
-                // Remove the old file if it exists
-                if FileManager.default.fileExists(atPath: destinationURL.path) {
-                    try FileManager.default.removeItem(at: destinationURL)
-                }
-                
                 try FileManager.default.copyItem(at: videoURL, to: destinationURL)
             } catch {
+                print("Error while copying file to document directory \(error)")
                 return nil
             }
             
-            return destinationURL.path
+            return destinationURL
         } else {
             return nil
         }
@@ -198,5 +209,158 @@ class VideoTrim: RCTEventEmitter, UIVideoEditorControllerDelegate, UINavigationC
             modifiedEventData["name"] = eventName
             sendEvent(withName: "VideoTrim", body: modifiedEventData)
         }
+    }
+    
+    @objc(listFiles:withRejecter:)
+    func listFiles(resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
+        let files = listFiles()
+        resolve(files.map{ $0.absoluteString })
+    }
+    
+    @objc(cleanFiles:withRejecter:)
+    func cleanFiles(resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
+        let files = listFiles()
+        var successCount = 0
+        for file in files {
+            let state = deleteFile(url: file)
+            
+            if state == 0 {
+                successCount += 1
+            }
+        }
+        
+        resolve(successCount)
+    }
+    
+    @objc(deleteFile:withResolver:withRejecter:)
+    func deleteFile(uri: String, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
+        let state = deleteFile(url: URL(string: uri)!)
+        resolve(state == 0)
+    }
+    
+    private func listFiles() -> [URL] {
+        var files: [URL] = []
+        
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        
+        do {
+            let directoryContents = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
+            
+            for fileURL in directoryContents {
+                if fileURL.lastPathComponent.starts(with: FILE_PREFIX) {
+                    files.append(fileURL)
+                }
+            }
+        } catch {
+            print("[listFiles] Error when retrieving files: \(error)")
+        }
+        
+        return files
+    }
+    
+    private func deleteFile(url: URL) -> Int {
+        do {
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+                
+                return 0
+            }
+            
+            return 1
+        } catch {
+            print("[deleteFile] Error deleting files: \(error)")
+            
+            return 2
+        }
+    }
+    
+    @available(iOS 13.0, *)
+    private func trim(viewController: VideoTrimmerViewController, inputFile: URL, videoDuration: Double, startTime: Double, endTime: Double) {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let outputName = "\(FILE_PREFIX)_\(timestamp).mp4" // use mp4 to prevent any issue with ffmpeg about file extension
+        let outputFile = "\(inputFile.deletingLastPathComponent().absoluteURL)\(outputName)"
+        let cmd = "-i \(inputFile) -ss \(startTime * 1000)ms -to \(endTime * 1000)ms -c copy \(outputFile)";
+                
+        self.emitEventToJS("onStartTrimming", eventData: nil)
+        
+        // Create Alert
+        let dialogMessage = UIAlertController(title: trimmingText, message: nil, preferredStyle: .alert)
+
+        // Present alert message to user
+        let progressView = UIProgressView(frame: .zero)
+        progressView.tintColor = .systemBlue
+        if let root = RCTPresentedViewController() {
+            root.present(dialogMessage, animated: true, completion: {
+                dialogMessage.view.addSubview(progressView)
+                
+                progressView.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    progressView.leadingAnchor.constraint(equalTo: dialogMessage.view.leadingAnchor, constant: 8),
+                    progressView.trailingAnchor.constraint(equalTo: dialogMessage.view.trailingAnchor, constant: -8),
+                    progressView.bottomAnchor.constraint(equalTo: dialogMessage.view.bottomAnchor, constant: -8)
+                ])
+            })
+        }
+        
+        FFmpegKit.executeAsync(cmd, withCompleteCallback: { session in
+            let _ = self.deleteFile(url: inputFile) // remove the file we just copied to document directory
+            
+            let state = session?.getState()
+            
+            if state == .completed {
+                let eventPayload: [String: Any] = ["outputPath": outputFile]
+                self.emitEventToJS("onFinishTrimming", eventData: eventPayload)
+                
+                if (self.saveToPhoto) {
+                    PHPhotoLibrary.requestAuthorization { status in
+                        guard status == .authorized else {
+                            let eventPayload: [String: Any] = ["message": "Permission to access Photo Library is not granted"]
+                            self.emitEventToJS("onError", eventData: eventPayload)
+                            return
+                        }
+                        
+                        PHPhotoLibrary.shared().performChanges({
+                            let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: URL(string: outputFile)!)
+                            request?.creationDate = Date()
+                        }) { success, error in
+                            if success {
+                                print("Edited video saved to Photo Library successfully.")
+                                
+                                if self.removeAfterSavedToPhoto {
+                                    let _ = self.deleteFile(url: URL(string: outputFile)!)
+                                }
+                            } else {
+                                let eventPayload: [String: Any] = ["message": "Failed to save edited video to Photo Library: \(error?.localizedDescription ?? "Unknown error")"]
+                                self.emitEventToJS("onError", eventData: eventPayload)
+                            }
+                        }
+                    }
+                }
+            } else {
+                let eventPayload: [String: Any] = ["message": "Some error occured"]
+                self.emitEventToJS("onError", eventData: eventPayload)
+            }
+            
+            // some how in case we trim a very short video the view controller is still visible after first .dismiss call
+            // even the file is successfully saved
+            // that's why we need a small delay here to ensure vc will be dismissed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                dialogMessage.dismiss(animated: false)
+                viewController.dismiss(animated: true, completion: {
+                    self.emitEventToJS("onHide", eventData: nil)
+                    self.isShowing = false
+                })
+            }
+        }, withLogCallback: { log in
+            
+        }, withStatisticsCallback: { statistics in
+            let timeInMilliseconds = statistics?.getTime() ?? 0;
+            if timeInMilliseconds > 0 {
+                let completePercentage = timeInMilliseconds / (videoDuration * 1000); // from 0 -> 1
+                DispatchQueue.main.async {
+                    progressView.setProgress(Float(completePercentage), animated: true)
+                }
+            }
+        })
     }
 }

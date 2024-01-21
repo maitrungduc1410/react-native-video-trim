@@ -165,10 +165,6 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       });
   }
 
-  private void onCancelClicked() {
-    mOnTrimVideoListener.onCancel();
-  }
-
   private void videoPrepared(MediaPlayer mp) {
     ViewGroup.LayoutParams lp = mVideoView.getLayoutParams();
     int videoWidth = mp.getVideoWidth();
@@ -245,36 +241,13 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private void setUpListeners() {
     findViewById(R.id.cancelBtn).setOnClickListener(view -> {
-      AlertDialog.Builder builder = new AlertDialog.Builder(mContext.getCurrentActivity());
-      builder.setMessage("Are you sure want to cancel?");
-      builder.setTitle("Warning!");
-      builder.setCancelable(false);
-      builder.setPositiveButton("Proceed", (dialog, which) -> {
-        dialog.cancel();
-        onCancelClicked();
-      });
-      builder.setNegativeButton("Close", (dialog, which) -> {
-        dialog.cancel();
-      });
-      AlertDialog alertDialog = builder.create();
-      alertDialog.show();
+      mOnTrimVideoListener.onCancel();
     });
 
     findViewById(R.id.saveBtn).setOnClickListener(view ->  {
-      AlertDialog.Builder builder = new AlertDialog.Builder(mContext.getCurrentActivity());
-      builder.setMessage("Are you sure want to save?");
-      builder.setTitle("Confirmation!");
-      builder.setCancelable(false);
-      builder.setPositiveButton("Proceed", (dialog, which) -> {
-        dialog.cancel();
-        onSaveClicked();
-      });
-      builder.setNegativeButton("Close", (dialog, which) -> {
-        dialog.cancel();
-      });
-      AlertDialog alertDialog = builder.create();
-      alertDialog.show();
+      mOnTrimVideoListener.onSave();
     });
+
     mVideoView.setOnPreparedListener(mp -> {
       // this is called everytime activity goes active, and can fire multiple times
       // so that we create a flag to not run below code more than once
@@ -293,14 +266,14 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     });
   }
 
-  private void onSaveClicked() {
+  public void onSaveClicked() {
     if (mRightProgressPos - mLeftProgressPos < VideoTrimmerUtil.MIN_SHOOT_DURATION) {
       Toast.makeText(mContext, "Video shorter than 3s, can't proceed", Toast.LENGTH_SHORT).show();
     } else {
       mVideoView.pause();
       VideoTrimmerUtil.trim(mContext,
         mSourceUri.getPath(),
-        StorageUtil.getCacheDir(),
+        StorageUtil.getOutputPath(mContext),
         mDuration,
         mLeftProgressPos,
         mRightProgressPos,
