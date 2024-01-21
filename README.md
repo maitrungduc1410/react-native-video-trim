@@ -97,6 +97,7 @@ export default function App() {
         onPress={async () => {
           const result = await launchImageLibrary({
             mediaType: 'video',
+            assetRepresentationMode: 'current',
           });
 
           isValidVideo(result.assets![0]?.uri || '').then((res) =>
