@@ -18,7 +18,6 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
-@SuppressWarnings({ "ResultOfMethodCallIgnored", "FieldCanBeLocal" })
 public class StorageUtil {
   public static String getOutputPath(Context context) { // use same extension as inputFile
     long timestamp = System.currentTimeMillis() / 1000;

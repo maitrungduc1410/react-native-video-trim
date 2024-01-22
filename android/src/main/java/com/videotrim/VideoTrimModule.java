@@ -181,9 +181,9 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     });
   }
 
-  @Override public void onError() {
+  @Override public void onError(String errorMessage) {
     WritableMap map = Arguments.createMap();
-    map.putString("message", "Error when trimming, please try again");
+    map.putString("message", errorMessage);
     sendEvent(getReactApplicationContext(), "onError", map);
     this.hideDialog();
   }

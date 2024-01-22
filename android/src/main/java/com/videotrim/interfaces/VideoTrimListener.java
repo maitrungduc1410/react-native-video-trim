@@ -4,7 +4,7 @@ public interface VideoTrimListener {
   void onStartTrim();
   void onTrimmingProgress(int percentage);
   void onFinishTrim(String url);
-  void onError();
+  void onError(String errorMessage);
   void onCancel();
   void onSave();
 }

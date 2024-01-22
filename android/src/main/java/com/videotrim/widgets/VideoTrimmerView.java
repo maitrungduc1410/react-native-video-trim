@@ -271,7 +271,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       Toast.makeText(mContext, "Video shorter than 3s, can't proceed", Toast.LENGTH_SHORT).show();
     } else {
       mVideoView.pause();
-      VideoTrimmerUtil.trim(mContext,
+      VideoTrimmerUtil.trim(
         mSourceUri.getPath(),
         StorageUtil.getOutputPath(mContext),
         mDuration,

@@ -306,8 +306,9 @@ class VideoTrim: RCTEventEmitter {
             let _ = self.deleteFile(url: inputFile) // remove the file we just copied to document directory
             
             let state = session?.getState()
+            let returnCode = session?.getReturnCode()
             
-            if state == .completed {
+            if ReturnCode.isSuccess(returnCode) {
                 let eventPayload: [String: Any] = ["outputPath": outputFile]
                 self.emitEventToJS("onFinishTrimming", eventData: eventPayload)
                 
@@ -337,7 +338,8 @@ class VideoTrim: RCTEventEmitter {
                     }
                 }
             } else {
-                let eventPayload: [String: Any] = ["message": "Some error occured"]
+                // CANCEL + FAILURE
+                let eventPayload: [String: Any] = ["message": "Command failed with state \(String(describing: FFmpegKitConfig.sessionState(toString: state ?? .failed))) and rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))"]
                 self.emitEventToJS("onError", eventData: eventPayload)
             }
             

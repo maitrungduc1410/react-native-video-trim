@@ -4,17 +4,10 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
-import android.util.Log;
-
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.ReturnCode;
 import com.arthenica.ffmpegkit.SessionState;
 import com.videotrim.interfaces.VideoTrimListener;
-
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
-
 import iknow.android.utils.DeviceUtil;
 import iknow.android.utils.UnitConverter;
 import iknow.android.utils.callback.SingleCallback;
@@ -37,16 +30,21 @@ public class VideoTrimmerUtil {
   public static final int THUMB_HEIGHT = UnitConverter.dpToPx(50); // x2 for better resolution
   private static final int THUMB_RESOLUTION_RES = 2; // double thumb resolution for better quality
 
-  public static void trim(Context context, String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
+  public static void trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
     String cmd = "-i " + inputFile + " -ss " + startMs + "ms" + " -to " + endMs + "ms -c copy " + outputFile;
     callback.onStartTrim();
     FFmpegKit.executeAsync(cmd, session -> {
       SessionState state = session.getState();
+      ReturnCode returnCode = session.getReturnCode();
 
-      if (state.equals(SessionState.COMPLETED)) {
+      if (ReturnCode.isSuccess(returnCode)) {
+        // SUCCESS
         callback.onFinishTrim(outputFile);
-      } else {
-        callback.onError();
+      }
+      else {
+        // CANCEL + FAILURE
+        String errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace());
+        callback.onError(errorMessage);
       }
     }, log -> {
 
