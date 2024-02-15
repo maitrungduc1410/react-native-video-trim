@@ -251,10 +251,10 @@ class VideoTrimmerViewController: UIViewController {
             let finalTime = self.trimmer.trimmingState == .none ? CMTimeAdd(time, self.trimmer.selectedRange.start) : time
             self.trimmer.progress = finalTime
             
-            if player.timeControlStatus == .playing {
-                playBtn.setImage(pauseIcon, for: .normal)
+            if self.player.timeControlStatus == .playing {
+                self.playBtn.setImage(self.pauseIcon, for: .normal)
             } else {
-                playBtn.setImage(playIcon, for: .normal)
+                self.playBtn.setImage(self.playIcon, for: .normal)
             }
         }
         
