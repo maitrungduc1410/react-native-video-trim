@@ -31,7 +31,7 @@ public class VideoTrimmerUtil {
   private static final int THUMB_RESOLUTION_RES = 2; // double thumb resolution for better quality
 
   public static void trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
-    String cmd = "-i " + inputFile + " -ss " + startMs + "ms" + " -to " + endMs + "ms -c copy " + outputFile;
+    String cmd = "-ss " + startMs + "ms" + " -to " + endMs + "ms -i " + inputFile + " -c copy " + outputFile;
     callback.onStartTrim();
     FFmpegKit.executeAsync(cmd, session -> {
       SessionState state = session.getState();
