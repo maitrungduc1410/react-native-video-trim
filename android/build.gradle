@@ -43,16 +43,14 @@ def supportsNamespace() {
   return major >= 8
 }
 
-static def safePackageName(String packageName) {
-  packageName.replace("-lts", "")
+def safePackageName() {
+  def name = project.properties['ffmpegKit.android.package.name']
+  name + '-' + safeExtGet('ffmpegKitPackage', 'min')
 }
 
-def safePackageVersion(String packageName) {
-  def version = project.properties['ffmpegKit.android.main.version']
-  def ltsVersion = project.properties['ffmpegKit.android.lts.version']
-
-  // try to get ffmpegKitPackageVersion if possible
-  safeExtGet("ffmpegKitPackageVersion", packageName.contains("-lts") ? ltsVersion + ".LTS" : version)
+def safePackageVersion() {
+  def name = project.properties['ffmpegKit.android.package.version']
+  safeExtGet('ffmpegKitPackageVersion', name)
 }
 
 def safeExtGet(String prop, String fallback) {
@@ -106,7 +104,7 @@ dependencies {
   //noinspection GradleDynamicVersion
   implementation "com.facebook.react:react-native:+"
   implementation 'androidx.recyclerview:recyclerview:1.3.1'
-  implementation 'com.arthenica:ffmpeg-kit-' + safePackageName(safeExtGet('ffmpegKitPackage', 'min')) + ':' + safePackageVersion(safeExtGet('ffmpegKitPackage', 'min'))
+  implementation safePackageName() + ':' + safePackageVersion()
 }
 
 if (isNewArchitectureEnabled()) {

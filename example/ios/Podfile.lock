@@ -378,7 +378,7 @@ PODS:
     - glog
   - react-native-image-picker (5.6.0):
     - React-Core
-  - react-native-video-trim (1.0.10):
+  - react-native-video-trim (1.0.14):
     - ffmpeg-kit-ios-min (~> 6.0)
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
@@ -703,7 +703,7 @@ SPEC CHECKSUMS:
   React-jsinspector: b511447170f561157547bc0bef3f169663860be7
   React-logger: c5b527272d5f22eaa09bb3c3a690fee8f237ae95
   react-native-image-picker: db60857e03d63721f19b6f4027de20429ddd9cba
-  react-native-video-trim: 78275e522da1a38174864c61e35cb99219e9d158
+  react-native-video-trim: fb7e3ff499f053a14776ffa454785db4dcdcc366
   React-NativeModulesApple: c57f3efe0df288a6532b726ad2d0322a9bf38472
   React-perflogger: 6bd153e776e6beed54c56b0847e1220a3ff92ba5
   React-RCTActionSheet: c0b62af44e610e69d9a2049a682f5dba4e9dff17
@@ -727,4 +727,4 @@ SPEC CHECKSUMS:
 
 PODFILE CHECKSUM: ecd8179b4688b156375776f99c2ce179b78bc497
 
-COCOAPODS: 1.12.1
+COCOAPODS: 1.14.3

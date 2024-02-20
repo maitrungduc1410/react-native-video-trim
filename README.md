@@ -228,16 +228,33 @@ useEffect(() => {
 # FFMPEG Version
 This library uses FFMPEG-Kit Android under the hood, by default FFMPEG-min is used, which gives smallest bundle size: https://github.com/arthenica/ffmpeg-kit#9-packages
 
+## Android
 If you ever need to use other version of FFMPEG-Kit for Android, you can do the following, in your `android/build.gradle` > `buildscript` > `ext`:
 
 ```gradle
 buildscript {
     ext {
-        ffmpegKitPackage = "full" // default "min", if followed by lts then LTS version is use. Eg "full-lts"
+        ffmpegKitPackage = "full" // default "min"
 
-        ffmpegKitPackageVersion = "5.1.LTS" // use exact version, highest precedence, default 6.0-2 if ignored
+        ffmpegKitPackageVersion = "5.1.LTS" // default 6.0-2
     }
 ```
+
+## iOS
+Same as Android, there're 2 environment variables respectively you can use to specify FFMPEG Kit version you want to use: `FFMPEG_KIT_PACKAGE` and `FFMPEG_KIT_PACKAGE_VERSION`.
+
+You need to pass the variables when running pod install. Eg:
+```shell
+# override package name, default: min
+FFMPEGKIT_PACKAGE=full npx pod-install ios
+
+# override package version, default: '~> 6.0
+FFMPEGKIT_PACKAGE_VERSION=5.1 npx pod-install ios
+
+# or both
+FFMPEGKIT_PACKAGE=full FFMPEGKIT_PACKAGE_VERSION=5.1 npx pod-install ios
+```
+
 # Thanks
 - Android part is created by modified + fix bugs from: https://github.com/iknow4/Android-Video-Trimmer
 - iOS UI is created from: https://github.com/AndreasVerhoeven/VideoTrimmerControl
