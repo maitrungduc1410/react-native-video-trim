@@ -22,7 +22,7 @@ npx pod-install ios
 ```
 
 ## Usage
->  Note that for iOS you have to try on real device
+**Note that for both Android and iOS you have to try on real device**
 
 ```js
 import { showEditor } from 'react-native-video-trim';
