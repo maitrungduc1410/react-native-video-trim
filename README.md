@@ -15,9 +15,16 @@ npm install react-native-video-trim
 
 yarn add react-native-video-trim
 ```
-Next install CocoaPods deps:
-
+## For iOS (React Native CLI project)
+Run the following command to setup for iOS:
 ```
+npx pod-install ios
+```
+## For Expo project
+You need to run `prebuild` in order for native code takes effect:
+```
+npx expo prebuild
+
 npx pod-install ios
 ```
 
