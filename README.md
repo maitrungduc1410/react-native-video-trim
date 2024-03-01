@@ -156,6 +156,7 @@ Main method to show Video Editor UI.
   - `saveToPhoto` (optional, `default = true`): whether to save video to photo/gallery after editing
   - `removeAfterSavedToPhoto` (optional, `default = false`): whether to remove output file from storage after saved to Photo
   - `maxDuration` (optional): maximum duration for the trimmed video
+  - `minDuration` (optional): minimum duration for the trimmed video
   - `cancelButtonText` (optional): text of left button in Editor dialog
   - `saveButtonText` (optional): text of right button in Editor dialog
   -  `enableCancelDialog` (optional, `default = true`): whether to show alert dialog on press Cancel

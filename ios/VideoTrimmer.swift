@@ -73,7 +73,7 @@ import AVFoundation
     }
 
     // a clip cannot be trimmed shorter than this duration
-    var minimumDuration: CMTime = .zero
+    var minimumDuration: CMTime = CMTime(seconds: 1, preferredTimescale: 600)
     var maximumDuration: CMTime = .positiveInfinity
 
     // the available range of the asset.
@@ -577,8 +577,9 @@ import AVFoundation
 
                 var didClamp = false
                 if CMTimeCompare(newDuration, minimumDuration) == -1 {
-                    time = CMTimeSubtract(selectedRange.end, minimumDuration)
-                    didClamp = true
+                    // time = CMTimeSubtract(selectedRange.end, minimumDuration)
+                    // didClamp = true
+                    return
                 }
                 if CMTimeCompare(time, range.start) == -1 {
                     time = range.start
@@ -644,8 +645,9 @@ import AVFoundation
 
                 var didClamp = false
                 if CMTimeCompare(newDuration, minimumDuration) == -1 {
-                    time = CMTimeAdd(selectedRange.start, minimumDuration)
-                    didClamp = true
+                    // time = CMTimeAdd(selectedRange.start, minimumDuration)
+                    // didClamp = true
+                    return
                 }
                 if CMTimeCompare(time, range.start) == -1 {
                     time = range.start

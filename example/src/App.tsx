@@ -73,7 +73,8 @@ export default function App() {
             );
 
             showEditor(result.assets![0]?.uri || '', {
-              // maxDuration: 30,
+              maxDuration: 15,
+              minDuration: 10,
               // cancelButtonText: 'hello',
               // saveButtonText: 'world',
               // removeAfterSavedToPhoto: true,

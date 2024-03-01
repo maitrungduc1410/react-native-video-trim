@@ -21,6 +21,7 @@ export interface EditorConfig {
   saveToPhoto?: boolean;
   removeAfterSavedToPhoto?: boolean;
   maxDuration?: number;
+  minDuration?: number;
   cancelButtonText?: string;
   saveButtonText?: string;
   enableCancelDialog?: boolean;

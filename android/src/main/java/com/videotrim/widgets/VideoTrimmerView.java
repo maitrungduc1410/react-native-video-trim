@@ -25,7 +25,7 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AlertDialog;
+import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -52,7 +52,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private static final String TAG = VideoTrimmerView.class.getSimpleName();
 
-  private int mMaxWidth = VIDEO_FRAMES_WIDTH;
+  private final int mMaxWidth = VIDEO_FRAMES_WIDTH;
   private ReactApplicationContext mContext;
   private RelativeLayout mLinearVideo;
   private ZVideoView mVideoView;
@@ -74,13 +74,12 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private long scrollPos = 0;
   private int mScaledTouchSlop;
   private int lastScrollX;
-  private boolean isSeeking;
-  private boolean isOverScaledTouchSlop;
   private int mThumbsTotalCount;
   private ValueAnimator mRedProgressAnimator;
-  private Handler mAnimationHandler = new Handler();
+  private final Handler mAnimationHandler = new Handler();
   private Boolean mIsPrepared = false;
-  private int mMaxDuration = 0;
+  private long mMaxDuration = VideoTrimmerUtil.MAX_SHOOT_DURATION;
+  private long mMinDuration = VideoTrimmerUtil.MIN_SHOOT_DURATION;
 
 
   public VideoTrimmerView(ReactApplicationContext context, AttributeSet attrs) {
@@ -125,12 +124,12 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     VideoTrimmerUtil.VIDEO_FRAMES_WIDTH = VideoTrimmerUtil.SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2;
     VideoTrimmerUtil.MAX_COUNT_RANGE = Math.max(((int) VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.mThumbWidth),  VideoTrimmerUtil.MAX_COUNT_RANGE);
 
-    if (mDuration <= VideoTrimmerUtil.maxShootDuration) {
+    if (mDuration <= mMaxDuration) {
       mThumbsTotalCount = VideoTrimmerUtil.MAX_COUNT_RANGE;
       mRightProgressPos = mDuration;
     } else {
-      mThumbsTotalCount = (int) (mDuration * 1.0f / (VideoTrimmerUtil.maxShootDuration * 1.0f) * VideoTrimmerUtil.MAX_COUNT_RANGE);
-      mRightProgressPos = VideoTrimmerUtil.maxShootDuration;
+      mThumbsTotalCount = (int) (mDuration * 1.0f / (mMaxDuration * 1.0f) * VideoTrimmerUtil.MAX_COUNT_RANGE);
+      mRightProgressPos = mMaxDuration;
     }
 
     mVideoThumbRecyclerView.addItemDecoration(new SpacesItemDecoration2(RECYCLER_VIEW_PADDING, mThumbsTotalCount));
@@ -138,12 +137,12 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     mRangeSeekBarView.setSelectedMinValue(mLeftProgressPos);
     mRangeSeekBarView.setSelectedMaxValue(mRightProgressPos);
     mRangeSeekBarView.setStartEndTime(mLeftProgressPos, mRightProgressPos);
-    mRangeSeekBarView.setMinShootTime(VideoTrimmerUtil.MIN_SHOOT_DURATION);
+    mRangeSeekBarView.setMinShootTime(mMinDuration);
     mRangeSeekBarView.setNotifyWhileDragging(true);
     mRangeSeekBarView.setOnRangeSeekBarChangeListener(mOnRangeSeekBarChangeListener);
     mSeekBarLayout.addView(mRangeSeekBarView);
     if(mThumbsTotalCount - VideoTrimmerUtil.MAX_COUNT_RANGE > 0) {
-      mAverageMsPx = (mDuration - VideoTrimmerUtil.maxShootDuration) / (float) (mThumbsTotalCount - VideoTrimmerUtil.MAX_COUNT_RANGE);
+      mAverageMsPx = (mDuration - mMaxDuration) / (float) (mThumbsTotalCount - VideoTrimmerUtil.MAX_COUNT_RANGE);
     } else {
       mAverageMsPx = 0f;
     }
@@ -185,14 +184,13 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     mVideoView.setLayoutParams(lp);
     mDuration = mVideoView.getDuration();
 
-    VideoTrimmerUtil.maxShootDuration = mMaxDuration > 0 ? Math.min(mMaxDuration * 1000L, mDuration) : mDuration;
+    mMaxDuration = Math.min(mMaxDuration, mDuration);
 
     MediaMetadataRetriever mediaMetadataRetriever = new MediaMetadataRetriever();
     mediaMetadataRetriever.setDataSource(mContext, mSourceUri);
     // take first frame
     Bitmap bitmap = mediaMetadataRetriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-    int width = VideoTrimmerUtil.THUMB_HEIGHT * bitmap.getWidth() / bitmap.getHeight();
-    VideoTrimmerUtil.mThumbWidth = width;
+    VideoTrimmerUtil.mThumbWidth = VideoTrimmerUtil.THUMB_HEIGHT * bitmap.getWidth() / bitmap.getHeight();
 
     if (!getRestoreState()) {
       seekTo((int) mRedProgressBarPos);
@@ -267,8 +265,8 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   public void onSaveClicked() {
-    if (mRightProgressPos - mLeftProgressPos < VideoTrimmerUtil.MIN_SHOOT_DURATION) {
-      Toast.makeText(mContext, "Video shorter than 3s, can't proceed", Toast.LENGTH_SHORT).show();
+    if (mRightProgressPos - mLeftProgressPos < mMinDuration) {
+      Toast.makeText(mContext, "Video is too short, can't proceed", Toast.LENGTH_SHORT).show();
     } else {
       mVideoView.pause();
       VideoTrimmerUtil.trim(
@@ -308,14 +306,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       mRightProgressPos = Math.min(maxValue + scrollPos, mDuration);
       switch (action) {
         case MotionEvent.ACTION_DOWN:
-          isSeeking = false;
           break;
         case MotionEvent.ACTION_MOVE:
-          isSeeking = true;
           seekTo((int) (pressedThumb == RangeSeekBarView.Thumb.MIN ? mLeftProgressPos : mRightProgressPos));
           break;
         case MotionEvent.ACTION_UP:
-          isSeeking = false;
           seekTo((int) mLeftProgressPos);
           break;
         default:
@@ -329,21 +324,18 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private final RecyclerView.OnScrollListener mOnScrollListener = new RecyclerView.OnScrollListener() {
     @Override
-    public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
+    public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
       super.onScrollStateChanged(recyclerView, newState);
     }
 
     @Override
-    public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+    public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
       super.onScrolled(recyclerView, dx, dy);
-      isSeeking = false;
       int scrollX = calcScrollXDistance();
-      //达不到滑动的距离
+
       if (Math.abs(lastScrollX - scrollX) < mScaledTouchSlop) {
-        isOverScaledTouchSlop = false;
         return;
       }
-      isOverScaledTouchSlop = true;
       //初始状态,why ? 因为默认的时候有35dp的空白！
       if (scrollX == -RECYCLER_VIEW_PADDING) {
         scrollPos = 0;
@@ -354,7 +346,6 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
         mRightProgressPos = Math.min(mRangeSeekBarView.getSelectedMaxValue() + scrollPos, mDuration);
         mRedProgressBarPos = mLeftProgressPos;
       } else {
-        isSeeking = true;
         scrollPos = (long) (mAverageMsPx * (RECYCLER_VIEW_PADDING + scrollX) / VideoTrimmerUtil.mThumbWidth);
         mLeftProgressPos = mRangeSeekBarView.getSelectedMinValue() + scrollPos;
 
@@ -418,7 +409,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     }
   }
 
-  private Runnable mAnimationRunnable = () -> updateVideoProgress();
+  private final Runnable mAnimationRunnable = () -> updateVideoProgress();
 
   private void updateVideoProgress() {
     long currentPosition = mVideoView.getCurrentPosition();
@@ -463,7 +454,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private void configure(ReadableMap config) {
     if (config.hasKey("maxDuration")) {
-      this.mMaxDuration = config.getInt("maxDuration");
+      this.mMaxDuration = Math.max(0, config.getInt("maxDuration") * 1000L);
+    }
+
+    if (config.hasKey("minDuration")) {
+      this.mMinDuration = Math.max(1000L, config.getInt("minDuration") * 1000L);
     }
 
     if (config.hasKey("cancelButtonText")) {

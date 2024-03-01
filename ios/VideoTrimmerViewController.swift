@@ -42,6 +42,7 @@ extension AVAsset {
 class VideoTrimmerViewController: UIViewController {
     var asset: AVAsset!
     var maximumDuration: Int?
+    var minimumDuration: Int?
     var cancelBtnText = "Cancel"
     var saveButtonText = "Save"
     var cancelBtnClicked: (() -> Void)?
@@ -208,6 +209,10 @@ class VideoTrimmerViewController: UIViewController {
             }
             
             trimmer.selectedRange = CMTimeRange(start: .zero, end: trimmer.maximumDuration)
+        }
+
+        if minimumDuration != nil {
+            trimmer.minimumDuration = CMTime(seconds: max(1, Double(minimumDuration!)), preferredTimescale: 600) // minimum 1 second
         }
         
         trimmer.addTarget(self, action: #selector(didBeginTrimming(_:)), for: VideoTrimmer.didBeginTrimming)

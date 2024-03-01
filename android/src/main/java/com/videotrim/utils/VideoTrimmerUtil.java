@@ -17,10 +17,10 @@ public class VideoTrimmerUtil {
 
   private static final String TAG = VideoTrimmerUtil.class.getSimpleName();
   public static final String FILE_PREFIX = "trimmedVideo";
-  public static final long MIN_SHOOT_DURATION = 3000L;// min 3 seconds for trimming
-//  public static final int VIDEO_MAX_TIME = 10;// max 10 seconds for trimming
-//  public static final long MAX_SHOOT_DURATION = VIDEO_MAX_TIME * 1000L;
-  public static long maxShootDuration = 10 * 1000L;
+  public static final long MIN_SHOOT_DURATION = 1000L;// min 3 seconds for trimming
+  public static final int VIDEO_MAX_TIME = 10;// max 10 seconds for trimming
+  public static final long MAX_SHOOT_DURATION = VIDEO_MAX_TIME * 1000L;
+//  public static long maxShootDuration = 10 * 1000L;
   public static int MAX_COUNT_RANGE = 10;  // how many images in the highlight range of seek bar
   public static int SCREEN_WIDTH_FULL = DeviceUtil.getDeviceWidth();
   public static final int RECYCLER_VIEW_PADDING = UnitConverter.dpToPx(35);

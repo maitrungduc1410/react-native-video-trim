@@ -85,6 +85,10 @@ class VideoTrim: RCTEventEmitter {
                             vc.maximumDuration = maxDuration
                         }
                         
+                        if let minDuration = config["minDuration"] as? Int {
+                            vc.minimumDuration = minDuration
+                        }
+                        
                         if let cancelBtnText = config["cancelButtonText"] as? String, !cancelBtnText.isEmpty {
                             vc.cancelBtnText = cancelBtnText
                         }
