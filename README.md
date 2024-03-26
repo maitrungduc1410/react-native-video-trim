@@ -169,6 +169,7 @@ Main method to show Video Editor UI.
   -  `saveDialogMessage` (optional, `default = "Are you sure want to save?"`)
   -  `saveDialogCancelText` (optional, `default = "Close"`)
   -  `saveDialogConfirmText` (optional, `default = "Proceed"`)
+  -  `fullScreenModalIOS` (optional, `default = false`): whether to open editor in fullscreen modal
   -  `trimmingText` (optional, `default = "Trimming video..."`): trimming text on the progress dialog
 
 If `saveToPhoto = true`, you must ensure that you have request permission to write to photo/gallery

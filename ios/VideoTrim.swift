@@ -10,16 +10,6 @@ class VideoTrim: RCTEventEmitter {
     
     private var saveToPhoto = true
     private var removeAfterSavedToPhoto = false
-    private var enableCancelDialog = true
-    private var cancelDialogTitle = "Warning!"
-    private var cancelDialogMessage = "Are you sure want to cancel?"
-    private var cancelDialogCancelText = "Close"
-    private var cancelDialogConfirmText = "Proceed"
-    private var enableSaveDialog = true
-    private var saveDialogTitle = "Confirmation!"
-    private var saveDialogMessage = "Are you sure want to save?"
-    private var saveDialogCancelText = "Close"
-    private var saveDialogConfirmText  = "Proceed"
     private var trimmingText = "Trimming video..."
     
     @objc
@@ -58,21 +48,19 @@ class VideoTrim: RCTEventEmitter {
         saveToPhoto = config["saveToPhoto"] as? Bool ?? true
         removeAfterSavedToPhoto = config["removeAfterSavedToPhoto"] as? Bool ?? false
         
-        // since RN Module is singleton, so we need to reset values everytime instead of reassign
-        // Eg. this will not work if change: cancelDialogTitle = config["cancelDialogTitle"] as? String ?? cancelDialogTitle
-        // because if we change cancelDialogTitle, the value is still there, and if from RN side we pass undefined, it'll still have previous value
-        enableCancelDialog = config["enableCancelDialog"] as? Bool ?? true
-        cancelDialogTitle = config["cancelDialogTitle"] as? String ?? "Warning!"
-        cancelDialogMessage = config["cancelDialogMessage"] as? String ?? "Are you sure want to cancel?"
-        cancelDialogCancelText = config["cancelDialogCancelText"] as? String ?? "Close"
-        cancelDialogConfirmText =  config["cancelDialogConfirmText"] as? String ?? "Proceed"
+        let enableCancelDialog = config["enableCancelDialog"] as? Bool ?? true
+        let cancelDialogTitle = config["cancelDialogTitle"] as? String ?? "Warning!"
+        let cancelDialogMessage = config["cancelDialogMessage"] as? String ?? "Are you sure want to cancel?"
+        let cancelDialogCancelText = config["cancelDialogCancelText"] as? String ?? "Close"
+        let cancelDialogConfirmText = config["cancelDialogConfirmText"] as? String ?? "Proceed"
 
-        enableSaveDialog = config["enableSaveDialog"] as? Bool ?? true
-        saveDialogTitle = config["saveDialogTitle"] as? String ?? "Confirmation!"
-        saveDialogMessage = config["saveDialogMessage"] as? String ?? "Are you sure want to save?"
-        saveDialogCancelText = config["saveDialogCancelText"] as? String ?? "Close"
-        saveDialogConfirmText =  config["saveDialogConfirmText"] as? String ?? "Proceed"
-        trimmingText =  config["trimmingText"] as? String ?? "Trimming video..."
+        let enableSaveDialog = config["enableSaveDialog"] as? Bool ?? true
+        let saveDialogTitle = config["saveDialogTitle"] as? String ?? "Confirmation!"
+        let saveDialogMessage = config["saveDialogMessage"] as? String ?? "Are you sure want to save?"
+        let saveDialogCancelText = config["saveDialogCancelText"] as? String ?? "Close"
+        let saveDialogConfirmText = config["saveDialogConfirmText"] as? String ?? "Proceed"
+        trimmingText = config["trimmingText"] as? String ?? "Trimming video..."
+        let fullScreenModalIOS = config["fullScreenModalIOS"] as? Bool ?? false
         
         if let destPath = copyFileToDocumentDir(uri: uri) {
             if UIVideoEditorController.canEditVideo(atPath: destPath.path) {
@@ -98,7 +86,7 @@ class VideoTrim: RCTEventEmitter {
                         }
                         
                         vc.cancelBtnClicked = {
-                            if !self.enableCancelDialog {
+                            if !enableCancelDialog {
                                 let _ = self.deleteFile(url: destPath) // remove the file we just copied to document directory
                                 self.emitEventToJS("onCancelTrimming", eventData: nil)
                                 
@@ -110,10 +98,10 @@ class VideoTrim: RCTEventEmitter {
                             }
                             
                             // Create Alert
-                            let dialogMessage = UIAlertController(title: self.cancelDialogTitle, message: self.cancelDialogMessage, preferredStyle: .alert)
+                            let dialogMessage = UIAlertController(title: cancelDialogTitle, message: cancelDialogMessage, preferredStyle: .alert)
 
                             // Create OK button with action handler
-                            let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive, handler: { (action) -> Void in
+                            let ok = UIAlertAction(title: cancelDialogConfirmText, style: .destructive, handler: { (action) -> Void in
                                 let _ = self.deleteFile(url: destPath) // remove the file we just copied to document directory
                                 self.emitEventToJS("onCancelTrimming", eventData: nil)
                                 
@@ -124,7 +112,7 @@ class VideoTrim: RCTEventEmitter {
                             })
 
                             // Create Cancel button with action handlder
-                            let cancel = UIAlertAction(title: self.cancelDialogCancelText, style: .cancel)
+                            let cancel = UIAlertAction(title: cancelDialogCancelText, style: .cancel)
 
                             //Add OK and Cancel button to an Alert object
                             dialogMessage.addAction(ok)
@@ -137,21 +125,21 @@ class VideoTrim: RCTEventEmitter {
                         }
                         
                         vc.saveBtnClicked = {(selectedRange: CMTimeRange) in
-                            if !self.enableSaveDialog {
+                            if !enableSaveDialog {
                                 self.trim(viewController: vc,inputFile: destPath, videoDuration: vc.asset.duration.seconds, startTime: selectedRange.start.seconds, endTime: selectedRange.end.seconds)
                                 return
                             }
                             
                             // Create Alert
-                            let dialogMessage = UIAlertController(title: self.saveDialogTitle, message: self.saveDialogMessage, preferredStyle: .alert)
+                            let dialogMessage = UIAlertController(title: saveDialogTitle, message: saveDialogMessage, preferredStyle: .alert)
 
                             // Create OK button with action handler
-                            let ok = UIAlertAction(title: self.saveDialogConfirmText, style: .default, handler: { (action) -> Void in
+                            let ok = UIAlertAction(title: saveDialogConfirmText, style: .default, handler: { (action) -> Void in
                                 self.trim(viewController: vc,inputFile: destPath, videoDuration: vc.asset.duration.seconds, startTime: selectedRange.start.seconds, endTime: selectedRange.end.seconds)
                             })
 
                             // Create Cancel button with action handlder
-                            let cancel = UIAlertAction(title: self.saveDialogCancelText, style: .cancel)
+                            let cancel = UIAlertAction(title: saveDialogCancelText, style: .cancel)
 
                             //Add OK and Cancel button to an Alert object
                             dialogMessage.addAction(ok)
@@ -164,6 +152,10 @@ class VideoTrim: RCTEventEmitter {
                         }
                         
                         vc.isModalInPresentation = true // prevent modal closed by swipe down
+                        
+                        if fullScreenModalIOS {
+                            vc.modalPresentationStyle = .fullScreen
+                        }
                         
                         if let root = RCTPresentedViewController() {
                             root.present(vc, animated: true, completion: {

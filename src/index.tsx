@@ -35,6 +35,7 @@ export interface EditorConfig {
   saveDialogCancelText?: string;
   saveDialogConfirmText?: string;
   trimmingText?: string;
+  fullScreenModalIOS?: boolean;
 }
 
 /**

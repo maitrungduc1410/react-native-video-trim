@@ -75,6 +75,7 @@ export default function App() {
             showEditor(result.assets![0]?.uri || '', {
               maxDuration: 15,
               minDuration: 10,
+              fullScreenModalIOS: true,
               // cancelButtonText: 'hello',
               // saveButtonText: 'world',
               // removeAfterSavedToPhoto: true,
