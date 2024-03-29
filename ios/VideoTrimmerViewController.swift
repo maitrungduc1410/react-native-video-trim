@@ -250,6 +250,9 @@ class VideoTrimmerViewController: UIViewController {
         
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
             guard let self = self else {return}
+
+            currentTimeLabel.text = player.currentTime().displayString
+            
             // when we're not trimming, the players starting point is actual later than the trimmer,
             // (because the vidoe has been trimmed), so we need to account for that.
             // When we're trimming, we always show the full video
