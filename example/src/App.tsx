@@ -8,6 +8,7 @@ import {
   NativeEventEmitter,
   NativeModules,
   Modal,
+  Platform,
 } from 'react-native';
 import {
   cleanFiles,
@@ -16,7 +17,10 @@ import {
   listFiles,
   showEditor,
 } from 'react-native-video-trim';
-import { launchImageLibrary } from 'react-native-image-picker';
+import {
+  launchImageLibrary,
+  type ImagePickerResponse,
+} from 'react-native-image-picker';
 import { useEffect, useState } from 'react';
 
 export default function App() {
@@ -58,15 +62,30 @@ export default function App() {
     };
   }, []);
 
+  const onMediaLoaded = (response: ImagePickerResponse) => {
+    console.log('Response', response);
+  };
+
   return (
     <View style={styles.container}>
       <TouchableOpacity
         onPress={async () => {
           try {
-            const result = await launchImageLibrary({
-              mediaType: 'video',
-              assetRepresentationMode: 'current',
-            });
+            const result = await launchImageLibrary(
+              {
+                mediaType: 'mixed',
+                maxWidth: 1080,
+                maxHeight: 1080,
+                quality: 1,
+                videoQuality: Platform.select({ ios: 'high', android: 'high' }),
+                selectionLimit: 0,
+                includeExtra: true,
+                assetRepresentationMode: 'current',
+              },
+              onMediaLoaded
+            );
+
+            console.log(result, 1111);
 
             isValidVideo(result.assets![0]?.uri || '').then((res) =>
               console.log('isValidVideo:', res)

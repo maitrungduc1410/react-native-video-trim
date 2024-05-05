@@ -8,6 +8,11 @@ import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.ReturnCode;
 import com.arthenica.ffmpegkit.SessionState;
 import com.videotrim.interfaces.VideoTrimListener;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.TimeZone;
+
 import iknow.android.utils.DeviceUtil;
 import iknow.android.utils.UnitConverter;
 import iknow.android.utils.callback.SingleCallback;
@@ -31,7 +36,19 @@ public class VideoTrimmerUtil {
   private static final int THUMB_RESOLUTION_RES = 2; // double thumb resolution for better quality
 
   public static void trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
-    String cmd = "-ss " + startMs + "ms" + " -to " + endMs + "ms -i " + inputFile + " -c copy " + outputFile;
+    // Get the current date and time
+    Date currentDate = new Date();
+
+    // Create a SimpleDateFormat object with the desired format
+    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+
+    // Set the timezone to UTC
+    dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+    // Format the current date and time
+    String formattedDateTime = dateFormat.format(currentDate);
+
+    String cmd = "-ss " + startMs + "ms" + " -to " + endMs + "ms -i " + inputFile + " -c copy -metadata creation_time=" + formattedDateTime + " " + outputFile;
     callback.onStartTrim();
     FFmpegKit.executeAsync(cmd, session -> {
       SessionState state = session.getState();

@@ -169,13 +169,13 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     int videoWidth = mp.getVideoWidth();
     int videoHeight = mp.getVideoHeight();
 
-    float videoProportion = (float) videoWidth / (float) videoHeight;
     int screenWidth = mLinearVideo.getWidth();
     int screenHeight = mLinearVideo.getHeight();
 
     if (videoHeight > videoWidth) {
-      lp.width = screenWidth;
       lp.height = screenHeight;
+      float r = videoWidth / (float) videoHeight;
+      lp.width = (int) (lp.height * r);
     } else {
       lp.width = screenWidth;
       float r = videoHeight / (float) videoWidth;

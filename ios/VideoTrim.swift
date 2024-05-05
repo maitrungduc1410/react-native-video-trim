@@ -275,7 +275,13 @@ class VideoTrim: RCTEventEmitter {
         let timestamp = Int(Date().timeIntervalSince1970)
         let outputName = "\(FILE_PREFIX)_\(timestamp).mp4" // use mp4 to prevent any issue with ffmpeg about file extension
         let outputFile = "\(inputFile.deletingLastPathComponent().absoluteURL)\(outputName)"
-        let cmd = "-ss \(startTime * 1000)ms -to \(endTime * 1000)ms -i \(inputFile) -c copy \(outputFile)";
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        let dateTime = formatter.string(from: Date())
+        
+        let cmd = "-ss \(startTime * 1000)ms -to \(endTime * 1000)ms -i \(inputFile) -c copy -metadata creation_time=\(dateTime) \(outputFile)";
                 
         self.emitEventToJS("onStartTrimming", eventData: nil)
         
