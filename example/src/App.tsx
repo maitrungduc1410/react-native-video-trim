@@ -8,7 +8,6 @@ import {
   NativeEventEmitter,
   NativeModules,
   Modal,
-  Platform,
 } from 'react-native';
 import {
   cleanFiles,
@@ -73,12 +72,7 @@ export default function App() {
           try {
             const result = await launchImageLibrary(
               {
-                mediaType: 'mixed',
-                maxWidth: 1080,
-                maxHeight: 1080,
-                quality: 1,
-                videoQuality: Platform.select({ ios: 'high', android: 'high' }),
-                selectionLimit: 0,
+                mediaType: 'video',
                 includeExtra: true,
                 assetRepresentationMode: 'current',
               },
@@ -92,7 +86,7 @@ export default function App() {
             );
 
             showEditor(result.assets![0]?.uri || '', {
-              maxDuration: 15,
+              maxDuration: 40,
               minDuration: 10,
               fullScreenModalIOS: true,
               // cancelButtonText: 'hello',
