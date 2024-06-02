@@ -48,7 +48,6 @@ class VideoTrimmerViewController: UIViewController {
     var isSeekInProgress: Bool = false  // Marker
     private var chaseTime = CMTime.zero
     private var preferredFrameRate: Float = 23.98
-
     
     // MARK: - Input
     @objc private func didBeginTrimmingFromStart(_ sender: VideoTrimmer) {
@@ -133,6 +132,9 @@ class VideoTrimmerViewController: UIViewController {
             player.removeTimeObserver(token)
             timeObserverToken = nil
         }
+        // Remove observer
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: player.currentItem)
+        
         playerController.player = nil
         playerController.dismiss(animated: false, completion: nil)
     }
@@ -259,6 +261,15 @@ class VideoTrimmerViewController: UIViewController {
             playerController.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             playerController.view.bottomAnchor.constraint(equalTo: trimmer.topAnchor, constant: -16)
         ])
+        
+        // Add observer for the end of playback
+        NotificationCenter.default.addObserver(self, selector: #selector(playerDidFinishPlaying), name: .AVPlayerItemDidPlayToEndTime, object: player.currentItem)
+    }
+    
+    @objc private func playerDidFinishPlaying(note: NSNotification) {
+        // Directly set the play icon
+        // the reason in at this time player.timeControlStatus == .playing still returns true
+        playBtn.setImage(self.playIcon, for: .normal)
     }
     
     private func setupTimeObserver() {
@@ -292,29 +303,29 @@ class VideoTrimmerViewController: UIViewController {
     public func seek(to time: CMTime) {
         seekSmoothlyToTime(newChaseTime: time)
     }
-
+    
     private func seekSmoothlyToTime(newChaseTime: CMTime) {
         if CMTimeCompare(newChaseTime, chaseTime) != 0 {
             chaseTime = newChaseTime
-
+            
             if !isSeekInProgress {
                 trySeekToChaseTime()
             }
         }
     }
-
+    
     private func trySeekToChaseTime() {
         guard player?.status == .readyToPlay else { return }
         actuallySeekToTime()
     }
-
+    
     private func actuallySeekToTime() {
         isSeekInProgress = true
         let seekTimeInProgress = chaseTime
-
+        
         player?.seek(to: seekTimeInProgress, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             guard let `self` = self else { return }
-
+            
             if CMTimeCompare(seekTimeInProgress, self.chaseTime) == 0 {
                 self.isSeekInProgress = false
             } else {
