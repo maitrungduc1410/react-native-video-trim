@@ -311,7 +311,7 @@ class VideoTrim: RCTEventEmitter {
             let returnCode = session?.getReturnCode()
             
             if ReturnCode.isSuccess(returnCode) {
-                let eventPayload: [String: Any] = ["outputPath": outputFile]
+                let eventPayload: [String: Any] = ["outputPath": outputFile, "startTime": startTime, "endTime": endTime, "duration": videoDuration]
                 self.emitEventToJS("onFinishTrimming", eventData: eventPayload)
                 
                 if (self.saveToPhoto) {
