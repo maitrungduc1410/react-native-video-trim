@@ -281,7 +281,13 @@ class VideoTrim: RCTEventEmitter {
         formatter.timeZone = TimeZone(identifier: "UTC")
         let dateTime = formatter.string(from: Date())
         
-        let cmd = "-ss \(startTime * 1000)ms -to \(endTime * 1000)ms -i \(inputFile) -c copy -metadata creation_time=\(dateTime) \(outputFile)";
+        // Escape backslashes
+        inputFile = inputFile.replacingOccurrences(of: "\\", with: "\\\\");
+
+        // Escape double quotes
+        inputFile = inputFile.replacingOccurrences(of: "\"", with: "\\\"");
+
+        let cmd = "-ss \(startTime * 1000)ms -to \(endTime * 1000)ms -i \"\(inputFile)\" -c copy -metadata creation_time=\(dateTime) \(outputFile)";
                 
         self.emitEventToJS("onStartTrimming", eventData: nil)
         
