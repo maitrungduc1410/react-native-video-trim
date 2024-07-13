@@ -164,6 +164,11 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   }
 
   @Override public void onTrimmingProgress(int percentage) {
+    // prevent onTrimmingProgress is called after onFinishTrim (some rare cases)
+    if (mProgressBar == null) {
+      return;
+    }
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
       mProgressBar.setProgress(percentage, true);
     } else {

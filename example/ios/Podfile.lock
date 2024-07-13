@@ -319,7 +319,7 @@ PODS:
   - react-native-image-picker (7.1.2):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
-  - react-native-video-trim (1.0.22):
+  - react-native-video-trim (1.0.23):
     - ffmpeg-kit-ios-min (~> 6.0)
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
@@ -599,7 +599,7 @@ SPEC CHECKSUMS:
   React-jsinspector: b511447170f561157547bc0bef3f169663860be7
   React-logger: c5b527272d5f22eaa09bb3c3a690fee8f237ae95
   react-native-image-picker: 51fdb07f7ef722988c8a219e1416153760a25e4d
-  react-native-video-trim: 1edeaf30fc9a31a32efb084322fe1a73f239f677
+  react-native-video-trim: 5df99221a73dae8155d39c47942dfbb68b05e516
   React-NativeModulesApple: c57f3efe0df288a6532b726ad2d0322a9bf38472
   React-perflogger: 6bd153e776e6beed54c56b0847e1220a3ff92ba5
   React-RCTActionSheet: c0b62af44e610e69d9a2049a682f5dba4e9dff17

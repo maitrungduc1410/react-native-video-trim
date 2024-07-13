@@ -48,9 +48,23 @@ public class VideoTrimmerUtil {
     // Format the current date and time
     String formattedDateTime = dateFormat.format(currentDate);
 
-    String cmd = "-ss " + startMs + "ms" + " -to " + endMs + "ms -i " + inputFile + " -c copy -metadata creation_time=" + formattedDateTime + " " + outputFile;
     callback.onStartTrim();
-    FFmpegKit.executeAsync(cmd, session -> {
+
+    String[] cmds = {
+      "-ss",
+      startMs + "ms",
+      "-to",
+      endMs + "ms",
+      "-i",
+      inputFile,
+      "-c",
+      "copy",
+      "-metadata",
+      "creation_time=" + formattedDateTime,
+      outputFile
+    };
+
+    FFmpegKit.executeWithArgumentsAsync(cmds, session -> {
       SessionState state = session.getState();
       ReturnCode returnCode = session.getReturnCode();
 
@@ -64,7 +78,7 @@ public class VideoTrimmerUtil {
         callback.onError(errorMessage);
       }
     }, log -> {
-
+      System.out.println("FFmpeg process started with log " + log.getMessage());
     }, statistics -> {
       int timeInMilliseconds = (int) statistics.getTime();
       if (timeInMilliseconds > 0) {

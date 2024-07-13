@@ -281,8 +281,6 @@ class VideoTrim: RCTEventEmitter {
         formatter.timeZone = TimeZone(identifier: "UTC")
         let dateTime = formatter.string(from: Date())
         
-        let cmd = "-ss \(startTime * 1000)ms -to \(endTime * 1000)ms -i \(inputFile) -c copy -metadata creation_time=\(dateTime) \(outputFile)";
-                
         self.emitEventToJS("onStartTrimming", eventData: nil)
         
         // Create Alert
@@ -304,7 +302,21 @@ class VideoTrim: RCTEventEmitter {
             })
         }
         
-        FFmpegKit.executeAsync(cmd, withCompleteCallback: { session in
+        let cmds = [
+            "-ss",
+            "\(startTime * 1000)ms",
+            "-to",
+            "\(endTime * 1000)ms",
+            "-i",
+            "\(inputFile)",
+            "-c",
+            "copy",
+            "-metadata",
+            "creation_time=\(dateTime)",
+            outputFile
+        ]
+        
+        FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
             let _ = self.deleteFile(url: inputFile) // remove the file we just copied to document directory
             
             let state = session?.getState()
@@ -356,7 +368,7 @@ class VideoTrim: RCTEventEmitter {
                 })
             }
         }, withLogCallback: { log in
-            
+            print("FFmpeg process started with log " + (log?.getMessage() ?? ""));
         }, withStatisticsCallback: { statistics in
             let timeInMilliseconds = statistics?.getTime() ?? 0;
             if timeInMilliseconds > 0 {
