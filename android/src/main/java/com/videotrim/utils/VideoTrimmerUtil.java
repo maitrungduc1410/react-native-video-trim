@@ -56,7 +56,7 @@ public class VideoTrimmerUtil {
 
       if (ReturnCode.isSuccess(returnCode)) {
         // SUCCESS
-        callback.onFinishTrim(outputFile);
+        callback.onFinishTrim(outputFile, startMs, endMs, videoDuration);
       }
       else {
         // CANCEL + FAILURE
