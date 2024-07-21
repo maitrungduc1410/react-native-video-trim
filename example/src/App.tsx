@@ -53,6 +53,14 @@ export default function App() {
           console.log('onError', event);
           break;
         }
+        case 'onLog': {
+          console.log('onLog', event);
+          break;
+        }
+        case 'onStatistics': {
+          console.log('onStatistics', event);
+          break;
+        }
       }
     });
 
@@ -86,7 +94,7 @@ export default function App() {
             );
 
             showEditor(result.assets![0]?.uri || '', {
-              maxDuration: 40,
+              maxDuration: 20,
               minDuration: 10,
               fullScreenModalIOS: true,
               // cancelButtonText: 'hello',

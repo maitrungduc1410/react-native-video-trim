@@ -169,7 +169,7 @@ class VideoTrimmerViewController: UIViewController {
     
     private func setupButtons() {
         cancelBtn = UIButton.createButton(title: cancelBtnText, font: .systemFont(ofSize: 18), titleColor: .white, target: self, action: #selector(onCancelBtnClicked))
-        playBtn = UIButton.createButton(image: playIcon, tintColor: .systemBlue, target: self, action: #selector(togglePlay(sender:)))
+        playBtn = UIButton.createButton(image: playIcon, tintColor: .white, target: self, action: #selector(togglePlay(sender:)))
         saveBtn = UIButton.createButton(title: saveButtonText, font: .systemFont(ofSize: 18), titleColor: .systemBlue, target: self, action: #selector(onSaveBtnClicked))
         
         btnStackView = UIStackView(arrangedSubviews: [cancelBtn, playBtn, saveBtn])

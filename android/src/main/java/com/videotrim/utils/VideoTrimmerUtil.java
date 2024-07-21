@@ -7,6 +7,8 @@ import android.net.Uri;
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.ReturnCode;
 import com.arthenica.ffmpegkit.SessionState;
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.WritableMap;
 import com.videotrim.interfaces.VideoTrimListener;
 
 import java.text.SimpleDateFormat;
@@ -79,6 +81,13 @@ public class VideoTrimmerUtil {
       }
     }, log -> {
       System.out.println("FFmpeg process started with log " + log.getMessage());
+
+      WritableMap map = Arguments.createMap();
+      map.putInt("level", log.getLevel().getValue());
+      map.putString("message", log.getMessage());
+      map.putDouble("sessionId", log.getSessionId());
+      map.putString("logStr", log.toString());
+      callback.onLog(map);
     }, statistics -> {
       int timeInMilliseconds = (int) statistics.getTime();
       if (timeInMilliseconds > 0) {
@@ -86,6 +95,18 @@ public class VideoTrimmerUtil {
           (timeInMilliseconds * 100) / videoDuration;
         callback.onTrimmingProgress(Math.min(Math.max(completePercentage, 0), 100));
       }
+
+      WritableMap map = Arguments.createMap();
+      map.putDouble("sessionId", statistics.getSessionId());
+      map.putInt("videoFrameNumber", statistics.getVideoFrameNumber());
+      map.putDouble("videoFps", statistics.getVideoFps());
+      map.putDouble("videoQuality", statistics.getVideoQuality());
+      map.putDouble("size", statistics.getSize());
+      map.putDouble("time", statistics.getTime());
+      map.putDouble("bitrate", statistics.getBitrate());
+      map.putDouble("speed", statistics.getSpeed());
+      map.putString("statisticsStr", statistics.toString());
+      callback.onStatistics(map);
     });
   }
 

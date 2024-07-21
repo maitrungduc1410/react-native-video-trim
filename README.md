@@ -226,6 +226,16 @@ useEffect(() => {
         console.log('onError', event);
         break;
       }
+      case 'onLog': {
+        // FFMPEG logs (while trimming)
+        console.log('onLog', event);
+        break;
+      }
+      case 'onStatistics': {
+        // FFMPEG stats (while trimming)
+        console.log('onStatistics', event);
+        break;
+      }
     }
   });
 
@@ -262,6 +272,18 @@ FFMPEGKIT_PACKAGE_VERSION=5.1 npx pod-install ios
 
 # or both
 FFMPEGKIT_PACKAGE=full FFMPEGKIT_PACKAGE_VERSION=5.1 npx pod-install ios
+```
+
+# Android: update SDK version
+You can override sdk version to use any version in your `android/build.gradle` > `buildscript` > `ext`
+```gradle
+buildscript {
+    ext {
+        VideoTrim_compileSdkVersion = 34
+        VideoTrim_minSdkVersion = 26
+        VideoTrim_targetSdkVersion = 34
+    }
+}
 ```
 
 # Thanks

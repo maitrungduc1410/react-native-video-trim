@@ -1,5 +1,7 @@
 package com.videotrim.interfaces;
 
+import com.facebook.react.bridge.WritableMap;
+
 public interface VideoTrimListener {
   void onStartTrim();
   void onTrimmingProgress(int percentage);
@@ -7,4 +9,6 @@ public interface VideoTrimListener {
   void onError(String errorMessage);
   void onCancel();
   void onSave();
+  void onLog(WritableMap log);
+  void onStatistics(WritableMap statistics);
 }

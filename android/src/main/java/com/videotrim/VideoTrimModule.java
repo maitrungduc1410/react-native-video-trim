@@ -147,7 +147,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   public void onHostPause() {
     if (trimmerView != null) {
       trimmerView.onVideoPause();
-      trimmerView.setRestoreState(true);
     }
   }
 
@@ -238,6 +237,14 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     });
     AlertDialog alertDialog = builder.create();
     alertDialog.show();
+  }
+
+  @Override public void onLog(WritableMap log) {
+    sendEvent(getReactApplicationContext(), "onLog", log);
+  }
+
+  @Override public void onStatistics(WritableMap statistics) {
+    sendEvent(getReactApplicationContext(), "onStatistics", statistics);
   }
 
   @ReactMethod

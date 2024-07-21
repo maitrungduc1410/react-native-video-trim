@@ -1,0 +1,13 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:drawable="@drawable/rounded_yellow_right_background"/>
+  <item>
+    <inset
+      android:insetLeft="8dp"
+      android:insetTop="8dp"
+      android:insetRight="8dp"
+      android:insetBottom="8dp"
+      android:drawable="@drawable/chevron_compact_right">
+    </inset>
+  </item>
+</layer-list>
+

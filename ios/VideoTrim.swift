@@ -368,15 +368,39 @@ class VideoTrim: RCTEventEmitter {
                 })
             }
         }, withLogCallback: { log in
-            print("FFmpeg process started with log " + (log?.getMessage() ?? ""));
+            guard let log = log else { return }
+            
+            print("FFmpeg process started with log " + (log.getMessage()));
+            
+            let eventPayload: [String: Any] = [
+                "level": log.getLevel(),
+                "message": log.getMessage() ?? "",
+                "sessionId": log.getSessionId(),
+            ]
+            self.emitEventToJS("onLog", eventData: eventPayload)
+            
         }, withStatisticsCallback: { statistics in
-            let timeInMilliseconds = statistics?.getTime() ?? 0;
+            guard let statistics = statistics else { return }
+
+            let timeInMilliseconds = statistics.getTime()
             if timeInMilliseconds > 0 {
                 let completePercentage = timeInMilliseconds / (videoDuration * 1000); // from 0 -> 1
                 DispatchQueue.main.async {
                     progressView.setProgress(Float(completePercentage), animated: true)
                 }
             }
+            
+            let eventPayload: [String: Any] = [
+                "sessionId": statistics.getSessionId(),
+                "videoFrameNumber": statistics.getVideoFrameNumber(),
+                "videoFps": statistics.getVideoFps(),
+                "videoQuality": statistics.getVideoQuality(),
+                "size": statistics.getSize(),
+                "time": statistics.getTime(),
+                "bitrate": statistics.getBitrate(),
+                "speed": statistics.getSpeed()
+            ]
+            self.emitEventToJS("onStatistics", eventData: eventPayload)
         })
     }
 }
