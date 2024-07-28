@@ -202,6 +202,31 @@ If `saveToPhoto = true`, you must ensure that you have request permission to wri
 - For Android: you need to have `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />` in AndroidManifest.xml
 - For iOS: you need `NSPhotoLibraryUsageDescription` in Info.plist
 
+If `openShareSheetOnFinish=true`, on Android you'll need to update `AndroidManifest.xml` like below:
+```xml
+</application>
+  ...
+  <provider
+    android:name="androidx.core.content.FileProvider"
+    android:authorities="${applicationId}.provider"
+    android:exported="false"
+    android:grantUriPermissions="true">
+    <meta-data
+      android:name="android.support.FILE_PROVIDER_PATHS"
+      android:resource="@xml/file_paths" />
+  </provider>
+</application>
+```
+
+If you face issue when building Android app related to `file_paths`, then you may need to create `res/xml/file_paths.xml`: with the following content:
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+  <files-path name="internal_files" path="." />
+  <external-path name="external_files" path="." />
+</paths>
+```
+
 ## isValidFile(videoPath: string)
 
 This method is to check if a path is a valid video/audio
