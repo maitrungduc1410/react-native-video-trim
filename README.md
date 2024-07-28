@@ -9,6 +9,12 @@
 ## Features
 - ✅ Support video and audio
 - ✅ Support local and remote files
+- ✅ Save to Photos, Documents and Share to other apps
+- ✅ Check if file is valid video/audio
+- ✅ File operations: list, clean up, delete specific file
+
+<img src="images/document_picker.png" width="300" />
+<img src="images/share_sheet.png" width="300" />
 
 ## Installation
 
