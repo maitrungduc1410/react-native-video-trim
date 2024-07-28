@@ -19,9 +19,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class StorageUtil {
-  public static String getOutputPath(Context context) { // use same extension as inputFile
+  public static String getOutputPath(Context context, String mOutputExt) {
     long timestamp = System.currentTimeMillis() / 1000;
-    File file = new File(context.getFilesDir(), VideoTrimmerUtil.FILE_PREFIX + "_" + timestamp + ".mp4"); // always use mp4 to prevent any issue with ffmpeg
+    File file = new File(context.getFilesDir(), VideoTrimmerUtil.FILE_PREFIX + "_" + timestamp + "." + mOutputExt);
     return file.getAbsolutePath();
   }
 

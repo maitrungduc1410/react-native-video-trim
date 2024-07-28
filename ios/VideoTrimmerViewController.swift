@@ -22,13 +22,36 @@ extension CMTime {
 
 @available(iOS 13.0, *)
 class VideoTrimmerViewController: UIViewController {
-    var asset: AVAsset!
+    var asset: AVAsset? {
+        didSet {
+            if let _ = asset {
+                setupVideoTrimmer()
+                setupPlayerController()
+                setupTimeObserver()
+                updateLabels()
+                
+                loadingIndicator.stopAnimating()
+                btnStackView.removeArrangedSubview(loadingIndicator)
+                loadingIndicator.removeFromSuperview()
+                btnStackView.insertArrangedSubview(playBtn, at: 1)
+                
+                UIView.animate(withDuration: 0.25, animations: {
+                    self.playBtn.alpha = 1
+                    self.playBtn.isEnabled = true
+                    self.saveBtn.alpha = 1
+                    self.saveBtn.isEnabled = true
+                })
+            }
+        }
+    }
     var maximumDuration: Int?
     var minimumDuration: Int?
     var cancelBtnText = "Cancel"
     var saveButtonText = "Save"
     var cancelBtnClicked: (() -> Void)?
     var saveBtnClicked: ((CMTimeRange) -> Void)?
+    var isVideoType = true
+    var enableHapticFeedback = true
     
     private let playerController = AVPlayerViewController()
     private var trimmer: VideoTrimmer!
@@ -39,15 +62,43 @@ class VideoTrimmerViewController: UIViewController {
     private var btnStackView: UIStackView!
     private var cancelBtn: UIButton!
     private var playBtn: UIButton!
+    private var loadingIndicator = UIActivityIndicatorView()
     private var saveBtn: UIButton!
     private let playIcon = UIImage(systemName: "play.fill")
     private let pauseIcon = UIImage(systemName: "pause.fill")
+    private let audioBannerView = UIImage(systemName: "airpodsmax")
     private var player: AVPlayer! { playerController.player }
     private var timeObserverToken: Any?
     
     var isSeekInProgress: Bool = false  // Marker
     private var chaseTime = CMTime.zero
     private var preferredFrameRate: Float = 23.98
+    
+    public func onAssetFailToLoad() {
+        loadingIndicator.stopAnimating()
+        btnStackView.removeArrangedSubview(loadingIndicator)
+        loadingIndicator.removeFromSuperview()
+        
+        let imageViewContainer = UIView()
+        let imageView = UIImageView(image: UIImage(systemName: "exclamationmark.triangle.fill"))
+        imageView.tintColor = .systemYellow
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+
+        imageViewContainer.addSubview(imageView)
+        NSLayoutConstraint.activate([
+            imageView.widthAnchor.constraint(equalToConstant: 36),
+            imageView.heightAnchor.constraint(equalToConstant: 36),
+            imageView.centerXAnchor.constraint(equalTo: imageViewContainer.centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: imageViewContainer.centerYAnchor)
+        ])
+        imageViewContainer.alpha = 0
+        
+        btnStackView.insertArrangedSubview(imageViewContainer, at: 1)
+
+        UIView.animate(withDuration: 0.25, animations: {
+            imageViewContainer.alpha = 1
+        })
+    }
     
     // MARK: - Input
     @objc private func didBeginTrimmingFromStart(_ sender: VideoTrimmer) {
@@ -117,16 +168,13 @@ class VideoTrimmerViewController: UIViewController {
         setupView()
         setupButtons()
         setupTimeLabels()
-        setupVideoTrimmer()
-        setupPlayerController()
-        setupTimeObserver()
-        
-        updateLabels()
     }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         
+        // if asset has been initialized
+        guard let _ = asset else { return }
         player.pause()
         if let token = timeObserverToken {
             player.removeTimeObserver(token)
@@ -170,26 +218,38 @@ class VideoTrimmerViewController: UIViewController {
     private func setupButtons() {
         cancelBtn = UIButton.createButton(title: cancelBtnText, font: .systemFont(ofSize: 18), titleColor: .white, target: self, action: #selector(onCancelBtnClicked))
         playBtn = UIButton.createButton(image: playIcon, tintColor: .white, target: self, action: #selector(togglePlay(sender:)))
-        saveBtn = UIButton.createButton(title: saveButtonText, font: .systemFont(ofSize: 18), titleColor: .systemBlue, target: self, action: #selector(onSaveBtnClicked))
+        playBtn.alpha = 0
+        playBtn.isEnabled = false
         
-        btnStackView = UIStackView(arrangedSubviews: [cancelBtn, playBtn, saveBtn])
+        saveBtn = UIButton.createButton(title: saveButtonText, font: .systemFont(ofSize: 18), titleColor: .systemBlue, target: self, action: #selector(onSaveBtnClicked))
+        saveBtn.alpha = 0
+        saveBtn.isEnabled = false
+        
+        btnStackView = UIStackView(arrangedSubviews: [cancelBtn, loadingIndicator, saveBtn])
         btnStackView.axis = .horizontal
-        btnStackView.alignment = .fill
+        btnStackView.alignment = .center
         btnStackView.distribution = .fillEqually
         btnStackView.spacing = UIStackView.spacingUseSystem
-        view.addSubview(btnStackView)
         btnStackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        view.addSubview(btnStackView)
+        
         NSLayoutConstraint.activate([
             btnStackView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             btnStackView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             btnStackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
         ])
+        
+        loadingIndicator.startAnimating()
     }
     
     private func setupTimeLabels() {
         leadingTrimLabel = UILabel.createLabel(textAlignment: .left, textColor: .white)
+        leadingTrimLabel.text = "00:00.000"
         currentTimeLabel = UILabel.createLabel(textAlignment: .center, textColor: .white)
+        currentTimeLabel.text = "00:00.000"
         trailingTrimLabel = UILabel.createLabel(textAlignment: .right, textColor: .white)
+        trailingTrimLabel.text = "00:00.000"
         
         timingStackView = UIStackView(arrangedSubviews: [leadingTrimLabel, currentTimeLabel, trailingTrimLabel])
         timingStackView.axis = .horizontal
@@ -209,11 +269,12 @@ class VideoTrimmerViewController: UIViewController {
         trimmer = VideoTrimmer()
         trimmer.asset = asset
         trimmer.minimumDuration = CMTime(seconds: 1, preferredTimescale: 600)
+        trimmer.enableHapticFeedback = enableHapticFeedback
         
         if let maxDuration = maximumDuration {
             trimmer.maximumDuration = CMTime(seconds: max(1, Double(maxDuration)), preferredTimescale: 600)
-            if trimmer.maximumDuration > asset.duration {
-                trimmer.maximumDuration = asset.duration
+            if trimmer.maximumDuration > asset!.duration {
+                trimmer.maximumDuration = asset!.duration
             }
             trimmer.selectedRange = CMTimeRange(start: .zero, end: trimmer.maximumDuration)
         }
@@ -233,6 +294,7 @@ class VideoTrimmerViewController: UIViewController {
         trimmer.addTarget(self, action: #selector(didBeginTrimmingFromEnd(_:)), for: VideoTrimmer.didBeginTrimmingFromEnd)
         trimmer.addTarget(self, action: #selector(trailingGrabberChanged(_:)), for: VideoTrimmer.trailingGrabberChanged)
         trimmer.addTarget(self, action: #selector(didEndTrimmingFromEnd(_:)), for: VideoTrimmer.didEndTrimmingFromEnd)
+        trimmer.alpha = 0
         view.addSubview(trimmer)
         trimmer.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -241,6 +303,10 @@ class VideoTrimmerViewController: UIViewController {
             trimmer.bottomAnchor.constraint(equalTo: timingStackView.topAnchor, constant: -16),
             trimmer.heightAnchor.constraint(equalToConstant: 50)
         ])
+        
+        UIView.animate(withDuration: 0.25, animations: {
+            self.trimmer.alpha = 1
+        })
     }
     
     private func setupPlayerController() {
@@ -249,7 +315,7 @@ class VideoTrimmerViewController: UIViewController {
             playerController.allowsVideoFrameAnalysis = false
         }
         playerController.player = AVPlayer()
-        player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
+        player.replaceCurrentItem(with: AVPlayerItem(asset: asset!))
         
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
         addChild(playerController)

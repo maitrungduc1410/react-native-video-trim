@@ -14,7 +14,28 @@
     <VideoView
       android:id="@+id/video_loader"
       android:layout_width="match_parent"
-      android:layout_height="match_parent" />
+      android:layout_height="match_parent"
+      />
+
+    <FrameLayout
+      android:id="@+id/audioBannerView"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent"
+      android:layout_marginStart="50dp"
+      android:layout_marginTop="50dp"
+      android:layout_marginEnd="50dp"
+      android:layout_marginBottom="50dp"
+      android:padding="50dp"
+      android:visibility="gone">
+
+      <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:contentDescription="Airpods Max"
+        android:src="@drawable/airpodsmax"
+        />
+    </FrameLayout>
 
   </RelativeLayout>
 
@@ -38,7 +59,8 @@
         android:layout_height="match_parent"
         android:layout_marginHorizontal="20dp"
         android:orientation="horizontal"
-        android:padding="4dp" />
+        android:padding="4dp"
+        />
 
       <RelativeLayout
         android:id="@+id/trimmerContainerWrapper"
@@ -201,7 +223,30 @@
         android:layout_gravity="center"
         android:padding="12dp"
         android:src="@drawable/play_fill"
-        android:tint="@color/white"/>
+        android:tint="@color/white"
+        android:visibility="gone"
+        />
+
+      <ImageView
+        android:id="@+id/failToLoadBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:padding="12dp"
+        android:src="@drawable/exclamationmark_triangle_fill"
+        android:tint="@color/trim_color"
+        android:visibility="gone"
+        />
+
+      <ProgressBar
+        android:id="@+id/loadingIndicator"
+        style="?android:attr/progressBarStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:padding="10dp"
+        android:indeterminateTint="@color/white"
+        />
 
       <TextView
         android:id="@+id/saveBtn"
@@ -212,7 +257,9 @@
         android:padding="10dp"
         android:text="@string/save"
         android:textColor="#2196F3"
-        android:textSize="16dp" />
+        android:textSize="16dp"
+        android:visibility="gone"
+        />
 
     </FrameLayout>
 

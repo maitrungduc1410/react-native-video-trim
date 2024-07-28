@@ -6,6 +6,10 @@
 <img src="images/ios.gif" width="300" />
 </div>
 
+## Features
+- ✅ Support video and audio
+- ✅ Support local and remote files
+
 ## Installation
 
 ```sh
@@ -29,7 +33,13 @@ npx pod-install ios
 ```
 
 ## Usage
-**Note that for both Android and iOS you have to try on real device**
+
+> [!IMPORTANT]  
+> Note that for both Android and iOS you have to try on real device
+
+> [!IMPORTANT]  
+> If you plan to trim remote file, you must install FFMPEG version from "https" onwards, "min" version won't work. See bottom to know how to install specific FFMPEG version
+
 
 ```js
 import { showEditor } from 'react-native-video-trim';
@@ -57,7 +67,7 @@ import {
   NativeEventEmitter,
   NativeModules,
 } from 'react-native';
-import { isValidVideo, showEditor } from 'react-native-video-trim';
+import { isValidFile, showEditor } from 'react-native-video-trim';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { useEffect } from 'react';
 
@@ -107,7 +117,7 @@ export default function App() {
             assetRepresentationMode: 'current',
           });
 
-          isValidVideo(result.assets![0]?.uri || '').then((res) =>
+          isValidFile(result.assets![0]?.uri || '').then((res) =>
             console.log(res)
           );
 
@@ -121,7 +131,7 @@ export default function App() {
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => {
-          isValidVideo('invalid file path').then((res) => console.log(res));
+          isValidFile('invalid file path').then((res) => console.log(res));
         }}
         style={{
           padding: 10,
@@ -152,9 +162,19 @@ Main method to show Video Editor UI.
 *Params*:
 - `videoPath`: Path to video file, if this is an invalid path, `onError` event will be fired
 - `config` (optional): 
-
-  - `saveToPhoto` (optional, `default = true`): whether to save video to photo/gallery after editing
-  - `removeAfterSavedToPhoto` (optional, `default = false`): whether to remove output file from storage after saved to Photo
+  
+  - `type` (optional, `default = video`): which player to use, `video` or `audio`
+  - `outputExt` (optional, `default = mp4`): output file extension
+  - `enableHapticFeedback` (optional, `default = true`): whether to enable haptic feedback
+  - `saveToPhoto` (optional, Video-only, `default = false`): whether to save video to photo/gallery after editing
+  - `openDocumentsOnFinish` (optional, `default = false`): open Document Picker on done trimming
+  - `openShareSheetOnFinish` (optional, `default = false`): open Share Sheet on done trimming
+  - `removeAfterSavedToPhoto` (optional, `default = false`): whether to remove output file from storage after saved to Photo successfully
+  - `removeAfterFailedToSavePhoto` (optional, `default = false`): whether to remove output file if fail to save to Photo
+  - `removeAfterSavedToDocuments` (optional, `default = false`): whether to remove output file from storage after saved Documents successfully
+  - `removeAfterFailedToSaveDocuments` (optional, `default = false`): whether to remove output file from storage after fail to save to Documents
+  - `removeAfterShared` (optional, `default = false`): whether to remove output file from storage after saved Share successfully. iOS only, on Android you'll have to manually remove the file (this is because on Android there's no way to detect when sharing is successful)
+  - `removeAfterFailedToShare` (optional, `default = false`): whether to remove output file from storage after fail to Share. iOS only, on Android you'll have to manually remove the file
   - `maxDuration` (optional): maximum duration for the trimmed video
   - `minDuration` (optional): minimum duration for the trimmed video
   - `cancelButtonText` (optional): text of left button in Editor dialog
@@ -176,9 +196,13 @@ If `saveToPhoto = true`, you must ensure that you have request permission to wri
 - For Android: you need to have `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />` in AndroidManifest.xml
 - For iOS: you need `NSPhotoLibraryUsageDescription` in Info.plist
 
-## isValidVideo(videoPath: string)
+## isValidFile(videoPath: string)
 
-This method is to check if a path is a actual video and editable. It returns `Promise<boolean>`
+This method is to check if a path is a valid video/audio
+
+## closeEditor()
+
+Close Editor
 
 ## listFiles()
 Return array of generated output files in app storage. (`Promise<string[]>`)

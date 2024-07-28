@@ -1,6 +1,7 @@
 package com.videotrim.widgets;
 
 import static com.facebook.react.bridge.UiThreadUtil.runOnUiThread;
+import static com.videotrim.utils.VideoTrimmerUtil.DEFAULT_AUDIO_EXTENSION;
 import static com.videotrim.utils.VideoTrimmerUtil.RECYCLER_VIEW_PADDING;
 import static com.videotrim.utils.VideoTrimmerUtil.VIDEO_FRAMES_WIDTH;
 
@@ -8,6 +9,9 @@ import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
 import android.net.Uri;
@@ -20,21 +24,29 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.VideoView;
 
+import androidx.core.content.ContextCompat;
+import androidx.core.content.res.ResourcesCompat;
+
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
 import com.videotrim.R;
+import com.videotrim.enums.ErrorCode;
 import com.videotrim.interfaces.IVideoTrimmerView;
 import com.videotrim.interfaces.VideoTrimListener;
+import com.videotrim.utils.MediaMetadataUtil;
 import com.videotrim.utils.StorageUtil;
 import com.videotrim.utils.VideoTrimmerUtil;
 
+import java.io.IOException;
 import java.util.Locale;
 
 import iknow.android.utils.DeviceUtil;
@@ -82,6 +94,18 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private final Handler zoomWaitTimer = new Handler();
   private Runnable zoomRunnable;
 
+  private MediaMetadataRetriever mediaMetadataRetriever;
+  private ProgressBar loadingIndicator;
+  private TextView saveBtn;
+  private TextView cancelBtn;
+  private FrameLayout audioBannerView;
+  private boolean isVideoType = true;
+  private MediaPlayer audioPlayer;
+  private ImageView failToLoadBtn;
+
+  private String mOutputExt = "mp4";
+  private boolean enableHapticFeedback = true;
+
   public VideoTrimmerView(ReactApplicationContext context, ReadableMap config, AttributeSet attrs) {
     this(context, attrs, 0, config);
   }
@@ -118,20 +142,74 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     trailingHandle = findViewById(R.id.trailingHandle);
     leadingOverlay = findViewById(R.id.leadingOverlay);
     trailingOverlay = findViewById(R.id.trailingOverlay);
+
     trimmerContainerWrapper = findViewById(R.id.trimmerContainerWrapper);
     trimmerContainerWrapper.setVisibility(View.INVISIBLE);
     trimmerContainerWrapper.setAlpha(0f);
+
+    loadingIndicator = findViewById(R.id.loadingIndicator);
+    saveBtn = findViewById(R.id.saveBtn);
+    cancelBtn = findViewById(R.id.cancelBtn);
+    audioBannerView = findViewById(R.id.audioBannerView);
+    failToLoadBtn = findViewById(R.id.failToLoadBtn);
   }
 
-  public void initVideoByURI(final Uri videoURI) {
+  public void initByURI(final Uri videoURI) {
     mSourceUri = videoURI;
-    mVideoView.setVideoURI(videoURI);
-    mVideoView.requestFocus();
+
+    if (isVideoType) {
+      mVideoView.setVideoURI(videoURI);
+      mVideoView.requestFocus();
+
+      mVideoView.setOnPreparedListener(mp -> {
+        if (!mIsPrepared) {
+          mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
+          videoPrepared();
+          mIsPrepared = true;
+        }
+      });
+
+      mVideoView.setOnErrorListener((mp, what, extra) -> {
+        mediaFailed();
+        mOnTrimVideoListener.onError("Error loading video file. Please try again.", ErrorCode.FAIL_TO_LOAD_VIDEO);
+        return true;
+      });
+
+      mVideoView.setOnCompletionListener(mp -> mediaCompleted());
+    } else {
+      mVideoView.setVisibility(View.GONE);
+      audioBannerView.setAlpha(0f);
+      audioBannerView.setVisibility(View.VISIBLE);
+      audioBannerView.animate().alpha(1f).setDuration(500).start();
+
+      audioPlayer = new MediaPlayer();
+      try {
+        audioPlayer.setDataSource(videoURI.toString());
+        audioPlayer.setOnPreparedListener(mp -> {
+          if (!mIsPrepared) {
+            audioPrepared();
+            mIsPrepared = true;
+          }
+        });
+        audioPlayer.setOnCompletionListener(mp -> mediaCompleted());
+        audioPlayer.setOnErrorListener((mp, what, extra) -> {
+          mediaFailed();
+          mOnTrimVideoListener.onError("Error loading audio file. Please try again.", ErrorCode.FAIL_TO_LOAD_AUDIO);
+          return true;
+        });
+
+        audioPlayer.prepareAsync(); // use prepareAsync to avoid blocking the main thread
+      } catch (IOException e) {
+        e.printStackTrace();
+        mediaFailed();
+        mOnTrimVideoListener.onError("Error initializing audio player. Please try again.", ErrorCode.FAIL_TO_INITIALIZE_AUDIO_PLAYER);
+      }
+    }
   }
 
-  private void startShootVideoThumbs(final Context context, final Uri videoUri, int totalThumbsCount, long startPosition, long endPosition) {
+  private void startShootVideoThumbs(final Context context, int totalThumbsCount, long startPosition, long endPosition) {
     mThumbnailContainer.removeAllViews();
-    VideoTrimmerUtil.shootVideoThumbInBackground(context, videoUri, totalThumbsCount, startPosition, endPosition,
+    VideoTrimmerUtil.shootVideoThumbInBackground(mediaMetadataRetriever, totalThumbsCount, startPosition, endPosition,
       (bitmap, interval) -> {
         if (bitmap != null) {
           runOnUiThread(() -> {
@@ -147,13 +225,16 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       });
   }
 
-  private void videoPrepared(MediaPlayer mp) {
+  private void videoPrepared() {
     mDuration = mVideoView.getDuration();
-
     mMaxDuration = Math.min(mMaxDuration, mDuration);
+    mediaMetadataRetriever = MediaMetadataUtil.getMediaMetadataRetriever(mSourceUri.toString());
 
-    MediaMetadataRetriever mediaMetadataRetriever = new MediaMetadataRetriever();
-    mediaMetadataRetriever.setDataSource(mContext, mSourceUri);
+    if (mediaMetadataRetriever == null) {
+      mOnTrimVideoListener.onError("Error when retrieving video info. Please try again.", ErrorCode.FAIL_TO_GET_VIDEO_INFO);
+      return;
+    }
+
     // take first frame
     Bitmap bitmap = mediaMetadataRetriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
 
@@ -165,9 +246,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     VideoTrimmerUtil.VIDEO_FRAMES_WIDTH = VideoTrimmerUtil.SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2;
     VideoTrimmerUtil.MAX_COUNT_RANGE = Math.max((VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.mThumbWidth), VideoTrimmerUtil.MAX_COUNT_RANGE);
 
-    int mThumbsTotalCount;
-    mThumbsTotalCount = (int) (mDuration * 1.0f / (mMaxDuration * 1.0f) * VideoTrimmerUtil.MAX_COUNT_RANGE);
-    startShootVideoThumbs(mContext, mSourceUri, mThumbsTotalCount, 0, mDuration);
+    startShootVideoThumbs(mContext, VideoTrimmerUtil.MAX_COUNT_RANGE, 0, mDuration);
 
     // Set initial handle positions if mMaxDuration < video duration
     if (mMaxDuration < mDuration) {
@@ -176,11 +255,48 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       endTime = mDuration;
     }
     updateHandlePositions();
+
+    loadingIndicator.setVisibility(View.GONE);
+    mPlayView.setVisibility(View.VISIBLE);
+    saveBtn.setVisibility(View.VISIBLE);
+  }
+
+  private void audioPrepared() {
+    mDuration = audioPlayer.getDuration();
+    mMaxDuration = Math.min(mMaxDuration, mDuration);
+
+    // Set initial handle positions if mMaxDuration < video duration
+    if (mMaxDuration < mDuration) {
+      endTime = mMaxDuration;
+    } else {
+      endTime = mDuration;
+    }
+
+    updateHandlePositions();
+    loadingIndicator.setVisibility(View.GONE);
+    mPlayView.setVisibility(View.VISIBLE);
+    saveBtn.setVisibility(View.VISIBLE);
+//    mThumbnailContainer.animate().alpha(1f).setDuration(250).start();
+  }
+
+  private void updateGradientColors(int startColor, int endColor) {
+    GradientDrawable gradientDrawable = new GradientDrawable();
+    gradientDrawable.setShape(GradientDrawable.RECTANGLE);
+    gradientDrawable.setCornerRadius(6f); // Adjust corner radius as needed
+    gradientDrawable.setColors(new int[]{startColor, endColor});
+    gradientDrawable.setOrientation(GradientDrawable.Orientation.LEFT_RIGHT);
+
+    mThumbnailContainer.setBackground(gradientDrawable);
+  }
+
+  private void mediaFailed() {
+    loadingIndicator.setVisibility(View.GONE);
+    failToLoadBtn.setVisibility(View.VISIBLE);
   }
 
   private void updateHandlePositions() {
-    float startPercent = (float) startTime / mVideoView.getDuration();
-    float endPercent = (float) endTime / mVideoView.getDuration();
+    float startPercent = (float) startTime / mDuration;
+    float endPercent = (float) endTime / mDuration;
 
     float containerWidth = trimmerContainerBg.getWidth();
     float leadingHandleX = startPercent * containerWidth;
@@ -194,36 +310,54 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
     trimmerContainerWrapper.setVisibility(View.VISIBLE);
     trimmerContainerWrapper.animate().alpha(1f).setDuration(250).start();
-
-    // because on load video will not start and just display black screen
-    // here we'll seek to first frame to make it more friendly
-    mVideoView.seekTo(1);
   }
 
-  private void videoCompleted() {
+  private void mediaCompleted() {
     setPlayPauseViewIcon(false);
     mTimingHandler.removeCallbacks(mTimingRunnable);
   }
 
   private void playOrPause() {
-    if (mVideoView.isPlaying()) {
-      onVideoPause();
-    } else {
-      // if current video time >= end time, seek to start time
-      if (mVideoView.getCurrentPosition() >= endTime) {
-        seekTo(startTime, true);
+    if (isVideoType) {
+      if (mVideoView.isPlaying()) {
+        onMediaPause();
+      } else {
+        // if current video time >= end time, seek to start time
+        if (mVideoView.getCurrentPosition() >= endTime) {
+          seekTo(startTime, true);
+        }
+        mVideoView.start();
+        startTimingRunnable();
       }
-      mVideoView.start();
-      startTimingRunnable();
+      setPlayPauseViewIcon(mVideoView.isPlaying());
+
+    } else {
+      if (audioPlayer.isPlaying()) {
+        onMediaPause();
+      } else {
+        if (audioPlayer.getCurrentPosition() >= endTime) {
+          seekTo(startTime, true);
+        }
+        audioPlayer.start();
+        startTimingRunnable();
+      }
+      setPlayPauseViewIcon(audioPlayer.isPlaying());
     }
-    setPlayPauseViewIcon(mVideoView.isPlaying());
   }
 
-  public void onVideoPause() {
-    if (mVideoView.isPlaying()) {
-      mTimingHandler.removeCallbacks(mTimingRunnable);
-      mVideoView.pause();
-      setPlayPauseViewIcon(false);
+  public void onMediaPause() {
+    if (isVideoType) {
+      if (mVideoView.isPlaying()) {
+        mTimingHandler.removeCallbacks(mTimingRunnable);
+        mVideoView.pause();
+        setPlayPauseViewIcon(false);
+      }
+    } else {
+      if (audioPlayer.isPlaying()) {
+        mTimingHandler.removeCallbacks(mTimingRunnable);
+        audioPlayer.pause();
+        setPlayPauseViewIcon(false);
+      }
     }
   }
 
@@ -232,28 +366,18 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void setUpListeners() {
-    findViewById(R.id.cancelBtn).setOnClickListener(view -> mOnTrimVideoListener.onCancel());
-    findViewById(R.id.saveBtn).setOnClickListener(view -> mOnTrimVideoListener.onSave());
-
-    mVideoView.setOnPreparedListener(mp -> {
-      if (!mIsPrepared) {
-        mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
-        videoPrepared(mp);
-        mIsPrepared = true;
-      }
-    });
-
-    mVideoView.setOnCompletionListener(mp -> videoCompleted());
+    cancelBtn.setOnClickListener(view -> mOnTrimVideoListener.onCancel());
+    saveBtn.setOnClickListener(view -> mOnTrimVideoListener.onSave());
     mPlayView.setOnClickListener(view -> playOrPause());
     setHandleTouchListener(leadingHandle, true);
     setHandleTouchListener(trailingHandle, false);
   }
 
   public void onSaveClicked() {
-    onVideoPause();
+    onMediaPause();
     VideoTrimmerUtil.trim(
-      mSourceUri.getPath(),
-      StorageUtil.getOutputPath(mContext),
+      isVideoType ? mSourceUri.getPath() : mSourceUri.toString(),
+      StorageUtil.getOutputPath(mContext, mOutputExt),
       mDuration,
       startTime,
       endTime,
@@ -261,7 +385,12 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void seekTo(long msec, boolean needUpdateProgress) {
-    mVideoView.seekTo((int) msec);
+    if (isVideoType) {
+      mVideoView.seekTo((int) msec);
+    } else {
+      audioPlayer.seekTo((int) msec);
+    }
+
     updateCurrentTime(needUpdateProgress);
   }
 
@@ -283,6 +412,19 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     mContext.getCurrentActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
     mTimingHandler.removeCallbacks(mTimingRunnable);
     zoomWaitTimer.removeCallbacks(zoomRunnable);
+
+    try {
+      if (mediaMetadataRetriever != null) {
+        mediaMetadataRetriever.release();
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+
+    if (audioPlayer != null) {
+      audioPlayer.stop();
+      audioPlayer.release();
+    }
   }
 
   private int getScreenWidthInPortraitMode() {
@@ -303,12 +445,27 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       mMinDuration = Math.max(1000L, config.getInt("minDuration") * 1000L);
     }
     if (config.hasKey("cancelButtonText")) {
-      TextView tv = findViewById(R.id.cancelBtn);
-      tv.setText(config.getString("cancelButtonText"));
+      cancelBtn.setText(config.getString("cancelButtonText"));
     }
     if (config.hasKey("saveButtonText")) {
-      TextView tv = findViewById(R.id.saveBtn);
-      tv.setText(config.getString("saveButtonText"));
+      saveBtn.setText(config.getString("saveButtonText"));
+    }
+
+    if (config.hasKey("type")) {
+      isVideoType = !config.getString("type").equals("audio");
+
+//      if (!isVideoType) {
+//        mThumbnailContainer.setAlpha(0f);
+//        mThumbnailContainer.setBackground(ContextCompat.getDrawable(mContext, R.drawable.thumb_container_bg));
+//      }
+    }
+
+    if (config.hasKey("outputExt")) {
+      mOutputExt = config.getString("outputExt");
+    }
+
+    if (config.hasKey("enableHapticFeedback")) {
+      enableHapticFeedback = config.getBoolean("enableHapticFeedback");
     }
   }
 
@@ -316,10 +473,15 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     mTimingRunnable = new Runnable() {
       @Override
       public void run() {
-        int currentPosition = mVideoView.getCurrentPosition();
+        int currentPosition;
+        if (isVideoType) {
+          currentPosition = mVideoView.getCurrentPosition();
+        } else {
+          currentPosition = audioPlayer.getCurrentPosition();
+        }
 
         if (currentPosition >= endTime) {
-          onVideoPause();
+          onMediaPause();
           seekTo(endTime, true); // Ensure exact end time display
         } else {
           updateCurrentTime(true);
@@ -332,8 +494,15 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private void updateCurrentTime(boolean needUpdateProgress) {
     // TODO: check the case after drag the progress indicator and hit play, it'll play a little bit earlier than the progress indicator
-    int currentPosition = mVideoView.getCurrentPosition();
-    int duration = mVideoView.getDuration();
+
+    int currentPosition;
+    if (isVideoType) {
+      currentPosition = mVideoView.getCurrentPosition();
+    } else {
+      currentPosition = audioPlayer.getCurrentPosition();
+    }
+
+    int duration = mDuration;
 
     if (currentPosition >= duration - 100) {
       currentPosition = duration;
@@ -373,7 +542,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       switch (event.getAction()) {
         case MotionEvent.ACTION_DOWN:
           didClampWhilePanning = false;
-          onVideoPause();
+          onMediaPause();
           onTrimmerContainerPanned(event);
           playHapticFeedback(true);
           break;
@@ -402,8 +571,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     // check play haptic feedback
     if (newX <= leftBoundary) {
       didClamp = true;
-    }
-    else if (newX >= rightBoundary) {
+    } else if (newX >= rightBoundary) {
       didClamp = true;
     }
 
@@ -418,16 +586,17 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
     // TODO: check this
     float indicatorPositionPercent = indicatorPosition / (trimmerContainerBg.getWidth() - progressIndicator.getWidth());
-    long newVideoPosition = (long) (indicatorPositionPercent * mVideoView.getDuration());
+    long newVideoPosition = (long) (indicatorPositionPercent * mDuration);
 
     seekTo(newVideoPosition, false);
   }
+
   private void setHandleTouchListener(View handle, boolean isLeading) {
     handle.setOnTouchListener((view, event) -> {
       switch (event.getAction()) {
         case MotionEvent.ACTION_DOWN:
           didClampWhilePanning = false;
-          onVideoPause();
+          onMediaPause();
           fadeOutProgressIndicator();
           seekTo(isLeading ? startTime : endTime, true);
           playHapticFeedback(true);
@@ -446,7 +615,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
           // Calculate new startTime or endTime
           if (isLeading) {
             // Calculate the new startTime based on the handle's new position
-            long newStartTime = (long) ((newX / trimmerContainerBg.getWidth()) * mVideoView.getDuration());
+            long newStartTime = (long) ((newX / trimmerContainerBg.getWidth()) * mDuration);
             // Calculate the duration between the new startTime and the current endTime
             long duration = endTime - newStartTime;
             if (duration >= mMinDuration && duration <= mMaxDuration) {
@@ -458,19 +627,19 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
               // If the duration is less than the minimum, set startTime to the maximum possible to maintain the minimum duration
               startTime = endTime - mMinDuration;
               // Adjust the handle position accordingly
-              view.setX((float) startTime / mVideoView.getDuration() * trimmerContainerBg.getWidth());
+              view.setX((float) startTime / mDuration * trimmerContainerBg.getWidth());
               progressIndicator.setX(view.getX() + view.getWidth());
             } else {
               didClamp = true;
               // If the duration is greater than the maximum, set startTime to the minimum possible to maintain the maximum duration
               startTime = endTime - mMaxDuration;
               // Adjust the handle position accordingly
-              view.setX((float) startTime / mVideoView.getDuration() * trimmerContainerBg.getWidth());
+              view.setX((float) startTime / mDuration * trimmerContainerBg.getWidth());
               progressIndicator.setX(view.getX() + view.getWidth());
             }
           } else {
             // Calculate the new endTime based on the handle's new position
-            long newEndTime = (long) (((newX - view.getWidth()) / trimmerContainerBg.getWidth()) * mVideoView.getDuration());
+            long newEndTime = (long) (((newX - view.getWidth()) / trimmerContainerBg.getWidth()) * mDuration);
             // Calculate the duration between the new endTime and the current startTime
             long duration = newEndTime - startTime;
             if (duration >= mMinDuration && duration <= mMaxDuration) {
@@ -482,14 +651,14 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
               // If the duration is less than the minimum, set endTime to the minimum possible to maintain the minimum duration
               endTime = startTime + mMinDuration;
               // Adjust the handle position accordingly
-              view.setX((float) endTime / mVideoView.getDuration() * trimmerContainerBg.getWidth() + view.getWidth());
+              view.setX((float) endTime / mDuration * trimmerContainerBg.getWidth() + view.getWidth());
               progressIndicator.setX(view.getX() - progressIndicator.getWidth());
             } else {
               didClamp = true;
               // If the duration is greater than the maximum, set endTime to the maximum possible to maintain the maximum duration
               endTime = startTime + mMaxDuration;
               // Adjust the handle position accordingly
-              view.setX((float) endTime / mVideoView.getDuration() * trimmerContainerBg.getWidth() + view.getWidth());
+              view.setX((float) endTime / mDuration * trimmerContainerBg.getWidth() + view.getWidth());
               progressIndicator.setX(view.getX() - progressIndicator.getWidth());
             }
           }
@@ -544,7 +713,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void playHapticFeedback(boolean isLight) {
-    if (vibrator != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    if (vibrator != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && enableHapticFeedback) {
       vibrator.vibrate(VibrationEffect.createOneShot(isLight ? 10 : 25, VibrationEffect.DEFAULT_AMPLITUDE)); // Light vibration
     }
   }
@@ -556,7 +725,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     }
 
     zoomRunnable = () -> {
-      Log.i("tag","A Kiss after 500ms");
+      Log.i("tag", "A Kiss after 500ms");
       stopZoomWaitTimer();
       zoomIfNeeded();
     };
@@ -578,7 +747,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       return;
     }
 
-    startShootVideoThumbs(mContext, mSourceUri, 10, 5000, 10000);
+    startShootVideoThumbs(mContext, 10, 5000, 10000);
 
     isZoomedIn = true;
   }

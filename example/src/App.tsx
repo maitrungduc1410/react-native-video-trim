@@ -8,13 +8,14 @@ import {
   NativeEventEmitter,
   NativeModules,
   Modal,
+  BackHandler,
 } from 'react-native';
 import {
   cleanFiles,
   deleteFile,
-  isValidVideo,
   listFiles,
   showEditor,
+  isValidFile,
 } from 'react-native-video-trim';
 import {
   launchImageLibrary,
@@ -69,6 +70,17 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        console.log(9999999999);
+        return true;
+      }
+    );
+    return () => backHandler.remove();
+  }, []);
+
   const onMediaLoaded = (response: ImagePickerResponse) => {
     console.log('Response', response);
   };
@@ -89,14 +101,31 @@ export default function App() {
 
             console.log(result, 1111);
 
-            isValidVideo(result.assets![0]?.uri || '').then((res) =>
-              console.log('isValidVideo:', res)
-            );
+            const url =
+              'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
-            showEditor(result.assets![0]?.uri || '', {
-              maxDuration: 20,
+            const url1 =
+              'https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav';
+            const url2 = 'https://example.com';
+            isValidFile(url).then((res) => console.log('1isValidVideo:', res));
+            isValidFile(url1).then((res) => console.log('2isValidVideo:', res));
+            isValidFile(url2).then((res) => console.log('3isValidVideo:', res));
+            // const url3 =
+            //   'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
+            // showEditor(result.assets![0]?.uri || '', {
+            showEditor(url, {
+              // type: 'audio',
+              // outputExt: 'wav',
+              // maxDuration: 20,
               minDuration: 10,
               fullScreenModalIOS: true,
+              saveToPhoto: true,
+              removeAfterSavedToPhoto: true,
+              enableHapticFeedback: false,
+              // openDocumentsOnFinish: true,
+              // removeAfterSavedToDocuments: true,
+              // openShareSheetOnFinish: true,
+              // removeAfterShared: true,
               // cancelButtonText: 'hello',
               // saveButtonText: 'world',
               // removeAfterSavedToPhoto: true,
@@ -111,9 +140,7 @@ export default function App() {
               // saveDialogCancelText: '77777',
               // saveDialogConfirmText: '888888',
               // trimmingText: '9999999',
-            })
-              .then((res) => console.log(res))
-              .catch((e) => console.log(e, 1111));
+            });
           } catch (error) {
             console.log(error);
           }
@@ -124,7 +151,7 @@ export default function App() {
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => {
-          isValidVideo(
+          isValidFile(
             '/storage/emulated/0/Android/data/com.videotrimexample/cache/trimmedVideo_20230910_111719.mp4'
           ).then((res) => console.log(res));
         }}
@@ -209,7 +236,7 @@ export default function App() {
                 assetRepresentationMode: 'current',
               });
 
-              isValidVideo(result.assets![0]?.uri || '').then((res) =>
+              isValidFile(result.assets![0]?.uri || '').then((res) =>
                 console.log('isValidVideo:', res)
               );
 

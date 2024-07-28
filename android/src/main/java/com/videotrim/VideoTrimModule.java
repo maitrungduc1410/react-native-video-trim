@@ -1,13 +1,17 @@
 package com.videotrim;
 
+import static android.app.Activity.RESULT_OK;
 import static com.facebook.react.bridge.UiThreadUtil.runOnUiThread;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Build;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
@@ -17,8 +21,11 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.content.FileProvider;
 
+import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.BaseActivityEventListener;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -29,15 +36,27 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
+import com.videotrim.enums.ErrorCode;
 import com.videotrim.interfaces.VideoTrimListener;
+import com.videotrim.utils.MediaMetadataUtil;
 import com.videotrim.utils.StorageUtil;
+import com.videotrim.utils.VideoTrimmerUtil;
 import com.videotrim.widgets.VideoTrimmerView;
 
+import android.content.Intent;
+
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.util.Objects;
+
 import iknow.android.utils.BaseUtils;
 
 @ReactModule(name = VideoTrimModule.NAME)
 public class VideoTrimModule extends ReactContextBaseJavaModule implements VideoTrimListener, LifecycleEventListener {
+  private static final String TAG = VideoTrimmerUtil.class.getSimpleName();
+
   public static final String NAME = "VideoTrim";
   private static Boolean isInit = false;
   private VideoTrimmerView trimmerView;
@@ -46,7 +65,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private ProgressBar mProgressBar;
   private int listenerCount = 0;
 
-  private Promise showEditorPromise;
 
   private boolean enableCancelDialog = true;
   private String cancelDialogTitle = "Warning!";
@@ -57,11 +75,65 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private String saveDialogTitle = "Confirmation!";
   private String saveDialogMessage = "Are you sure want to save?";
   private String saveDialogCancelText = "Close";
-  private String saveDialogConfirmText  = "Proceed";
+  private String saveDialogConfirmText = "Proceed";
   private String trimmingText = "Trimming video...";
+  private String outputFile;
+  private boolean saveToPhoto = false;
+  private boolean removeAfterSavedToPhoto = false;
+  private boolean removeAfterFailedToSavePhoto = false;
+  private boolean removeAfterSavedToDocuments = false;
+  private boolean removeAfterFailedToSaveDocuments = false;
+  private boolean removeAfterShared = false; // TODO: on Android there's no way to know if user shared the file or share sheet closed
+  private boolean removeAfterFailedToShare = false; // TODO: implement this
+  private boolean openDocumentsOnFinish = false;
+  private boolean openShareSheetOnFinish = false;
+  private boolean isVideoType = true;
+
+  private static final int REQUEST_CODE_SAVE_FILE = 1;
 
   public VideoTrimModule(ReactApplicationContext reactContext) {
     super(reactContext);
+    ActivityEventListener mActivityEventListener = new BaseActivityEventListener() {
+
+      @Override
+      public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent intent) {
+        if (requestCode == REQUEST_CODE_SAVE_FILE && resultCode == RESULT_OK) {
+          Uri uri = intent.getData();
+          if (uri == null) {
+            return;
+          }
+          try {
+            OutputStream outputStream = reactContext.getContentResolver().openOutputStream(uri);
+            if (outputStream == null) {
+              return;
+            }
+            FileInputStream fileInputStream = new FileInputStream(outputFile);
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = fileInputStream.read(buffer)) > 0) {
+              outputStream.write(buffer, 0, length);
+            }
+            outputStream.close();
+            fileInputStream.close();
+            // File saved successfully
+            Log.d(TAG, "File saved successfully to " + uri);
+            if (removeAfterSavedToDocuments) {
+              StorageUtil.deleteFile(outputFile);
+            }
+          } catch (Exception e) {
+            e.printStackTrace();
+            // Handle the error
+            onError("Failed to save edited video to Documents: " + e.getLocalizedMessage(), ErrorCode.FAIL_TO_SAVE_TO_DOCUMENTS);
+            if (removeAfterFailedToSaveDocuments) {
+              StorageUtil.deleteFile(outputFile);
+            }
+          } finally {
+            hideDialog();
+          }
+        }
+      }
+    };
+    reactContext.addActivityEventListener(mActivityEventListener);
   }
 
   @Override
@@ -72,31 +144,36 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
 
 
   @ReactMethod
-  public void showEditor(String videoPath, ReadableMap config, Promise promise) {
-    showEditorPromise = promise;
+  public void showEditor(String videoPath, ReadableMap config) {
     if (trimmerView != null || alertDialog != null) {
       return;
     }
 
-    if (!isValidVideo(videoPath)) {
-      WritableMap map = Arguments.createMap();
-      map.putString("message", "File is not a valid video");
-      sendEvent(getReactApplicationContext(), "onError", map);
-      return;
-    }
-
-    enableCancelDialog = config.hasKey("enableCancelDialog") ? config.getBoolean("enableCancelDialog") : true;
+    enableCancelDialog = !config.hasKey("enableCancelDialog") || config.getBoolean("enableCancelDialog");
     cancelDialogTitle = config.hasKey("cancelDialogTitle") ? config.getString("cancelDialogTitle") : "Warning!";
     cancelDialogMessage = config.hasKey("cancelDialogMessage") ? config.getString("cancelDialogMessage") : "Are you sure want to cancel?";
     cancelDialogCancelText = config.hasKey("cancelDialogCancelText") ? config.getString("cancelDialogCancelText") : "Close";
     cancelDialogConfirmText = config.hasKey("cancelDialogConfirmText") ? config.getString("cancelDialogConfirmText") : "Proceed";
 
-    enableSaveDialog = config.hasKey("enableSaveDialog") ? config.getBoolean("enableSaveDialog") : true;
+    enableSaveDialog = !config.hasKey("enableSaveDialog") || config.getBoolean("enableSaveDialog");
     saveDialogTitle = config.hasKey("saveDialogTitle") ? config.getString("saveDialogTitle") : "Confirmation!";
     saveDialogMessage = config.hasKey("saveDialogMessage") ? config.getString("saveDialogMessage") : "Are you sure want to save?";
     saveDialogCancelText = config.hasKey("saveDialogCancelText") ? config.getString("saveDialogCancelText") : "Close";
     saveDialogConfirmText = config.hasKey("saveDialogConfirmText") ? config.getString("saveDialogConfirmText") : "Proceed";
     trimmingText = config.hasKey("trimmingText") ? config.getString("trimmingText") : "Trimming video...";
+
+    saveToPhoto = config.hasKey("saveToPhoto") && config.getBoolean("saveToPhoto");
+    removeAfterSavedToPhoto = config.hasKey("removeAfterSavedToPhoto") && config.getBoolean("removeAfterSavedToPhoto");
+    removeAfterFailedToSavePhoto = config.hasKey("removeAfterFailedToSavePhoto") && config.getBoolean("removeAfterFailedToSavePhoto");
+    removeAfterSavedToDocuments = config.hasKey("removeAfterSavedToDocuments") && config.getBoolean("removeAfterSavedToDocuments");
+    removeAfterFailedToSaveDocuments = config.hasKey("removeAfterFailedToSaveDocuments") && config.getBoolean("removeAfterFailedToSaveDocuments");
+    removeAfterShared = config.hasKey("removeAfterShared") && config.getBoolean("removeAfterShared");
+    removeAfterFailedToShare = config.hasKey("removeAfterFailedToShare") && config.getBoolean("removeAfterFailedToShare");
+    openDocumentsOnFinish = config.hasKey("openDocumentsOnFinish") && config.getBoolean("openDocumentsOnFinish");
+    openShareSheetOnFinish = config.hasKey("openShareSheetOnFinish") && config.getBoolean("openShareSheetOnFinish");
+
+    isVideoType = !config.hasKey("type") || !Objects.equals(config.getString("type"), "audio");
+
 
     Activity activity = getReactApplicationContext().getCurrentActivity();
 
@@ -110,7 +187,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     runOnUiThread(() -> {
       trimmerView = new VideoTrimmerView(getReactApplicationContext(), config, null);
       trimmerView.setOnTrimVideoListener(this);
-      trimmerView.initVideoByURI(Uri.parse(videoPath));
+      trimmerView.initByURI(Uri.parse(videoPath));
 
       AlertDialog.Builder builder = new AlertDialog.Builder(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
       builder.setCancelable(false);
@@ -140,13 +217,14 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
 
   @Override
   public void onHostResume() {
-
+    Log.d(TAG, "onHostResume: ");
   }
 
   @Override
   public void onHostPause() {
+    Log.d(TAG, "onHostPause: ");
     if (trimmerView != null) {
-      trimmerView.onVideoPause();
+      trimmerView.onMediaPause();
     }
   }
 
@@ -155,14 +233,16 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     hideDialog();
   }
 
-  @Override public void onStartTrim() {
+  @Override
+  public void onStartTrim() {
     sendEvent(getReactApplicationContext(), "onStartTrimming", null);
     runOnUiThread(() -> {
       buildDialog();
     });
   }
 
-  @Override public void onTrimmingProgress(int percentage) {
+  @Override
+  public void onTrimmingProgress(int percentage) {
     // prevent onTrimmingProgress is called after onFinishTrim (some rare cases)
     if (mProgressBar == null) {
       return;
@@ -176,7 +256,9 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   }
 
 
-  @Override public void onFinishTrim(String in, long startTime, long endTime, int duration) {
+  @Override
+  public void onFinishTrim(String in, long startTime, long endTime, int duration) {
+    outputFile = in;
     runOnUiThread(() -> {
       WritableMap map = Arguments.createMap();
       map.putString("outputPath", in);
@@ -184,18 +266,42 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
       map.putDouble("startTime", (double) startTime);
       map.putDouble("endTime", (double) endTime);
       sendEvent(getReactApplicationContext(), "onFinishTrimming", map);
-      showEditorPromise.resolve(in);
     });
+
+    if (saveToPhoto && isVideoType) {
+      try {
+        StorageUtil.saveVideoToGallery(getReactApplicationContext(), in);
+        Log.d(TAG, "Edited video saved to Photo Library successfully.");
+        if (removeAfterSavedToPhoto) {
+          StorageUtil.deleteFile(in);
+        }
+      } catch (IOException e) {
+        e.printStackTrace();
+        onError("Failed to save edited video to Photo Library: " + e.getLocalizedMessage(), ErrorCode.FAIL_TO_SAVE_TO_PHOTO);
+        if (removeAfterFailedToSavePhoto) {
+          StorageUtil.deleteFile(in);
+        }
+      } finally {
+        hideDialog();
+      }
+    } else if (openDocumentsOnFinish) {
+      saveFileToExternalStorage(new File(in));
+    } else if (openShareSheetOnFinish) {
+      hideDialog();
+      shareFile(getReactApplicationContext(), new File(in));
+    }
   }
 
-  @Override public void onError(String errorMessage) {
+  @Override
+  public void onError(String errorMessage, ErrorCode errorCode) {
     WritableMap map = Arguments.createMap();
     map.putString("message", errorMessage);
+    map.putString("errorCode", errorCode.name());
     sendEvent(getReactApplicationContext(), "onError", map);
-    this.hideDialog();
   }
 
-  @Override public void onCancel() {
+  @Override
+  public void onCancel() {
     if (!enableCancelDialog) {
       sendEvent(getReactApplicationContext(), "onCancelTrimming", null);
       hideDialog();
@@ -218,7 +324,8 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     alertDialog.show();
   }
 
-  @Override public void onSave() {
+  @Override
+  public void onSave() {
     if (!enableSaveDialog) {
       trimmerView.onSaveClicked();
       return;
@@ -239,15 +346,16 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     alertDialog.show();
   }
 
-  @Override public void onLog(WritableMap log) {
+  @Override
+  public void onLog(WritableMap log) {
     sendEvent(getReactApplicationContext(), "onLog", log);
   }
 
-  @Override public void onStatistics(WritableMap statistics) {
+  @Override
+  public void onStatistics(WritableMap statistics) {
     sendEvent(getReactApplicationContext(), "onStatistics", statistics);
   }
 
-  @ReactMethod
   private void hideDialog() {
     if (mProgressDialog != null) {
       if (mProgressDialog.isShowing()) mProgressDialog.dismiss();
@@ -256,7 +364,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     }
 
     if (alertDialog != null) {
-      if(alertDialog.isShowing()) {
+      if (alertDialog.isShowing()) {
         alertDialog.dismiss();
       }
       alertDialog = null;
@@ -326,41 +434,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     }
   }
 
-
-  public boolean isValidVideo(String filePath) {
-    MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-
-    try {
-      retriever.setDataSource(getReactApplicationContext(), Uri.parse(filePath));
-    } catch (Exception e){
-      e.printStackTrace();
-      return false;
-    }
-
-    String hasVideo = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO);
-    return "yes".equals(hasVideo);
-  }
-
-  @ReactMethod
-  private void isValidVideo(String filePath, Promise promise) {
-    promise.resolve(isValidVideo(filePath));
-  }
-
-  @ReactMethod
-  private void saveVideo(String filePath, Promise promise) {
-    try {
-      StorageUtil.saveVideoToGallery(getReactApplicationContext(), filePath);
-    } catch (IOException e) {
-      e.printStackTrace();
-      WritableMap mapE = Arguments.createMap();
-      mapE.putString("message", "Fail while copying file to Gallery");
-      sendEvent(getReactApplicationContext(), "onError", mapE);
-    }
-
-    this.hideDialog();
-    promise.resolve(null);
-  }
-
   @ReactMethod
   private void listFiles(Promise promise) {
     String[] files = StorageUtil.listFiles(getReactApplicationContext());
@@ -384,5 +457,53 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private void deleteFile(String filePath, Promise promise) {
     boolean state = StorageUtil.deleteFile(filePath);
     promise.resolve(state);
+  }
+
+  @ReactMethod
+  private void closeEditor() {
+    hideDialog();
+  }
+
+  @ReactMethod
+  private void isValidFile(String filePath, Promise promise) {
+    MediaMetadataUtil.checkFileValidity(filePath, (isValid, fileType, duration) -> {
+      if (isValid) {
+        System.out.println("Valid " + fileType + " file with duration: " + duration + " milliseconds");
+      } else {
+        System.out.println("Invalid file");
+      }
+
+      WritableMap map = Arguments.createMap();
+      map.putBoolean("isValid", isValid);
+      map.putString("fileType", fileType);
+      map.putDouble("duration", duration);
+      promise.resolve(map);
+    });
+  }
+
+  private void saveFileToExternalStorage(File file) {
+    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+    intent.addCategory(Intent.CATEGORY_OPENABLE);
+    intent.setType("*/*"); // Change MIME type as needed
+    intent.putExtra(Intent.EXTRA_TITLE, file.getName());
+    getReactApplicationContext().getCurrentActivity().startActivityForResult(intent, REQUEST_CODE_SAVE_FILE);
+  }
+
+  public void shareFile(Context context, File file) {
+    Uri fileUri = FileProvider.getUriForFile(context, context.getPackageName() + ".provider", file);
+
+    Intent shareIntent = new Intent(Intent.ACTION_SEND);
+    shareIntent.setType("*/*");
+    shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
+    shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+    // Grant permissions to all applications that can handle the intent
+    for (ResolveInfo resolveInfo : context.getPackageManager().queryIntentActivities(shareIntent, PackageManager.MATCH_DEFAULT_ONLY)) {
+      String packageName = resolveInfo.activityInfo.packageName;
+      context.grantUriPermission(packageName, fileUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    }
+
+    // directly use context.startActivity(shareIntent) will cause crash
+    getReactApplicationContext().getCurrentActivity().startActivity(Intent.createChooser(shareIntent, "Share file"));
   }
 }

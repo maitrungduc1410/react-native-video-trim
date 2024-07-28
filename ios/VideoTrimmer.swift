@@ -36,7 +36,7 @@ import AVFoundation
     // TODO: migrate all to AutoLayout
     private let thumbView: VideoTrimmerThumb = {
         let view = VideoTrimmerThumb()
-        view.accessibilityIdentifier = "wrapperView"
+        view.accessibilityIdentifier = "thumbView"
         return view
     }()
     
@@ -59,7 +59,7 @@ import AVFoundation
         let view = UIView()
         view.accessibilityIdentifier = "thumbnailClipView"
         view.translatesAutoresizingMaskIntoConstraints = false
-
+        
         return view
     }()
     
@@ -152,6 +152,7 @@ import AVFoundation
     // a clip cannot be trimmed shorter than this duration
     var minimumDuration: CMTime = CMTime(seconds: 1, preferredTimescale: 600)
     var maximumDuration: CMTime = .positiveInfinity
+    var enableHapticFeedback = true
     
     // the available range of the asset.
     // Will be set to the full duration of the asset when assigning a new asset
@@ -517,7 +518,9 @@ import AVFoundation
         isZoomedIn = true
         animateChanges()
         
-        UISelectionFeedbackGenerator().selectionChanged()
+        if enableHapticFeedback {
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
     }
     
     private func animateChanges() {
@@ -530,12 +533,13 @@ import AVFoundation
     }
     
     private func startPanning() {
-        UISelectionFeedbackGenerator().selectionChanged()
-        
         didClampWhilePanning = false
         
-        impactFeedbackGenerator = UIImpactFeedbackGenerator(style: .heavy)
-        impactFeedbackGenerator?.prepare()
+        if enableHapticFeedback {
+            UISelectionFeedbackGenerator().selectionChanged()
+            impactFeedbackGenerator = UIImpactFeedbackGenerator(style: .heavy)
+            impactFeedbackGenerator?.prepare()
+        }
         
         UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: {
             self.updateProgressIndicator()
@@ -612,10 +616,12 @@ import AVFoundation
         }
         switch sender.state {
         case .began:
+            if enableHapticFeedback {
+                UISelectionFeedbackGenerator().selectionChanged()
+                impactFeedbackGenerator = UIImpactFeedbackGenerator(style: .heavy)
+                impactFeedbackGenerator?.prepare()
+            }
             
-            UISelectionFeedbackGenerator().selectionChanged()
-            impactFeedbackGenerator = UIImpactFeedbackGenerator(style: .heavy)
-            impactFeedbackGenerator?.prepare()
             didClampWhilePanning = false
             
             isScrubbing = true

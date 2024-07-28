@@ -1,14 +1,13 @@
 package com.videotrim.utils;
 
-import android.content.Context;
 import android.graphics.Bitmap;
 import android.media.MediaMetadataRetriever;
-import android.net.Uri;
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.ReturnCode;
 import com.arthenica.ffmpegkit.SessionState;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.WritableMap;
+import com.videotrim.enums.ErrorCode;
 import com.videotrim.interfaces.VideoTrimListener;
 
 import java.text.SimpleDateFormat;
@@ -31,6 +30,7 @@ public class VideoTrimmerUtil {
   public static int MAX_COUNT_RANGE = 10;  // how many images in the highlight range of seek bar
   public static int SCREEN_WIDTH_FULL = DeviceUtil.getDeviceWidth();
   public static final int RECYCLER_VIEW_PADDING = UnitConverter.dpToPx(35);
+  public static String DEFAULT_AUDIO_EXTENSION = ".wav";
   public static int VIDEO_FRAMES_WIDTH = SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2;
 //  public static final int THUMB_WIDTH = (SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2) / VIDEO_MAX_TIME;
   public static int mThumbWidth = 0; // make it automatic
@@ -65,6 +65,7 @@ public class VideoTrimmerUtil {
       "creation_time=" + formattedDateTime,
       outputFile
     };
+    System.out.println("Commandddddd: " + String.join(",", cmds));
 
     FFmpegKit.executeWithArgumentsAsync(cmds, session -> {
       SessionState state = session.getState();
@@ -77,7 +78,7 @@ public class VideoTrimmerUtil {
       else {
         // CANCEL + FAILURE
         String errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace());
-        callback.onError(errorMessage);
+        callback.onError(errorMessage, ErrorCode.TRIMMING_FAILED);
       }
     }, log -> {
       System.out.println("FFmpeg process started with log " + log.getMessage());
@@ -110,18 +111,25 @@ public class VideoTrimmerUtil {
     });
   }
 
-  public static void shootVideoThumbInBackground(final Context context, final Uri videoUri, final int totalThumbsCount, final long startPosition,
+  public static void shootVideoThumbInBackground(final MediaMetadataRetriever mediaMetadataRetriever, final int totalThumbsCount, final long startPosition,
                                                  final long endPosition, final SingleCallback<Bitmap, Integer> callback) {
     BackgroundExecutor.execute(new BackgroundExecutor.Task("", 0L, "") {
       @Override public void execute() {
         try {
-          MediaMetadataRetriever mediaMetadataRetriever = new MediaMetadataRetriever();
-          mediaMetadataRetriever.setDataSource(context, videoUri);
           // Retrieve media data use microsecond
           long interval = (endPosition - startPosition) / (totalThumbsCount - 1);
           for (long i = 0; i < totalThumbsCount; ++i) {
             long frameTime = startPosition + interval * i;
-            Bitmap bitmap = mediaMetadataRetriever.getFrameAtTime(frameTime * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+
+            Bitmap bitmap;
+            try {
+              bitmap = mediaMetadataRetriever.getFrameAtTime(frameTime * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+            } catch (final Throwable t) {
+              // this can happen while thumbnails are being generated in background and we press Cancel
+              t.printStackTrace();
+              break;
+            }
+
             if(bitmap == null) continue;
             try {
               bitmap = Bitmap.createScaledBitmap(bitmap, mThumbWidth * THUMB_RESOLUTION_RES, THUMB_HEIGHT * THUMB_RESOLUTION_RES, false);
@@ -130,7 +138,6 @@ public class VideoTrimmerUtil {
             }
             callback.onSingleCallback(bitmap, (int) interval);
           }
-          mediaMetadataRetriever.release();
         } catch (final Throwable e) {
           Thread.getDefaultUncaughtExceptionHandler().uncaughtException(Thread.currentThread(), e);
         }

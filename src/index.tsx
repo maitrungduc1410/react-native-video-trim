@@ -1,4 +1,4 @@
-import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 const LINKING_ERROR =
   `The package 'react-native-video-trim' doesn't seem to be linked. Make sure: \n\n` +
@@ -18,8 +18,16 @@ const VideoTrim = NativeModules.VideoTrim
     );
 
 export interface EditorConfig {
+  /**
+   * Enable haptic feedback
+   * @default true
+   */
+  enableHapticFeedback?: boolean;
+  /**
+   * Save the output file to Photos Library. Only video is supported. Note that you have to make sure you have permission to save to Photos Library.
+   * @default false
+   */
   saveToPhoto?: boolean;
-  removeAfterSavedToPhoto?: boolean;
   maxDuration?: number;
   minDuration?: number;
   cancelButtonText?: string;
@@ -36,6 +44,34 @@ export interface EditorConfig {
   saveDialogConfirmText?: string;
   trimmingText?: string;
   fullScreenModalIOS?: boolean;
+  /**
+   * Type of the file to edit. If video file, recommend to use `video`. If audio file, recommend to use `audio`.
+   * @default "video"
+   */
+  type?: 'video' | 'audio';
+  /**
+   * Output file extension. If video file, recommend to use `mp4` or `mov`. If audio file, recommend to use `wav` or `m4a`.
+   * @default "mp4"
+   * @example "mp4", "mov", "wav", "m4a", "3gp", "avi", "mkv", "flv", "wmv", "webm"
+   */
+  outputExt?: string;
+  openDocumentsOnFinish?: boolean;
+  openShareSheetOnFinish?: boolean;
+
+  removeAfterSavedToPhoto?: boolean;
+  removeAfterFailedToSavePhoto?: boolean;
+  removeAfterSavedToDocuments?: boolean;
+  removeAfterFailedToSaveDocuments?: boolean;
+  /**
+   * Remove the file after shared to other apps. Currently only support iOS, on Android there's no way to detect if the file is shared or not.
+   * @default false
+   */
+  removeAfterShared?: boolean;
+  /**
+   * Remove the file after failed to share to other apps. Currently only support iOS, on Android there's no way to detect if the file is shared or not.
+   * @default false
+   */
+  removeAfterFailedToShare?: boolean;
 }
 
 /**
@@ -45,70 +81,8 @@ export interface EditorConfig {
  * @param {EditorConfig} config: editor configuration
  * @returns {void} A **Promise** which resolves `void`
  */
-export async function showEditor(
-  filePath: string,
-  config: EditorConfig = {}
-): Promise<void> {
-  if (!filePath?.trim().length) {
-    throw new Error('File path cannot be empty!');
-  }
-
-  const { saveToPhoto = true } = config;
-  const outputPath = await VideoTrim.showEditor(filePath, config);
-
-  if (Platform.OS === 'android') {
-    if (saveToPhoto) {
-      try {
-        if (Platform.Version >= 33) {
-          // since android 13 it's not needed to request permission for write storage: https://github.com/facebook/react-native/issues/36714#issuecomment-1491338276
-          await VideoTrim.saveVideo(outputPath);
-
-          if (config.removeAfterSavedToPhoto) {
-            deleteFile(outputPath);
-          }
-        } else {
-          const granted = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE!,
-            {
-              title: 'Video Trimmer Photos Access Required',
-              message: 'Grant access to your Photos to write output Video',
-              buttonNeutral: 'Ask Me Later',
-              buttonNegative: 'Cancel',
-              buttonPositive: 'OK',
-            }
-          );
-          if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-            await VideoTrim.saveVideo(outputPath);
-
-            if (config.removeAfterSavedToPhoto) {
-              deleteFile(outputPath);
-            }
-          } else {
-            throw new Error('Photos Library permission denied');
-          }
-        }
-      } catch (err) {
-        throw err;
-      } finally {
-        VideoTrim.hideDialog();
-      }
-    } else {
-      VideoTrim.hideDialog();
-    }
-  }
-}
-
-/**
- * Delete a file
- *
- * @param {string} filePath: absolute non-empty file path to check if editable
- * @returns {Promise} A **Promise** which resolves `true` if editable
- */
-export function isValidVideo(filePath: string): Promise<boolean> {
-  if (!filePath?.trim().length) {
-    throw new Error('File path cannot be empty!');
-  }
-  return VideoTrim.isValidVideo(filePath);
+export function showEditor(filePath: string, config: EditorConfig = {}): void {
+  VideoTrim.showEditor(filePath, config);
 }
 
 /**
@@ -140,4 +114,20 @@ export function deleteFile(filePath: string): Promise<boolean> {
     throw new Error('File path cannot be empty!');
   }
   return VideoTrim.deleteFile(filePath);
+}
+
+/**
+ * Close editor
+ */
+export function closeEditor(): void {
+  return VideoTrim.closeEditor();
+}
+
+/**
+ * Check if a file is valid audio or video file
+ *
+ * @returns {Promise} A **Promise** which resolves file info if successful
+ */
+export function isValidFile(url: string): Promise<boolean> {
+  return VideoTrim.isValidFile(url);
 }
