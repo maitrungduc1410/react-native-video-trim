@@ -9,7 +9,7 @@ import Foundation
 
 enum ErrorCode: String {
     case trimmingFailed = "TRIMMING_FAILED"
-    case failToLoadVideo = "FAIL_TO_LOAD_VIDEO"
+    case failToLoadMedia = "FAIL_TO_LOAD_MEDIA"
     case failToSaveToPhoto = "FAIL_TO_SAVE_TO_PHOTO"
     case failToShare = "FAIL_TO_SHARE"
     case noPhotoPermission = "NO_PHOTO_PERMISSION"

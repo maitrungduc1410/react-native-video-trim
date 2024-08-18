@@ -29,8 +29,6 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     private var saveDialogCancelText = "Close"
     private var saveDialogConfirmText = "Proceed"
     private var fullScreenModalIOS  = false
-    private var maxDuration: Int?
-    private var minDuration: Int?
     private var cancelButtonText = "Cancel"
     private var saveButtonText = "Save"
     private var vc: VideoTrimmerViewController?
@@ -39,8 +37,18 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     private var openDocumentsOnFinish = false
     private var openShareSheetOnFinish = false
     private var outputFile: URL?
-    private var enableHapticFeedback = true
-
+    private var closeWhenFinish = true
+    private var enableCancelTrimming = true;
+    private var cancelTrimmingButtonText = "Cancel";
+    private var enableCancelTrimmingDialog = true;
+    private var cancelTrimmingDialogTitle = "Warning!";
+    private var cancelTrimmingDialogMessage = "Are you sure want to trimming?";
+    private var cancelTrimmingDialogCancelText = "Close";
+    private var cancelTrimmingDialogConfirmText = "Proceed";
+    private var alertOnFailToLoad = true;
+    private var alertOnFailTitle = "Error";
+    private var alertOnFailMessage = "Fail to load media. Possibly invalid file or no network connection";
+    private var alertOnFailCloseText = "Close";
     
     @objc
     static override func requiresMainQueueSetup() -> Bool {
@@ -90,15 +98,19 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
         outputExt = config["outputExt"] as? String ?? "mp4"
         openDocumentsOnFinish = config["openDocumentsOnFinish"] as? Bool ?? false
         openShareSheetOnFinish = config["openShareSheetOnFinish"] as? Bool ?? false
-        enableHapticFeedback = config["enableHapticFeedback"] as? Bool ?? true
-
-        if let maxDuration = config["maxDuration"] as? Int {
-            self.maxDuration = maxDuration
-        }
         
-        if let minDuration = config["minDuration"] as? Int {
-            self.minDuration = minDuration
-        }
+        closeWhenFinish = config["closeWhenFinish"] as? Bool ?? true
+        enableCancelTrimming = config["enableCancelTrimming"] as? Bool ?? true
+        cancelTrimmingButtonText = config["cancelTrimmingButtonText"] as? String ?? "Cancel"
+        enableCancelTrimmingDialog = config["enableCancelTrimmingDialog"] as? Bool ?? true
+        cancelTrimmingDialogTitle = config["cancelTrimmingDialogTitle"] as? String ?? "Warning!"
+        cancelTrimmingDialogMessage = config["cancelTrimmingDialogMessage"] as? String ?? "Are you sure want to cancel trimming?"
+        cancelTrimmingDialogCancelText = config["cancelTrimmingDialogCancelText"] as? String ?? "Close"
+        cancelTrimmingDialogConfirmText = config["cancelTrimmingDialogConfirmText"] as? String ?? "Proceed"
+        alertOnFailToLoad = config["alertOnFailToLoad"] as? Bool ?? true
+        alertOnFailTitle = config["alertOnFailTitle"] as? String ?? "Error"
+        alertOnFailMessage = config["alertOnFailMessage"] as? String ?? "Fail to load media. Possibly invalid file or no network connection"
+        alertOnFailCloseText = config["alertOnFailCloseText"] as? String ?? "Close"
         
         if let cancelBtnText = config["cancelButtonText"] as? String, !cancelBtnText.isEmpty {
             self.cancelButtonText = cancelBtnText
@@ -110,26 +122,17 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
         
         let destPath = URL(string: uri)
         guard let destPath = destPath else { return }
-        let assetLoader = AssetLoader()
-        assetLoader.delegate = self
-        assetLoader.loadAsset(url: destPath, isVideoType: isVideoType)
         
         DispatchQueue.main.async {
             self.vc = VideoTrimmerViewController()
             
             guard let vc = self.vc else { return }
             
-            vc.maximumDuration = self.maxDuration
-            vc.minimumDuration = self.minDuration
-            vc.cancelBtnText = self.cancelButtonText
-            vc.saveButtonText = self.saveButtonText
-            vc.isVideoType = self.isVideoType
-            vc.enableHapticFeedback = self.enableHapticFeedback
+            vc.configure(config: config)
 
-            
             vc.cancelBtnClicked = {
                 if !self.enableCancelDialog {
-                    self.emitEventToJS("onCancelTrimming", eventData: nil)
+                    self.emitEventToJS("onCancel", eventData: nil)
                     
                     vc.dismiss(animated: true, completion: {
                         self.emitEventToJS("onHide", eventData: nil)
@@ -140,10 +143,11 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
                 
                 // Create Alert
                 let dialogMessage = UIAlertController(title: self.cancelDialogTitle, message: self.cancelDialogMessage, preferredStyle: .alert)
+                dialogMessage.overrideUserInterfaceStyle = .dark
                 
                 // Create OK button with action handler
                 let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive, handler: { (action) -> Void in
-                    self.emitEventToJS("onCancelTrimming", eventData: nil)
+                    self.emitEventToJS("onCancel", eventData: nil)
                     
                     vc.dismiss(animated: true, completion: {
                         self.emitEventToJS("onHide", eventData: nil)
@@ -172,7 +176,8 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
                 
                 // Create Alert
                 let dialogMessage = UIAlertController(title: self.saveDialogTitle, message: self.saveDialogMessage, preferredStyle: .alert)
-                
+                dialogMessage.overrideUserInterfaceStyle = .dark
+
                 // Create OK button with action handler
                 let ok = UIAlertAction(title: self.saveDialogConfirmText, style: .default, handler: { (action) -> Void in
                     self.trim(viewController: vc,inputFile: destPath, videoDuration: vc.asset!.duration.seconds, startTime: selectedRange.start.seconds, endTime: selectedRange.end.seconds)
@@ -201,6 +206,12 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
                 root.present(vc, animated: true, completion: {
                     self.emitEventToJS("onShow", eventData: nil)
                     self.isShowing = true
+                    
+                    // start loading asset after view is finished presenting
+                    // otherwise it may run too fast for local file and autoplay looks weird
+                    let assetLoader = AssetLoader()
+                    assetLoader.delegate = self
+                    assetLoader.loadAsset(url: destPath, isVideoType: self.isVideoType)
                 })
             }
         }
@@ -303,6 +314,8 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     }
     
     private func trim(viewController: VideoTrimmerViewController, inputFile: URL, videoDuration: Double, startTime: Double, endTime: Double) {
+        vc?.pausePlayer()
+        
         let timestamp = Int(Date().timeIntervalSince1970)
         let outputName = "\(FILE_PREFIX)_\(timestamp).\(outputExt)"
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -313,25 +326,60 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
         formatter.timeZone = TimeZone(identifier: "UTC")
         let dateTime = formatter.string(from: Date())
         
-        self.emitEventToJS("onStartTrimming", eventData: nil)
+        emitEventToJS("onStartTrimming", eventData: nil)
         
-        // Create Alert
-        let progressDialog = UIAlertController(title: trimmingText, message: nil, preferredStyle: .alert)
+        var ffmpegSession: FFmpegSession?
+        let progressAlert = ProgressAlertController()
+        progressAlert.modalPresentationStyle = .overFullScreen
+        progressAlert.modalTransitionStyle = .crossDissolve
+        progressAlert.setTitle(trimmingText)
         
-        // Present alert message to user
-        let progressView = UIProgressView(frame: .zero)
-        progressView.tintColor = .systemBlue
-        if let root = RCTPresentedViewController() {
-            root.present(progressDialog, animated: true, completion: {
-                progressDialog.view.addSubview(progressView)
+        if enableCancelTrimming {
+            progressAlert.setCancelTitle(cancelTrimmingButtonText)
+            progressAlert.showCancelBtn()
+            progressAlert.onDismiss = {
+                if self.enableCancelTrimmingDialog {
+                    let dialogMessage = UIAlertController(title: self.cancelTrimmingDialogTitle, message: self.cancelTrimmingDialogMessage, preferredStyle: .alert)
+                    dialogMessage.overrideUserInterfaceStyle = .dark
+
+                    // Create OK button with action handler
+                    let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive, handler: { (action) -> Void in
+                        
+                        if let ffmpegSession = ffmpegSession {
+                            ffmpegSession.cancel()
+                        } else {
+                            self.emitEventToJS("onCancelTrimming", eventData: nil)
+                        }
+                        
+                        progressAlert.dismiss(animated: true)
+                    })
+                    
+                    // Create Cancel button with action handlder
+                    let cancel = UIAlertAction(title: self.cancelDialogCancelText, style: .cancel)
+                    
+                    //Add OK and Cancel button to an Alert object
+                    dialogMessage.addAction(ok)
+                    dialogMessage.addAction(cancel)
+                    
+                    // Present alert message to user
+                    if let root = RCTPresentedViewController() {
+                        root.present(dialogMessage, animated: true, completion: nil)
+                    }
+                } else {
+                    if let ffmpegSession = ffmpegSession {
+                        ffmpegSession.cancel()
+                    } else {
+                        self.emitEventToJS("onCancelTrimming", eventData: nil)
+                    }
+                    
+                    progressAlert.dismiss(animated: true)
+                }
                 
-                progressView.translatesAutoresizingMaskIntoConstraints = false
-                NSLayoutConstraint.activate([
-                    progressView.leadingAnchor.constraint(equalTo: progressDialog.view.leadingAnchor, constant: 8),
-                    progressView.trailingAnchor.constraint(equalTo: progressDialog.view.trailingAnchor, constant: -8),
-                    progressView.bottomAnchor.constraint(equalTo: progressDialog.view.bottomAnchor, constant: -8)
-                ])
-            })
+            }
+        }
+        
+        if let root = RCTPresentedViewController() {
+            root.present(progressAlert, animated: true, completion: nil)
         }
         
         let cmds = [
@@ -355,14 +403,16 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
         ]
         self.emitEventToJS("onLog", eventData: eventPayload)
         
-        FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
+        ffmpegSession = FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
+            
+            // always hide progressAlert
             DispatchQueue.main.async {
-                progressDialog.dismiss(animated: true)
+                progressAlert.dismiss(animated: true)
             }
             
             let state = session?.getState()
             let returnCode = session?.getReturnCode()
-
+            
             if ReturnCode.isSuccess(returnCode) {
                 let eventPayload: [String: Any] = ["outputPath": self.outputFile!.absoluteString, "startTime": (startTime * 1000).rounded(), "endTime": (endTime * 1000).rounded(), "duration": (videoDuration * 1000).rounded()]
                 self.emitEventToJS("onFinishTrimming", eventData: eventPayload)
@@ -403,12 +453,23 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
                     // must return otherwise editor will close
                     return
                 }
+                
+                if self.closeWhenFinish {
+                    self.closeEditor()
+                }
+                
+            } else if ReturnCode.isCancel(returnCode) {
+                // CANCEL
+                self.emitEventToJS("onCancelTrimming", eventData: nil)
             } else {
-                // CANCEL + FAILURE
+                // FAILURE
                 self.onError(message: "Command failed with state \(String(describing: FFmpegKitConfig.sessionState(toString: state ?? .failed))) and rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))", code: .trimmingFailed)
+                if self.closeWhenFinish {
+                    self.closeEditor()
+                }
             }
             
-            self.closeEditor()
+            
         }, withLogCallback: { log in
             guard let log = log else { return }
             
@@ -428,7 +489,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
             if timeInMilliseconds > 0 {
                 let completePercentage = timeInMilliseconds / (videoDuration * 1000); // from 0 -> 1
                 DispatchQueue.main.async {
-                    progressView.setProgress(Float(completePercentage), animated: true)
+                    progressAlert.setProgress(Float(completePercentage))
                 }
             }
             
@@ -450,14 +511,35 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
         let message = "Failed to load \(key): \(error.localizedDescription)"
         print(message)
         
-        self.onError(message: message, code: .failToLoadVideo)
+        self.onError(message: message, code: .failToLoadMedia)
         vc?.onAssetFailToLoad()
+        
+        if alertOnFailToLoad {
+            let dialogMessage = UIAlertController(title: alertOnFailTitle, message: alertOnFailMessage, preferredStyle: .alert)
+            dialogMessage.overrideUserInterfaceStyle = .dark
+
+            // Create Cancel button with action handlder
+            let ok = UIAlertAction(title: alertOnFailCloseText, style: .default)
+            
+            //Add OK and Cancel button to an Alert object
+            dialogMessage.addAction(ok)
+            
+            // Present alert message to user
+            if let root = RCTPresentedViewController() {
+                root.present(dialogMessage, animated: true, completion: nil)
+            }
+        }
     }
     
     func assetLoaderDidSucceed(_ loader: AssetLoader) {
         print("Asset loaded successfully")
         
         vc?.asset = loader.asset
+        
+        let eventPayload: [String: Any] = [
+            "duration": loader.asset!.duration.seconds * 1000,
+        ]
+        self.emitEventToJS("onLoad", eventData: eventPayload)
     }
     
     

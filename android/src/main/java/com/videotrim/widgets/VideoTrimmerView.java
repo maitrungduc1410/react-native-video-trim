@@ -1,7 +1,6 @@
 package com.videotrim.widgets;
 
 import static com.facebook.react.bridge.UiThreadUtil.runOnUiThread;
-import static com.videotrim.utils.VideoTrimmerUtil.DEFAULT_AUDIO_EXTENSION;
 import static com.videotrim.utils.VideoTrimmerUtil.RECYCLER_VIEW_PADDING;
 import static com.videotrim.utils.VideoTrimmerUtil.VIDEO_FRAMES_WIDTH;
 
@@ -9,8 +8,6 @@ import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
-import android.graphics.Color;
-import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
@@ -21,10 +18,10 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -33,9 +30,9 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.VideoView;
 
-import androidx.core.content.ContextCompat;
-import androidx.core.content.res.ResourcesCompat;
+import androidx.appcompat.app.AlertDialog;
 
+import com.arthenica.ffmpegkit.FFmpegSession;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
 import com.videotrim.R;
@@ -64,7 +61,6 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private Uri mSourceUri;
   private VideoTrimListener mOnTrimVideoListener;
   private int mDuration = 0;
-  private Boolean mIsPrepared = false;
   private long mMaxDuration = (long) Double.POSITIVE_INFINITY;
   private long mMinDuration = VideoTrimmerUtil.MIN_SHOOT_DURATION;
 
@@ -105,6 +101,15 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private String mOutputExt = "mp4";
   private boolean enableHapticFeedback = true;
+  private boolean autoplay = false;
+  private long jumpToPositionOnLoad = 0;
+  private FrameLayout headerView;
+  private TextView headerText;
+  private FFmpegSession ffmpegSession;
+  private boolean alertOnFailToLoad = true;
+  private String alertOnFailTitle = "Error";
+  private String alertOnFailMessage = "Fail to load media. Possibly invalid file or no network connection";
+  private String alertOnFailCloseText = "Close";
 
   public VideoTrimmerView(ReactApplicationContext context, ReadableMap config, AttributeSet attrs) {
     this(context, attrs, 0, config);
@@ -152,6 +157,9 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     cancelBtn = findViewById(R.id.cancelBtn);
     audioBannerView = findViewById(R.id.audioBannerView);
     failToLoadBtn = findViewById(R.id.failToLoadBtn);
+
+    headerView = findViewById(R.id.headerView);
+    headerText = findViewById(R.id.headerText);
   }
 
   public void initByURI(final Uri videoURI) {
@@ -162,18 +170,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       mVideoView.requestFocus();
 
       mVideoView.setOnPreparedListener(mp -> {
-        if (!mIsPrepared) {
-          mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
-          videoPrepared();
-          mIsPrepared = true;
-        }
+        mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
+        mediaPrepared();
       });
 
-      mVideoView.setOnErrorListener((mp, what, extra) -> {
-        mediaFailed();
-        mOnTrimVideoListener.onError("Error loading video file. Please try again.", ErrorCode.FAIL_TO_LOAD_VIDEO);
-        return true;
-      });
+      mVideoView.setOnErrorListener(this::onFailToLoadMedia);
 
       mVideoView.setOnCompletionListener(mp -> mediaCompleted());
     } else {
@@ -186,17 +187,10 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       try {
         audioPlayer.setDataSource(videoURI.toString());
         audioPlayer.setOnPreparedListener(mp -> {
-          if (!mIsPrepared) {
-            audioPrepared();
-            mIsPrepared = true;
-          }
+          mediaPrepared();
         });
         audioPlayer.setOnCompletionListener(mp -> mediaCompleted());
-        audioPlayer.setOnErrorListener((mp, what, extra) -> {
-          mediaFailed();
-          mOnTrimVideoListener.onError("Error loading audio file. Please try again.", ErrorCode.FAIL_TO_LOAD_AUDIO);
-          return true;
-        });
+        audioPlayer.setOnErrorListener(this::onFailToLoadMedia);
 
         audioPlayer.prepareAsync(); // use prepareAsync to avoid blocking the main thread
       } catch (IOException e) {
@@ -205,6 +199,25 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
         mOnTrimVideoListener.onError("Error initializing audio player. Please try again.", ErrorCode.FAIL_TO_INITIALIZE_AUDIO_PLAYER);
       }
     }
+  }
+
+  private boolean onFailToLoadMedia(MediaPlayer mp, int what, int extra) {
+    mediaFailed();
+    mOnTrimVideoListener.onError("Error loading media file. Please try again.", ErrorCode.FAIL_TO_LOAD_MEDIA);
+    if (alertOnFailToLoad) {
+      AlertDialog.Builder builder = new AlertDialog.Builder(mContext.getCurrentActivity());
+      builder.setMessage(alertOnFailMessage);
+      builder.setTitle(alertOnFailTitle);
+      builder.setCancelable(false);
+      builder.setPositiveButton(alertOnFailCloseText, (dialog, which) -> {
+        dialog.cancel();
+      });
+
+      AlertDialog alertDialog = builder.create();
+      alertDialog.show();
+    }
+
+    return true;
   }
 
   private void startShootVideoThumbs(final Context context, int totalThumbsCount, long startPosition, long endPosition) {
@@ -225,28 +238,32 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       });
   }
 
-  private void videoPrepared() {
-    mDuration = mVideoView.getDuration();
+  private void mediaPrepared() {
+    mDuration = isVideoType ? mVideoView.getDuration() : audioPlayer.getDuration();
     mMaxDuration = Math.min(mMaxDuration, mDuration);
-    mediaMetadataRetriever = MediaMetadataUtil.getMediaMetadataRetriever(mSourceUri.toString());
 
-    if (mediaMetadataRetriever == null) {
-      mOnTrimVideoListener.onError("Error when retrieving video info. Please try again.", ErrorCode.FAIL_TO_GET_VIDEO_INFO);
-      return;
+    if (isVideoType) {
+      mediaMetadataRetriever = MediaMetadataUtil.getMediaMetadataRetriever(mSourceUri.toString());
+      if (mediaMetadataRetriever == null) {
+        mOnTrimVideoListener.onError("Error when retrieving video info. Please try again.", ErrorCode.FAIL_TO_GET_VIDEO_INFO);
+        return;
+      }
+
+      // take first frame
+      Bitmap bitmap = mediaMetadataRetriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+
+      if (bitmap != null) {
+        VideoTrimmerUtil.mThumbWidth = VideoTrimmerUtil.THUMB_HEIGHT * bitmap.getWidth() / bitmap.getHeight();
+      }
+
+      VideoTrimmerUtil.SCREEN_WIDTH_FULL = this.getScreenWidthInPortraitMode();
+      VideoTrimmerUtil.VIDEO_FRAMES_WIDTH = VideoTrimmerUtil.SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2;
+      VideoTrimmerUtil.MAX_COUNT_RANGE = Math.max((VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.mThumbWidth), VideoTrimmerUtil.MAX_COUNT_RANGE);
+
+      startShootVideoThumbs(mContext, VideoTrimmerUtil.MAX_COUNT_RANGE, 0, mDuration);
+    } else {
+
     }
-
-    // take first frame
-    Bitmap bitmap = mediaMetadataRetriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-
-    if (bitmap != null) {
-      VideoTrimmerUtil.mThumbWidth = VideoTrimmerUtil.THUMB_HEIGHT * bitmap.getWidth() / bitmap.getHeight();
-    }
-
-    VideoTrimmerUtil.SCREEN_WIDTH_FULL = this.getScreenWidthInPortraitMode();
-    VideoTrimmerUtil.VIDEO_FRAMES_WIDTH = VideoTrimmerUtil.SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2;
-    VideoTrimmerUtil.MAX_COUNT_RANGE = Math.max((VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.mThumbWidth), VideoTrimmerUtil.MAX_COUNT_RANGE);
-
-    startShootVideoThumbs(mContext, VideoTrimmerUtil.MAX_COUNT_RANGE, 0, mDuration);
 
     // Set initial handle positions if mMaxDuration < video duration
     if (mMaxDuration < mDuration) {
@@ -259,24 +276,16 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     loadingIndicator.setVisibility(View.GONE);
     mPlayView.setVisibility(View.VISIBLE);
     saveBtn.setVisibility(View.VISIBLE);
-  }
 
-  private void audioPrepared() {
-    mDuration = audioPlayer.getDuration();
-    mMaxDuration = Math.min(mMaxDuration, mDuration);
-
-    // Set initial handle positions if mMaxDuration < video duration
-    if (mMaxDuration < mDuration) {
-      endTime = mMaxDuration;
-    } else {
-      endTime = mDuration;
+    if (jumpToPositionOnLoad > 0) {
+      seekTo(jumpToPositionOnLoad > mDuration ? mDuration : jumpToPositionOnLoad, true);
     }
 
-    updateHandlePositions();
-    loadingIndicator.setVisibility(View.GONE);
-    mPlayView.setVisibility(View.VISIBLE);
-    saveBtn.setVisibility(View.VISIBLE);
-//    mThumbnailContainer.animate().alpha(1f).setDuration(250).start();
+    if (autoplay) {
+      playOrPause();
+    }
+
+    mOnTrimVideoListener.onLoad(mDuration);
   }
 
   private void updateGradientColors(int startColor, int endColor) {
@@ -375,13 +384,21 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   public void onSaveClicked() {
     onMediaPause();
-    VideoTrimmerUtil.trim(
-      isVideoType ? mSourceUri.getPath() : mSourceUri.toString(),
+    ffmpegSession = VideoTrimmerUtil.trim(
+      mSourceUri.toString(),
       StorageUtil.getOutputPath(mContext, mOutputExt),
       mDuration,
       startTime,
       endTime,
       mOnTrimVideoListener);
+  }
+
+  public void onCancelTrimClicked() {
+    if (ffmpegSession != null) {
+      ffmpegSession.cancel();
+    } else {
+      mOnTrimVideoListener.onCancelTrim();
+    }
   }
 
   private void seekTo(long msec, boolean needUpdateProgress) {
@@ -462,10 +479,53 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
     if (config.hasKey("outputExt")) {
       mOutputExt = config.getString("outputExt");
+    } else if (!isVideoType) {
+      mOutputExt = "wav";
     }
 
     if (config.hasKey("enableHapticFeedback")) {
       enableHapticFeedback = config.getBoolean("enableHapticFeedback");
+    }
+
+    if (config.hasKey("autoplay")) {
+      autoplay = config.getBoolean("autoplay");
+    }
+
+    if (config.hasKey("jumpToPositionOnLoad")) {
+      jumpToPositionOnLoad = config.getInt("jumpToPositionOnLoad");
+    }
+    // check if config.getString("headerText") is not empty
+
+    if (config.hasKey("headerText") && !config.getString("headerText").isEmpty()){
+      headerText.setText(config.getString("headerText"));
+
+      if (config.hasKey("headerTextSize")) {
+        int textSize = config.getInt("headerTextSize");
+        if (textSize < 0) {
+          textSize = 16;
+        }
+        headerText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, textSize);
+      }
+
+      if (config.hasKey("headerTextColor")) {
+        headerText.setTextColor(config.getInt("headerTextColor"));
+      }
+
+      headerView.setVisibility(View.VISIBLE);
+    }
+
+    alertOnFailToLoad = !config.hasKey("alertOnFailToLoad") || config.getBoolean("alertOnFailToLoad");
+
+    if (config.hasKey("alertOnFailTitle")) {
+      alertOnFailTitle = config.getString("alertOnFailTitle");
+    }
+
+    if (config.hasKey("alertOnFailMessage")) {
+      alertOnFailMessage = config.getString("alertOnFailMessage");
+    }
+
+    if (config.hasKey("alertOnFailCloseText")) {
+      alertOnFailCloseText = config.getString("alertOnFailCloseText");
     }
   }
 

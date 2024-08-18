@@ -3,11 +3,31 @@
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:orientation="vertical">
+  <FrameLayout
+    android:id="@+id/headerView"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="50dp"
+    android:background="@android:color/black"
+    android:visibility="gone"
+    >
+    <TextView
+      android:id="@+id/headerText"
+      android:layout_width="wrap_content"
+      android:layout_height="match_parent"
+      android:layout_gravity="center"
+      android:clickable="true"
+      android:focusable="true"
+      android:text="Header text"
+      android:textColor="@android:color/white"
+      android:textSize="16dp" />
+  </FrameLayout>
 
   <RelativeLayout
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:layout_above="@+id/layout"
+    android:layout_below="@+id/headerView"
     android:background="@android:color/black"
     android:gravity="center">
 

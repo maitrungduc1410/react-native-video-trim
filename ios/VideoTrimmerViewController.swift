@@ -29,29 +29,16 @@ class VideoTrimmerViewController: UIViewController {
                 setupPlayerController()
                 setupTimeObserver()
                 updateLabels()
-                
-                loadingIndicator.stopAnimating()
-                btnStackView.removeArrangedSubview(loadingIndicator)
-                loadingIndicator.removeFromSuperview()
-                btnStackView.insertArrangedSubview(playBtn, at: 1)
-                
-                UIView.animate(withDuration: 0.25, animations: {
-                    self.playBtn.alpha = 1
-                    self.playBtn.isEnabled = true
-                    self.saveBtn.alpha = 1
-                    self.saveBtn.isEnabled = true
-                })
             }
         }
     }
-    var maximumDuration: Int?
-    var minimumDuration: Int?
-    var cancelBtnText = "Cancel"
-    var saveButtonText = "Save"
+    private var maximumDuration: Int?
+    private var minimumDuration: Int?
+    private var cancelButtonText = "Cancel"
+    private var saveButtonText = "Save"
     var cancelBtnClicked: (() -> Void)?
     var saveBtnClicked: ((CMTimeRange) -> Void)?
-    var isVideoType = true
-    var enableHapticFeedback = true
+    private var enableHapticFeedback = true
     
     private let playerController = AVPlayerViewController()
     private var trimmer: VideoTrimmer!
@@ -62,13 +49,19 @@ class VideoTrimmerViewController: UIViewController {
     private var btnStackView: UIStackView!
     private var cancelBtn: UIButton!
     private var playBtn: UIButton!
-    private var loadingIndicator = UIActivityIndicatorView()
+    private let loadingIndicator = UIActivityIndicatorView()
     private var saveBtn: UIButton!
     private let playIcon = UIImage(systemName: "play.fill")
     private let pauseIcon = UIImage(systemName: "pause.fill")
     private let audioBannerView = UIImage(systemName: "airpodsmax")
     private var player: AVPlayer! { playerController.player }
     private var timeObserverToken: Any?
+    private var autoplay = false
+    private var jumpToPositionOnLoad: Double = 0;
+    private var headerText: String?
+    private var headerTextSize = 16
+    private var headerTextColor: NSNumber?
+    private var headerView: UIView?
     
     var isSeekInProgress: Bool = false  // Marker
     private var chaseTime = CMTime.zero
@@ -83,7 +76,7 @@ class VideoTrimmerViewController: UIViewController {
         let imageView = UIImageView(image: UIImage(systemName: "exclamationmark.triangle.fill"))
         imageView.tintColor = .systemYellow
         imageView.translatesAutoresizingMaskIntoConstraints = false
-
+        
         imageViewContainer.addSubview(imageView)
         NSLayoutConstraint.activate([
             imageView.widthAnchor.constraint(equalToConstant: 36),
@@ -94,7 +87,7 @@ class VideoTrimmerViewController: UIViewController {
         imageViewContainer.alpha = 0
         
         btnStackView.insertArrangedSubview(imageViewContainer, at: 1)
-
+        
         UIView.animate(withDuration: 0.25, animations: {
             imageViewContainer.alpha = 1
         })
@@ -158,7 +151,7 @@ class VideoTrimmerViewController: UIViewController {
     private func handleTrimmingEnd(_ start: Bool) {
         self.trimmer.progress = start ? trimmer.selectedRange.start : trimmer.selectedRange.end
         updateLabels()
-        player.seek(to: trimmer.progress, toleranceBefore: .zero, toleranceAfter: .zero)
+        seek(to: trimmer.progress)
     }
     
     // MARK: - UIViewController
@@ -176,6 +169,10 @@ class VideoTrimmerViewController: UIViewController {
         // if asset has been initialized
         guard let _ = asset else { return }
         player.pause()
+        
+        // Clean up the observer
+        player.removeObserver(self, forKeyPath: "status")
+        
         if let token = timeObserverToken {
             player.removeTimeObserver(token)
             timeObserverToken = nil
@@ -187,13 +184,18 @@ class VideoTrimmerViewController: UIViewController {
         playerController.dismiss(animated: false, completion: nil)
     }
     
+    public func pausePlayer() {
+        player.pause()
+        setPlayBtnIcon()
+    }
+    
     @objc private func togglePlay(sender: UIButton) {
         if player.timeControlStatus == .playing {
             player.pause()
         } else {
             if CMTimeCompare(trimmer.progress, trimmer.selectedRange.end) != -1 {
                 trimmer.progress = trimmer.selectedRange.start
-                player.seek(to: trimmer.progress, toleranceBefore: .zero, toleranceAfter: .zero)
+                self.seek(to: trimmer.progress)
             }
             
             player.play()
@@ -212,11 +214,41 @@ class VideoTrimmerViewController: UIViewController {
     
     // MARK: - Setup Methods
     private func setupView() {
-        view.backgroundColor = .black
+        self.overrideUserInterfaceStyle = .dark
+        view.backgroundColor = .black // need to have this otherwise during animation the background of this VC is still white in white theme
+        
+        if let headerText = headerText {
+            headerView = UIView()
+            headerView!.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(headerView!)
+            let headerTextView = UITextView()
+            headerTextView.text = headerText
+            headerTextView.textAlignment = .center
+            headerTextView.textColor = headerTextColor != nil ? RCTConvert.uiColor(headerTextColor) : .white
+            headerTextView.font = UIFont.systemFont(ofSize: CGFloat(headerTextSize))  // Set font size here
+            headerTextView.translatesAutoresizingMaskIntoConstraints = false
+            headerView!.addSubview(headerTextView)
+            
+            NSLayoutConstraint.activate([
+                // HeaderView constraints
+                headerView!.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                headerView!.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                headerView!.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                headerView!.heightAnchor.constraint(greaterThanOrEqualToConstant: 50),
+                
+                // HeaderText constraints
+                headerTextView.topAnchor.constraint(equalTo: headerView!.topAnchor),
+                headerTextView.bottomAnchor.constraint(equalTo: headerView!.bottomAnchor),
+                headerTextView.leadingAnchor.constraint(equalTo: headerView!.leadingAnchor),
+                headerTextView.trailingAnchor.constraint(equalTo: headerView!.trailingAnchor),
+            ])
+            
+            view.layoutIfNeeded() // layout after activate constraints, otherwise headerView height = screen height, which leads to playerViewController is missing at runtime
+        }
     }
     
     private func setupButtons() {
-        cancelBtn = UIButton.createButton(title: cancelBtnText, font: .systemFont(ofSize: 18), titleColor: .white, target: self, action: #selector(onCancelBtnClicked))
+        cancelBtn = UIButton.createButton(title: cancelButtonText, font: .systemFont(ofSize: 18), titleColor: .white, target: self, action: #selector(onCancelBtnClicked))
         playBtn = UIButton.createButton(image: playIcon, tintColor: .white, target: self, action: #selector(togglePlay(sender:)))
         playBtn.alpha = 0
         playBtn.isEnabled = false
@@ -317,6 +349,9 @@ class VideoTrimmerViewController: UIViewController {
         playerController.player = AVPlayer()
         player.replaceCurrentItem(with: AVPlayerItem(asset: asset!))
         
+        // Add observer for player status
+        player.addObserver(self, forKeyPath: "status", options: [.new, .initial], context: nil)
+        
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
         addChild(playerController)
         view.addSubview(playerController.view)
@@ -324,7 +359,7 @@ class VideoTrimmerViewController: UIViewController {
         NSLayoutConstraint.activate([
             playerController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             playerController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            playerController.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            playerController.view.topAnchor.constraint(equalTo: headerView != nil ? headerView!.bottomAnchor : view.safeAreaLayoutGuide.topAnchor),
             playerController.view.bottomAnchor.constraint(equalTo: trimmer.topAnchor, constant: -16)
         ])
         
@@ -352,7 +387,7 @@ class VideoTrimmerViewController: UIViewController {
             if CMTimeCompare(self.trimmer.progress, trimmer.selectedRange.end) == 1 {
                 player.pause()
                 self.trimmer.progress = trimmer.selectedRange.end
-                player.seek(to: trimmer.selectedRange.end, toleranceBefore: .zero, toleranceAfter: .zero)
+                self.seek(to: trimmer.selectedRange.end)
             }
             
             currentTimeLabel.text = trimmer.progress.displayString
@@ -396,6 +431,74 @@ class VideoTrimmerViewController: UIViewController {
                 self.isSeekInProgress = false
             } else {
                 self.trySeekToChaseTime()
+            }
+        }
+    }
+    
+    public func configure(config: NSDictionary) {
+        if let maxDuration = config["maxDuration"] as? Int {
+            maximumDuration = maxDuration
+        }
+        
+        if let minDuration = config["minDuration"] as? Int {
+            minimumDuration = minDuration
+        }
+        
+        if let cancelButtonText = config["cancelButtonText"] as? String, !cancelButtonText.isEmpty {
+            self.cancelButtonText = cancelButtonText
+        }
+        
+        if let saveButtonText = config["saveButtonText"] as? String, !saveButtonText.isEmpty {
+            self.saveButtonText = saveButtonText
+        }
+        
+        if let jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Int {
+            self.jumpToPositionOnLoad = Double(jumpToPositionOnLoad)
+        }
+        
+        enableHapticFeedback = config["enableHapticFeedback"] as? Bool ?? true
+        autoplay = config["autoplay"] as? Bool ?? false
+        
+        if let jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Int {
+            self.jumpToPositionOnLoad = Double(jumpToPositionOnLoad)
+        }
+        
+        if let headerText = config["headerText"] as? String, !headerText.isEmpty {
+            self.headerText = headerText
+            
+            headerTextSize = config["headerTextSize"] as? Int ?? 16
+            headerTextColor = config["headerTextColor"] as? NSNumber
+        }
+    }
+    
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+        if keyPath == "status" {
+            if player.status == .readyToPlay {
+                loadingIndicator.stopAnimating()
+                btnStackView.removeArrangedSubview(loadingIndicator)
+                loadingIndicator.removeFromSuperview()
+                btnStackView.insertArrangedSubview(playBtn, at: 1)
+                
+                UIView.animate(withDuration: 0.25, animations: {
+                    self.playBtn.alpha = 1
+                    self.playBtn.isEnabled = true
+                    self.saveBtn.alpha = 1
+                    self.saveBtn.isEnabled = true
+                })
+            
+                if jumpToPositionOnLoad > 0 {
+                    let duration = (asset?.duration.seconds ?? 0) * 1000
+                    let time = jumpToPositionOnLoad > duration ? duration : jumpToPositionOnLoad
+                    let cmtime = CMTime(value: CMTimeValue(time), timescale: 1000)
+                    
+                    self.seek(to: cmtime)
+                    self.trimmer.progress = cmtime
+                    self.currentTimeLabel.text = self.trimmer.progress.displayString
+                }
+                
+                if autoplay {
+                    togglePlay(sender: playBtn)
+                }
             }
         }
     }

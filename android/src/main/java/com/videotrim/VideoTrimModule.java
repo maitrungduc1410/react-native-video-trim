@@ -12,8 +12,10 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -21,6 +23,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import com.facebook.react.bridge.ActivityEventListener;
@@ -62,10 +65,17 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private VideoTrimmerView trimmerView;
   private AlertDialog alertDialog;
   private AlertDialog mProgressDialog;
+  private AlertDialog cancelTrimmingConfirmDialog;
   private ProgressBar mProgressBar;
   private int listenerCount = 0;
+  private boolean enableCancelTrimming = true;
 
-
+  private String cancelTrimmingButtonText = "Cancel";
+  private boolean enableCancelTrimmingDialog = true;
+  private String cancelTrimmingDialogTitle = "Warning!";
+  private String cancelTrimmingDialogMessage = "Are you sure want to cancel trimming?";
+  private String cancelTrimmingDialogCancelText = "Close";
+  private String cancelTrimmingDialogConfirmText = "Proceed";
   private boolean enableCancelDialog = true;
   private String cancelDialogTitle = "Warning!";
   private String cancelDialogMessage = "Are you sure want to cancel?";
@@ -83,11 +93,12 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private boolean removeAfterFailedToSavePhoto = false;
   private boolean removeAfterSavedToDocuments = false;
   private boolean removeAfterFailedToSaveDocuments = false;
-  private boolean removeAfterShared = false; // TODO: on Android there's no way to know if user shared the file or share sheet closed
-  private boolean removeAfterFailedToShare = false; // TODO: implement this
+  //  private boolean removeAfterShared = false; // TODO: on Android there's no way to know if user shared the file or share sheet closed
+//  private boolean removeAfterFailedToShare = false; // TODO: implement this
   private boolean openDocumentsOnFinish = false;
   private boolean openShareSheetOnFinish = false;
   private boolean isVideoType = true;
+  private boolean closeWhenFinish = true;
 
   private static final int REQUEST_CODE_SAVE_FILE = 1;
 
@@ -128,7 +139,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
               StorageUtil.deleteFile(outputFile);
             }
           } finally {
-            hideDialog();
+            hideDialog(true);
           }
         }
       }
@@ -148,6 +159,14 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     if (trimmerView != null || alertDialog != null) {
       return;
     }
+    enableCancelTrimming = !config.hasKey("enableCancelTrimming") || config.getBoolean("enableCancelTrimming");
+
+    cancelTrimmingButtonText = config.hasKey("cancelTrimmingButtonText") ? config.getString("cancelTrimmingButtonText") : "Cancel";
+    enableCancelTrimmingDialog = !config.hasKey("enableCancelTrimmingDialog") || config.getBoolean("enableCancelTrimmingDialog");
+    cancelTrimmingDialogTitle = config.hasKey("cancelTrimmingDialogTitle") ? config.getString("cancelTrimmingDialogTitle") : "Warning!";
+    cancelTrimmingDialogMessage = config.hasKey("cancelTrimmingDialogMessage") ? config.getString("cancelTrimmingDialogMessage") : "Are you sure want to cancel trimming?";
+    cancelTrimmingDialogCancelText = config.hasKey("cancelTrimmingDialogCancelText") ? config.getString("cancelTrimmingDialogCancelText") : "Close";
+    cancelTrimmingDialogConfirmText = config.hasKey("cancelTrimmingDialogConfirmText") ? config.getString("cancelTrimmingDialogConfirmText") : "Proceed";
 
     enableCancelDialog = !config.hasKey("enableCancelDialog") || config.getBoolean("enableCancelDialog");
     cancelDialogTitle = config.hasKey("cancelDialogTitle") ? config.getString("cancelDialogTitle") : "Warning!";
@@ -167,13 +186,14 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     removeAfterFailedToSavePhoto = config.hasKey("removeAfterFailedToSavePhoto") && config.getBoolean("removeAfterFailedToSavePhoto");
     removeAfterSavedToDocuments = config.hasKey("removeAfterSavedToDocuments") && config.getBoolean("removeAfterSavedToDocuments");
     removeAfterFailedToSaveDocuments = config.hasKey("removeAfterFailedToSaveDocuments") && config.getBoolean("removeAfterFailedToSaveDocuments");
-    removeAfterShared = config.hasKey("removeAfterShared") && config.getBoolean("removeAfterShared");
-    removeAfterFailedToShare = config.hasKey("removeAfterFailedToShare") && config.getBoolean("removeAfterFailedToShare");
+//    removeAfterShared = config.hasKey("removeAfterShared") && config.getBoolean("removeAfterShared");
+//    removeAfterFailedToShare = config.hasKey("removeAfterFailedToShare") && config.getBoolean("removeAfterFailedToShare");
     openDocumentsOnFinish = config.hasKey("openDocumentsOnFinish") && config.getBoolean("openDocumentsOnFinish");
     openShareSheetOnFinish = config.hasKey("openShareSheetOnFinish") && config.getBoolean("openShareSheetOnFinish");
 
     isVideoType = !config.hasKey("type") || !Objects.equals(config.getString("type"), "audio");
 
+    closeWhenFinish = !config.hasKey("closeWhenFinish") || config.getBoolean("closeWhenFinish");
 
     Activity activity = getReactApplicationContext().getCurrentActivity();
 
@@ -202,7 +222,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
           trimmerView.onDestroy();
           trimmerView = null;
         }
-        hideDialog();
+        hideDialog(true);
         sendEvent(getReactApplicationContext(), "onHide", null);
       });
       sendEvent(getReactApplicationContext(), "onShow", null);
@@ -230,7 +250,14 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
 
   @Override
   public void onHostDestroy() {
-    hideDialog();
+    hideDialog(true);
+  }
+
+  @Override
+  public void onLoad(int duration) {
+    WritableMap map = Arguments.createMap();
+    map.putInt("duration", duration);
+    sendEvent(getReactApplicationContext(), "onLoad", map);
   }
 
   @Override
@@ -282,14 +309,19 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
           StorageUtil.deleteFile(in);
         }
       } finally {
-        hideDialog();
+        hideDialog(closeWhenFinish);
       }
     } else if (openDocumentsOnFinish) {
       saveFileToExternalStorage(new File(in));
     } else if (openShareSheetOnFinish) {
-      hideDialog();
+      hideDialog(closeWhenFinish);
       shareFile(getReactApplicationContext(), new File(in));
     }
+  }
+
+  @Override
+  public void onCancelTrim() {
+    sendEvent(getReactApplicationContext(), "onCancelTrimming", null);
   }
 
   @Override
@@ -303,8 +335,8 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   @Override
   public void onCancel() {
     if (!enableCancelDialog) {
-      sendEvent(getReactApplicationContext(), "onCancelTrimming", null);
-      hideDialog();
+      sendEvent(getReactApplicationContext(), "onCancel", null);
+      hideDialog(true);
       return;
     }
 
@@ -314,8 +346,8 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     builder.setCancelable(false);
     builder.setPositiveButton(cancelDialogConfirmText, (dialog, which) -> {
       dialog.cancel();
-      sendEvent(getReactApplicationContext(), "onCancelTrimming", null);
-      hideDialog();
+      sendEvent(getReactApplicationContext(), "onCancel", null);
+      hideDialog(true);
     });
     builder.setNegativeButton(cancelDialogCancelText, (dialog, which) -> {
       dialog.cancel();
@@ -356,18 +388,28 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     sendEvent(getReactApplicationContext(), "onStatistics", statistics);
   }
 
-  private void hideDialog() {
+  private void hideDialog(boolean shouldCloseEditor) {
+    // handle the case when the cancel dialog is still showing but the trimming is finished
+    if (cancelTrimmingConfirmDialog != null) {
+      if (cancelTrimmingConfirmDialog.isShowing()) {
+        cancelTrimmingConfirmDialog.dismiss();
+      }
+      cancelTrimmingConfirmDialog = null;
+    }
+
     if (mProgressDialog != null) {
       if (mProgressDialog.isShowing()) mProgressDialog.dismiss();
       mProgressBar = null;
       mProgressDialog = null;
     }
 
-    if (alertDialog != null) {
-      if (alertDialog.isShowing()) {
-        alertDialog.dismiss();
+    if (shouldCloseEditor) {
+      if (alertDialog != null) {
+        if (alertDialog.isShowing()) {
+          alertDialog.dismiss();
+        }
+        alertDialog = null;
       }
-      alertDialog = null;
     }
   }
 
@@ -390,6 +432,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
       ViewGroup.LayoutParams.WRAP_CONTENT
     ));
     textView.setText(trimmingText);
+    textView.setGravity(Gravity.CENTER);
     textView.setTextSize(18);
     layout.addView(textView);
 
@@ -401,6 +444,49 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     ));
     mProgressBar.setProgressTintList(ColorStateList.valueOf(Color.parseColor("#2196F3")));
     layout.addView(mProgressBar);
+
+    // Create button
+    if (enableCancelTrimming) {
+      Button button = new Button(activity);
+      button.setLayoutParams(new ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT
+      ));
+      // Set the text and style it like a text button
+      button.setText(cancelTrimmingButtonText);
+      button.setTextColor(ContextCompat.getColor(activity, android.R.color.holo_red_light)); // or use your custom color
+
+      // Apply ripple effect while keeping the button background transparent
+      TypedValue outValue = new TypedValue();
+      activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true);
+      button.setBackgroundResource(outValue.resourceId);
+      button.setOnClickListener(v -> {
+        if (enableCancelTrimmingDialog) {
+          AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+          builder.setMessage(cancelTrimmingDialogMessage);
+          builder.setTitle(cancelTrimmingDialogTitle);
+          builder.setCancelable(false);
+          builder.setPositiveButton(cancelTrimmingDialogConfirmText, (dialog, which) -> {
+            trimmerView.onCancelTrimClicked();
+
+            if (mProgressDialog != null && mProgressDialog.isShowing()) {
+              mProgressDialog.dismiss();
+            }
+          });
+          builder.setNegativeButton(cancelTrimmingDialogCancelText, (dialog, which) -> {
+            dialog.cancel();
+          });
+          cancelTrimmingConfirmDialog = builder.create();
+          cancelTrimmingConfirmDialog.show();
+        } else {
+          trimmerView.onCancelTrimClicked();
+          if (mProgressDialog != null && mProgressDialog.isShowing()) {
+            mProgressDialog.dismiss();
+          }
+        }
+      });
+      layout.addView(button);
+    }
 
     // Create the AlertDialog
     AlertDialog.Builder builder = new AlertDialog.Builder(activity);
@@ -461,7 +547,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
 
   @ReactMethod
   private void closeEditor() {
-    hideDialog();
+    hideDialog(true);
   }
 
   @ReactMethod

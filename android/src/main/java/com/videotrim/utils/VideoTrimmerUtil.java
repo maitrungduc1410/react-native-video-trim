@@ -1,8 +1,10 @@
 package com.videotrim.utils;
 
+import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
 import android.media.MediaMetadataRetriever;
 import com.arthenica.ffmpegkit.FFmpegKit;
+import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
 import com.arthenica.ffmpegkit.SessionState;
 import com.facebook.react.bridge.Arguments;
@@ -37,12 +39,12 @@ public class VideoTrimmerUtil {
   public static final int THUMB_HEIGHT = UnitConverter.dpToPx(50); // x2 for better resolution
   private static final int THUMB_RESOLUTION_RES = 2; // double thumb resolution for better quality
 
-  public static void trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
+  public static FFmpegSession trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
     // Get the current date and time
     Date currentDate = new Date();
 
     // Create a SimpleDateFormat object with the desired format
-    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+    @SuppressLint("SimpleDateFormat") SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
 
     // Set the timezone to UTC
     dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -65,18 +67,19 @@ public class VideoTrimmerUtil {
       "creation_time=" + formattedDateTime,
       outputFile
     };
-    System.out.println("Commandddddd: " + String.join(",", cmds));
+    System.out.println("Command: " + String.join(",", cmds));
 
-    FFmpegKit.executeWithArgumentsAsync(cmds, session -> {
+    return FFmpegKit.executeWithArgumentsAsync(cmds, session -> {
       SessionState state = session.getState();
       ReturnCode returnCode = session.getReturnCode();
-
-      if (ReturnCode.isSuccess(returnCode)) {
+      if (ReturnCode.isSuccess(session.getReturnCode())) {
         // SUCCESS
         callback.onFinishTrim(outputFile, startMs, endMs, videoDuration);
-      }
-      else {
-        // CANCEL + FAILURE
+      } else if (ReturnCode.isCancel(session.getReturnCode())) {
+        // CANCEL
+        callback.onCancelTrim();
+      } else {
+        // FAILURE
         String errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace());
         callback.onError(errorMessage, ErrorCode.TRIMMING_FAILED);
       }

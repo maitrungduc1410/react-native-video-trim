@@ -2,7 +2,7 @@
 //  AssetLoader.swift
 //  react-native-video-trim
 //
-//  Created by ByteDance on 7/27/24.
+//  Created by Duc Trung Mai on 7/27/24.
 //
 
 import AVFoundation

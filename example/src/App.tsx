@@ -30,6 +30,10 @@ export default function App() {
     const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
     const subscription = eventEmitter.addListener('VideoTrim', (event) => {
       switch (event.name) {
+        case 'onLoad': {
+          console.log('onLoadListener', event);
+          break;
+        }
         case 'onShow': {
           console.log('onShowListener', event);
           break;
@@ -48,6 +52,10 @@ export default function App() {
         }
         case 'onCancelTrimming': {
           console.log('onCancelTrimming', event);
+          break;
+        }
+        case 'onCancel': {
+          console.log('onCancel', event);
           break;
         }
         case 'onError': {
@@ -110,18 +118,24 @@ export default function App() {
             isValidFile(url).then((res) => console.log('1isValidVideo:', res));
             isValidFile(url1).then((res) => console.log('2isValidVideo:', res));
             isValidFile(url2).then((res) => console.log('3isValidVideo:', res));
-            // const url3 =
-            //   'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
+            const url3 =
+              'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
             // showEditor(result.assets![0]?.uri || '', {
-            showEditor(url, {
-              // type: 'audio',
-              // outputExt: 'wav',
+            showEditor(url3, {
+              type: 'audio',
+              outputExt: 'wav',
               // maxDuration: 20,
+              // closeWhenFinish: false,
               minDuration: 10,
               fullScreenModalIOS: true,
               saveToPhoto: true,
               removeAfterSavedToPhoto: true,
               enableHapticFeedback: false,
+              autoplay: true,
+              jumpToPositionOnLoad: 30000,
+              // headerText: 'Bunny.wav',
+              headerTextSize: 20,
+              headerTextColor: '#FF0000',
               // openDocumentsOnFinish: true,
               // removeAfterSavedToDocuments: true,
               // openShareSheetOnFinish: true,
@@ -139,7 +153,7 @@ export default function App() {
               // saveDialogMessage: '666666',
               // saveDialogCancelText: '77777',
               // saveDialogConfirmText: '888888',
-              // trimmingText: '9999999',
+              trimmingText: 'Trimming Video...',
             });
           } catch (error) {
             console.log(error);

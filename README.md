@@ -82,6 +82,11 @@ export default function App() {
     const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
     const subscription = eventEmitter.addListener('VideoTrim', (event) => {
       switch (event.name) {
+        case 'onLoad': {
+          // on media loaded successfully
+          console.log('onLoadListener', event);
+          break;
+        }
         case 'onShow': {
           console.log('onShowListener', event);
           break;
@@ -102,8 +107,20 @@ export default function App() {
           console.log('onCancelTrimming', event);
           break;
         }
+        case 'onCancel': {
+          console.log('onCancel', event);
+          break;
+        }
         case 'onError': {
           console.log('onError', event);
+          break;
+        }
+        case 'onLog': {
+          console.log('onLog', event);
+          break;
+        }
+        case 'onStatistics': {
+          console.log('onStatistics', event);
           break;
         }
       }
@@ -167,36 +184,53 @@ Main method to show Video Editor UI.
 
 *Params*:
 - `videoPath`: Path to video file, if this is an invalid path, `onError` event will be fired
-- `config` (optional): 
+- `config` (optional, every sub props of `config` is optional): 
   
-  - `type` (optional, `default = video`): which player to use, `video` or `audio`
-  - `outputExt` (optional, `default = mp4`): output file extension
-  - `enableHapticFeedback` (optional, `default = true`): whether to enable haptic feedback
-  - `saveToPhoto` (optional, Video-only, `default = false`): whether to save video to photo/gallery after editing
-  - `openDocumentsOnFinish` (optional, `default = false`): open Document Picker on done trimming
-  - `openShareSheetOnFinish` (optional, `default = false`): open Share Sheet on done trimming
-  - `removeAfterSavedToPhoto` (optional, `default = false`): whether to remove output file from storage after saved to Photo successfully
-  - `removeAfterFailedToSavePhoto` (optional, `default = false`): whether to remove output file if fail to save to Photo
-  - `removeAfterSavedToDocuments` (optional, `default = false`): whether to remove output file from storage after saved Documents successfully
-  - `removeAfterFailedToSaveDocuments` (optional, `default = false`): whether to remove output file from storage after fail to save to Documents
-  - `removeAfterShared` (optional, `default = false`): whether to remove output file from storage after saved Share successfully. iOS only, on Android you'll have to manually remove the file (this is because on Android there's no way to detect when sharing is successful)
-  - `removeAfterFailedToShare` (optional, `default = false`): whether to remove output file from storage after fail to Share. iOS only, on Android you'll have to manually remove the file
+  - `type` (`default = video`): which player to use, `video` or `audio`
+  - `outputExt` (`default = mp4`): output file extension
+  - `enableHapticFeedback` (`default = true`): whether to enable haptic feedback
+  - `saveToPhoto` (Video-only, `default = false`): whether to save video to photo/gallery after editing
+  - `openDocumentsOnFinish` (`default = false`): open Document Picker on done trimming
+  - `openShareSheetOnFinish` (`default = false`): open Share Sheet on done trimming
+  - `removeAfterSavedToPhoto` (`default = false`): whether to remove output file from storage after saved to Photo successfully
+  - `removeAfterFailedToSavePhoto` (`default = false`): whether to remove output file if fail to save to Photo
+  - `removeAfterSavedToDocuments` (`default = false`): whether to remove output file from storage after saved Documents successfully
+  - `removeAfterFailedToSaveDocuments` (`default = false`): whether to remove output file from storage after fail to save to Documents
+  - `removeAfterShared` (`default = false`): whether to remove output file from storage after saved Share successfully. iOS only, on Android you'll have to manually remove the file (this is because on Android there's no way to detect when sharing is successful)
+  - `removeAfterFailedToShare` (`default = false`): whether to remove output file from storage after fail to Share. iOS only, on Android you'll have to manually remove the file
   - `maxDuration` (optional): maximum duration for the trimmed video
-  - `minDuration` (optional): minimum duration for the trimmed video
-  - `cancelButtonText` (optional): text of left button in Editor dialog
-  - `saveButtonText` (optional): text of right button in Editor dialog
-  -  `enableCancelDialog` (optional, `default = true`): whether to show alert dialog on press Cancel
-  -  `cancelDialogTitle` (optional, `default = "Warning!"`)
-  -  `cancelDialogMessage` (optional, `default = "Are you sure want to cancel?"`)
-  -  `cancelDialogCancelText` (optional, `default = "Close"`)
-  -  `cancelDialogConfirmText` (optional, `default = "Proceed"`)
-  -  `enableSaveDialog` (optional, `default = true`): whether to show alert dialog on press Save
-  -  `saveDialogTitle` (optional, `default = "Confirmation!"`)
-  -  `saveDialogMessage` (optional, `default = "Are you sure want to save?"`)
-  -  `saveDialogCancelText` (optional, `default = "Close"`)
-  -  `saveDialogConfirmText` (optional, `default = "Proceed"`)
-  -  `fullScreenModalIOS` (optional, `default = false`): whether to open editor in fullscreen modal
-  -  `trimmingText` (optional, `default = "Trimming video..."`): trimming text on the progress dialog
+  - `minDuration` (`default = 1000`): minimum duration for the trimmed video
+  - `cancelButtonText` (`default= "Cancel"`): text of left button in Editor dialog
+  - `saveButtonText` (`default= "Save"`): text of right button in Editor dialog
+  - `enableCancelDialog` (`default = true`): whether to show alert dialog on press Cancel
+  - `cancelDialogTitle` (`default = "Warning!"`)
+  - `cancelDialogMessage` (`default = "Are you sure want to cancel?"`)
+  - `cancelDialogCancelText` (`default = "Close"`)
+  - `cancelDialogConfirmText` (`default = "Proceed"`)
+  - `enableSaveDialog` (`default = true`): whether to show alert dialog on press Save
+  - `saveDialogTitle` (`default = "Confirmation!"`)
+  - `saveDialogMessage` (`default = "Are you sure want to save?"`)
+  - `saveDialogCancelText` (`default = "Close"`)
+  - `saveDialogConfirmText` (`default = "Proceed"`)
+  - `fullScreenModalIOS` (`default = false`): whether to open editor in fullscreen modal
+  - `trimmingText` (`default = "Trimming video..."`): trimming text on the progress dialog
+  - `autoplay` (`default = false`): whether to autoplay media on load
+  - `jumpToPositionOnLoad` (optional): which time position should jump on media loaded (millisecond)
+  - `closeWhenFinish` (`default = true`): should editor close on finish trimming
+  - `enableCancelTrimming` (`default = true`): enable cancel trimming
+  - `cancelTrimmingButtonText` (`default = "Cancel"`)
+  - `enableCancelTrimmingDialog` (`default = true`)
+  - `cancelTrimmingDialogTitle` (`default = "Warning!"`)
+  - `cancelTrimmingDialogMessage` (`default = "Are you sure want to cancel trimming?"`)
+  - `cancelTrimmingDialogCancelText` (`default = "Close"`)
+  - `cancelTrimmingDialogConfirmText` (`default = "Proceed"`)
+  - `headerText` (optional)
+  - `headerTextSize` (`default = 16`)
+  - `headerTextColor` (`default = white`)
+  - `alertOnFailToLoad` (`default = true`)
+  - `alertOnFailTitle` (`default = "Error"`)
+  - `alertOnFailMessage` (`default = "Fail to load media. Possibly invalid file or no network connection"`)
+  - `alertOnFailCloseText` (`default = "Close"`)
 
 If `saveToPhoto = true`, you must ensure that you have request permission to write to photo/gallery
 - For Android: you need to have `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />` in AndroidManifest.xml
@@ -251,43 +285,43 @@ useEffect(() => {
   const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
   const subscription = eventEmitter.addListener('VideoTrim', (event) => {
     switch (event.name) {
+      case 'onLoad': {
+        console.log('onLoadListener', event);
+        break;
+      }
       case 'onShow': {
-        // on Dialog show
         console.log('onShowListener', event);
         break;
       }
       case 'onHide': {
-        // on Dialog hide
         console.log('onHide', event);
         break;
       }
       case 'onStartTrimming': {
-        // on start trimming
         console.log('onStartTrimming', event);
         break;
       }
       case 'onFinishTrimming': {
-        // on trimming is done
         console.log('onFinishTrimming', event);
         break;
       }
       case 'onCancelTrimming': {
-        // when user clicks Cancel button
         console.log('onCancelTrimming', event);
         break;
       }
+      case 'onCancel': {
+        console.log('onCancel', event);
+        break;
+      }
       case 'onError': {
-        // any error occured: invalid file, lack of permissions to write to photo/gallery, unexpected error...
         console.log('onError', event);
         break;
       }
       case 'onLog': {
-        // FFMPEG logs (while trimming)
         console.log('onLog', event);
         break;
       }
       case 'onStatistics': {
-        // FFMPEG stats (while trimming)
         console.log('onStatistics', event);
         break;
       }
@@ -299,6 +333,52 @@ useEffect(() => {
   };
 }, []);
 ```
+# Audio support
+<img src="images/audio_android.jpg" width="200" />
+<img src="images/audio_ios.jpg" width="200" />
+
+For audio only you have to pass `type=audio` and `outputExt`:
+```ts
+showEditor(url, {
+  type: 'audio', // important
+  outputExt: 'wav', // important: any audio type for output file extension
+})
+```
+
+You must install FFMPEG version from "https" onwards, "min" version won't work. Eg.
+```gradle
+// Android: android/build.gradle > buildscript > ext
+
+buildscript {
+    ext {
+        ffmpegKitPackage = "full"
+    }
+
+---
+// iOS:
+
+FFMPEGKIT_PACKAGE=https npx pod-install ios
+
+// or
+
+FFMPEGKIT_PACKAGE=https pod install
+```
+
+# Cancel trimming
+<img src="images/progress.jpg" width="200" />
+<img src="images/cancel_confirm.jpg" width="200" />
+
+While trimming, you can press Cancel to terminate the process.
+
+Related props: `enableCancelTrimming, cancelTrimmingButtonText, enableCancelTrimmingDialog, cancelTrimmingDialogTitle, cancelTrimmingDialogMessage, cancelTrimmingDialogCancelText, cancelTrimmingDialogConfirmText`
+
+# Fail to load media
+<img src="images/fail_to_load_media.jpg" width="200" />
+
+If there's error while loading media, there'll be a prompt
+
+Related props: `alertOnFailToLoad, alertOnFailTitle, alertOnFailMessage, alertOnFailCloseText`
+
 # FFMPEG Version
 This library uses FFMPEG-Kit Android under the hood, by default FFMPEG-min is used, which gives smallest bundle size: https://github.com/arthenica/ffmpeg-kit#9-packages
 
