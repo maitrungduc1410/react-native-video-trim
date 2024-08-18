@@ -13,8 +13,10 @@
 - ✅ Check if file is valid video/audio
 - ✅ File operations: list, clean up, delete specific file
 
+<div align="left">
 <img src="images/document_picker.png" width="300" />
 <img src="images/share_sheet.png" width="300" />
+</div>
 
 ## Installation
 
@@ -334,8 +336,10 @@ useEffect(() => {
 }, []);
 ```
 # Audio support
+<div align="left">
 <img src="images/audio_android.jpg" width="200" />
 <img src="images/audio_ios.jpg" width="200" />
+</div>
 
 For audio only you have to pass `type=audio` and `outputExt`:
 ```ts
@@ -365,8 +369,10 @@ FFMPEGKIT_PACKAGE=https pod install
 ```
 
 # Cancel trimming
+<div align="left">
 <img src="images/progress.jpg" width="200" />
 <img src="images/cancel_confirm.jpg" width="200" />
+</div>
 
 While trimming, you can press Cancel to terminate the process.
 
