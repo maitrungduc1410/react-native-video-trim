@@ -385,8 +385,8 @@ If there's error while loading media, there'll be a prompt
 
 Related props: `alertOnFailToLoad, alertOnFailTitle, alertOnFailMessage, alertOnFailCloseText`
 
-# FFMPEG Version
-This library uses FFMPEG-Kit Android under the hood, by default FFMPEG-min is used, which gives smallest bundle size: https://github.com/arthenica/ffmpeg-kit#9-packages
+# Customize FFMPEG version
+This library uses FFMPEG-Kit Android under the hood, by default FFMPEG `min` is used, which gives smallest bundle size. To customize the package version please see below
 
 ## Android
 If you ever need to use other version of FFMPEG-Kit for Android, you can do the following, in your `android/build.gradle` > `buildscript` > `ext`:
@@ -415,6 +415,55 @@ FFMPEGKIT_PACKAGE_VERSION=5.1 npx pod-install ios
 FFMPEGKIT_PACKAGE=full FFMPEGKIT_PACKAGE_VERSION=5.1 npx pod-install ios
 ```
 
+## Packages
+
+<table>
+<thead>
+<tr>
+<th align="center"></th>
+<th align="center"><sup>min</sup></th>
+<th align="center"><sup>min-gpl</sup></th>
+<th align="center"><sup>https</sup></th>
+<th align="center"><sup>https-gpl</sup></th>
+<th align="center"><sup>audio</sup></th>
+<th align="center"><sup>video</sup></th>
+<th align="center"><sup>full</sup></th>
+<th align="center"><sup>full-gpl</sup></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="center"><sup>external libraries</sup></td>
+<td align="center">-</td>
+<td align="center"><sup>vid.stab</sup><br><sup>x264</sup><br><sup>x265</sup><br><sup>xvidcore</sup></td>
+<td align="center"><sup>gmp</sup><br><sup>gnutls</sup></td>
+<td align="center"><sup>gmp</sup><br><sup>gnutls</sup><br><sup>vid.stab</sup><br><sup>x264</sup><br><sup>x265</sup><br><sup>xvidcore</sup></td>
+<td align="center"><sup>lame</sup><br><sup>libilbc</sup><br><sup>libvorbis</sup><br><sup>opencore-amr</sup><br><sup>opus</sup><br><sup>shine</sup><br><sup>soxr</sup><br><sup>speex</sup><br><sup>twolame</sup><br><sup>vo-amrwbenc</sup></td>
+<td align="center"><sup>dav1d</sup><br><sup>fontconfig</sup><br><sup>freetype</sup><br><sup>fribidi</sup><br><sup>kvazaar</sup><br><sup>libass</sup><br><sup>libiconv</sup><br><sup>libtheora</sup><br><sup>libvpx</sup><br><sup>libwebp</sup><br><sup>snappy</sup><br><sup>zimg</sup></td>
+<td align="center"><sup>dav1d</sup><br><sup>fontconfig</sup><br><sup>freetype</sup><br><sup>fribidi</sup><br><sup>gmp</sup><br><sup>gnutls</sup><br><sup>kvazaar</sup><br><sup>lame</sup><br><sup>libass</sup><br><sup>libiconv</sup><br><sup>libilbc</sup><br><sup>libtheora</sup><br><sup>libvorbis</sup><br><sup>libvpx</sup><br><sup>libwebp</sup><br><sup>libxml2</sup><br><sup>opencore-amr</sup><br><sup>opus</sup><br><sup>shine</sup><br><sup>snappy</sup><br><sup>soxr</sup><br><sup>speex</sup><br><sup>twolame</sup><br><sup>vo-amrwbenc</sup><br><sup>zimg</sup></td>
+<td align="center"><sup>dav1d</sup><br><sup>fontconfig</sup><br><sup>freetype</sup><br><sup>fribidi</sup><br><sup>gmp</sup><br><sup>gnutls</sup><br><sup>kvazaar</sup><br><sup>lame</sup><br><sup>libass</sup><br><sup>libiconv</sup><br><sup>libilbc</sup><br><sup>libtheora</sup><br><sup>libvorbis</sup><br><sup>libvpx</sup><br><sup>libwebp</sup><br><sup>libxml2</sup><br><sup>opencore-amr</sup><br><sup>opus</sup><br><sup>shine</sup><br><sup>snappy</sup><br><sup>soxr</sup><br><sup>speex</sup><br><sup>twolame</sup><br><sup>vid.stab</sup><br><sup>vo-amrwbenc</sup><br><sup>x264</sup><br><sup>x265</sup><br><sup>xvidcore</sup><br><sup>zimg</sup></td>
+</tr>
+<tr>
+<td align="center"><sup>android system libraries</sup></td>
+<td align="center" colspan=8><sup>zlib</sup><br><sup>MediaCodec</sup></td>
+</tr>
+<tr>
+<td align="center"><sup>ios system libraries</sup></td>
+<td align="center" colspan=8><sup>bzip2</sup><br><sup>AudioToolbox</sup><br><sup>AVFoundation</sup><br><sup>iconv</sup><br><sup>VideoToolbox</sup><br><sup>zlib</sup></td>
+</tr>
+<tr>
+<tr>
+<td align="center"><sup>macos system libraries</sup></td>
+<td align="center" colspan=8><sup>bzip2</sup><br><sup>AudioToolbox</sup><br><sup>AVFoundation</sup><br><sup>Core Image</sup><br><sup>iconv</sup><br><sup>OpenCL</sup><br><sup>OpenGL</sup><br><sup>VideoToolbox</sup><br><sup>zlib</sup></td>
+</tr>
+<tr>
+<td align="center"><sup>tvos system libraries</sup></td>
+<td align="center" colspan=8><sup>bzip2</sup><br><sup>AudioToolbox</sup><br><sup>iconv</sup><br><sup>VideoToolbox</sup><br><sup>zlib</sup></td>
+</tr>
+</tbody>
+</table>
+
+
 # Android: update SDK version
 You can override sdk version to use any version in your `android/build.gradle` > `buildscript` > `ext`
 ```gradle
@@ -426,6 +475,13 @@ buildscript {
     }
 }
 ```
+
+# Naming conflict with `ffmpeg-kit-react-native`
+This issue is due to this package and `ffmpeg-kit-react-native` share FFMPEG Kit under the hood. To fix it we need to synchronize the FFMPEG Kit version of the 2 packages.
+
+First find out exactly FFMPEG Kit version that `ffmpeg-kit-react-native` is using. By default (if you don't change), the ffmpeg package is `https` ([check here](https://github.com/arthenica/ffmpeg-kit/blob/main/react-native/ffmpeg-kit-react-native.podspec#L19)) and version is `version` in [package.json](https://github.com/arthenica/ffmpeg-kit/blob/main/react-native/package.json#L3)
+
+When you know the package name + version, simply follow the section [Customize FFMPEG version](#customize-ffmpeg-version) in this doc
 
 # Thanks
 - Android part is created by modified + fix bugs from: https://github.com/iknow4/Android-Video-Trimmer
