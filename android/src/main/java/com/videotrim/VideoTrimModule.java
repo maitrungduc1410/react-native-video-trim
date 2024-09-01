@@ -316,6 +316,8 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     } else if (openShareSheetOnFinish) {
       hideDialog(closeWhenFinish);
       shareFile(getReactApplicationContext(), new File(in));
+    } else {
+      hideDialog(closeWhenFinish);
     }
   }
 
