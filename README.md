@@ -415,6 +415,14 @@ FFMPEGKIT_PACKAGE_VERSION=5.1 npx pod-install ios
 FFMPEGKIT_PACKAGE=full FFMPEGKIT_PACKAGE_VERSION=5.1 npx pod-install ios
 ```
 
+If you use anything other than `https` ensure you have this added to your pod spec
+```
+pod 'ffmpeg-kit-react-native', :subspecs => ['full'], :podspec => '../node_modules/ffmpeg-kit-react-native/ffmpeg-kit-react-native.podspec'
+
+# or even better
+pod 'ffmpeg-kit-react-native', :subspecs => [ENV['FFMPEGKIT_PACKAGE']], :podspec => '../node_modules/ffmpeg-kit-react-native/ffmpeg-kit-react-native.podspec'
+```
+
 ## Packages
 
 <table>
