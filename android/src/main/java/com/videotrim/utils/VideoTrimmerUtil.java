@@ -52,8 +52,6 @@ public class VideoTrimmerUtil {
     // Format the current date and time
     String formattedDateTime = dateFormat.format(currentDate);
 
-    callback.onStartTrim();
-
     String[] cmds = {
       "-ss",
       startMs + "ms",

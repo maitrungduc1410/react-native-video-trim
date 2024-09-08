@@ -261,14 +261,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   }
 
   @Override
-  public void onStartTrim() {
-    sendEvent(getReactApplicationContext(), "onStartTrimming", null);
-    runOnUiThread(() -> {
-      buildDialog();
-    });
-  }
-
-  @Override
   public void onTrimmingProgress(int percentage) {
     // prevent onTrimmingProgress is called after onFinishTrim (some rare cases)
     if (mProgressBar == null) {
@@ -361,7 +353,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   @Override
   public void onSave() {
     if (!enableSaveDialog) {
-      trimmerView.onSaveClicked();
+      startTrim();
       return;
     }
 
@@ -371,7 +363,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     builder.setCancelable(false);
     builder.setPositiveButton(saveDialogConfirmText, (dialog, which) -> {
       dialog.cancel();
-      trimmerView.onSaveClicked();
+      startTrim();
     });
     builder.setNegativeButton(saveDialogCancelText, (dialog, which) -> {
       dialog.cancel();
@@ -390,32 +382,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     sendEvent(getReactApplicationContext(), "onStatistics", statistics);
   }
 
-  private void hideDialog(boolean shouldCloseEditor) {
-    // handle the case when the cancel dialog is still showing but the trimming is finished
-    if (cancelTrimmingConfirmDialog != null) {
-      if (cancelTrimmingConfirmDialog.isShowing()) {
-        cancelTrimmingConfirmDialog.dismiss();
-      }
-      cancelTrimmingConfirmDialog = null;
-    }
-
-    if (mProgressDialog != null) {
-      if (mProgressDialog.isShowing()) mProgressDialog.dismiss();
-      mProgressBar = null;
-      mProgressDialog = null;
-    }
-
-    if (shouldCloseEditor) {
-      if (alertDialog != null) {
-        if (alertDialog.isShowing()) {
-          alertDialog.dismiss();
-        }
-        alertDialog = null;
-      }
-    }
-  }
-
-  private void buildDialog() {
+  private void startTrim() {
     Activity activity = getReactApplicationContext().getCurrentActivity();
     // Create the parent layout for the dialog
     LinearLayout layout = new LinearLayout(activity);
@@ -469,10 +436,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
           builder.setTitle(cancelTrimmingDialogTitle);
           builder.setCancelable(false);
           builder.setPositiveButton(cancelTrimmingDialogConfirmText, (dialog, which) -> {
-            if (trimmerView != null) {
-              // prevent trimmerView is null in some rare cases
-              trimmerView.onCancelTrimClicked();
-            }
+            trimmerView.onCancelTrimClicked();
 
             if (mProgressDialog != null && mProgressDialog.isShowing()) {
               mProgressDialog.dismiss();
@@ -484,10 +448,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
           cancelTrimmingConfirmDialog = builder.create();
           cancelTrimmingConfirmDialog.show();
         } else {
-          if (trimmerView != null) {
-            // prevent trimmerView is null in some rare cases
-            trimmerView.onCancelTrimClicked();
-          }
+          trimmerView.onCancelTrimClicked();
 
           if (mProgressDialog != null && mProgressDialog.isShowing()) {
             mProgressDialog.dismiss();
@@ -504,7 +465,38 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
 
     // Show the dialog
     mProgressDialog = builder.create();
+
+    mProgressDialog.setOnShowListener(dialog -> {
+      sendEvent(getReactApplicationContext(), "onStartTrimming", null);
+      trimmerView.onSaveClicked();
+    });
+
     mProgressDialog.show();
+  }
+
+  private void hideDialog(boolean shouldCloseEditor) {
+    // handle the case when the cancel dialog is still showing but the trimming is finished
+    if (cancelTrimmingConfirmDialog != null) {
+      if (cancelTrimmingConfirmDialog.isShowing()) {
+        cancelTrimmingConfirmDialog.dismiss();
+      }
+      cancelTrimmingConfirmDialog = null;
+    }
+
+    if (mProgressDialog != null) {
+      if (mProgressDialog.isShowing()) mProgressDialog.dismiss();
+      mProgressBar = null;
+      mProgressDialog = null;
+    }
+
+    if (shouldCloseEditor) {
+      if (alertDialog != null) {
+        if (alertDialog.isShowing()) {
+          alertDialog.dismiss();
+        }
+        alertDialog = null;
+      }
+    }
   }
 
   @ReactMethod
