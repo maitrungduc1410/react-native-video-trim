@@ -56,6 +56,9 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private ReactApplicationContext mContext;
   private VideoView mVideoView;
+  // https://stackoverflow.com/a/73361868/7569705
+  // the videoPlayer is to solve the issue after manually seek -> hit play -> it starts from a position slightly before with the one we just sought to
+  private MediaPlayer videoPlayer;
   private ImageView mPlayView;
   private LinearLayout mThumbnailContainer;
   private Uri mSourceUri;
@@ -110,6 +113,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private String alertOnFailTitle = "Error";
   private String alertOnFailMessage = "Fail to load media. Possibly invalid file or no network connection";
   private String alertOnFailCloseText = "Close";
+  private View currentSelectedhandle;
 
   public VideoTrimmerView(ReactApplicationContext context, ReadableMap config, AttributeSet attrs) {
     this(context, attrs, 0, config);
@@ -172,6 +176,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       mVideoView.setOnPreparedListener(mp -> {
         mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
         mediaPrepared();
+        videoPlayer = mp;
       });
 
       mVideoView.setOnErrorListener(this::onFailToLoadMedia);
@@ -403,7 +408,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private void seekTo(long msec, boolean needUpdateProgress) {
     if (isVideoType) {
-      mVideoView.seekTo((int) msec);
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        videoPlayer.seekTo((int) msec, MediaPlayer.SEEK_CLOSEST);
+      } else {
+        mVideoView.seekTo((int) msec);
+      }
     } else {
       audioPlayer.seekTo((int) msec);
     }
@@ -568,6 +577,8 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       currentPosition = duration;
     } else if (currentPosition >= endTime - 100) {
       currentPosition = (int) endTime;
+    } else if (currentPosition <= startTime + 100) {
+      currentPosition = (int) startTime;
     }
 
     String currentTime = formatTime(currentPosition);
@@ -583,9 +594,13 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       // Update progressIndicator position
       float indicatorPosition = (float) currentPosition / duration * (trimmerContainerBg.getWidth() - progressIndicator.getWidth()) + leadingHandle.getWidth();
 
-      float rightBoundary = trimmerContainer.getX() + trimmerContainer.getWidth() - progressIndicator.getWidth();
-
-      progressIndicator.setX(Math.min(rightBoundary, indicatorPosition));
+      if (currentSelectedhandle == leadingHandle) {
+        float leftBoundary = trimmerContainer.getX();
+        progressIndicator.setX(Math.max(leftBoundary, indicatorPosition));
+      } else {
+        float rightBoundary = trimmerContainer.getX() + trimmerContainer.getWidth() - progressIndicator.getWidth();
+        progressIndicator.setX(Math.min(rightBoundary, indicatorPosition));
+      }
     }
   }
 
@@ -655,6 +670,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     handle.setOnTouchListener((view, event) -> {
       switch (event.getAction()) {
         case MotionEvent.ACTION_DOWN:
+          currentSelectedhandle = handle;
           didClampWhilePanning = false;
           onMediaPause();
           fadeOutProgressIndicator();
