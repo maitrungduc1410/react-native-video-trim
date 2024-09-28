@@ -56,9 +56,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private ReactApplicationContext mContext;
   private VideoView mVideoView;
-  // https://stackoverflow.com/a/73361868/7569705
+
+  // mediaPlayer is used for both video/audio
+  // the reason we use mediaPlayer for Video: https://stackoverflow.com/a/73361868/7569705
   // the videoPlayer is to solve the issue after manually seek -> hit play -> it starts from a position slightly before with the one we just sought to
-  private MediaPlayer videoPlayer;
+  private MediaPlayer mediaPlayer;
   private ImageView mPlayView;
   private LinearLayout mThumbnailContainer;
   private Uri mSourceUri;
@@ -99,7 +101,6 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private TextView cancelBtn;
   private FrameLayout audioBannerView;
   private boolean isVideoType = true;
-  private MediaPlayer audioPlayer;
   private ImageView failToLoadBtn;
 
   private String mOutputExt = "mp4";
@@ -175,12 +176,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
       mVideoView.setOnPreparedListener(mp -> {
         mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
+        mediaPlayer = mp;
         mediaPrepared();
-        videoPlayer = mp;
       });
 
       mVideoView.setOnErrorListener(this::onFailToLoadMedia);
-
       mVideoView.setOnCompletionListener(mp -> mediaCompleted());
     } else {
       mVideoView.setVisibility(View.GONE);
@@ -188,16 +188,16 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       audioBannerView.setVisibility(View.VISIBLE);
       audioBannerView.animate().alpha(1f).setDuration(500).start();
 
-      audioPlayer = new MediaPlayer();
+      mediaPlayer = new MediaPlayer();
       try {
-        audioPlayer.setDataSource(videoURI.toString());
-        audioPlayer.setOnPreparedListener(mp -> {
+        mediaPlayer.setDataSource(videoURI.toString());
+        mediaPlayer.setOnPreparedListener(mp -> {
           mediaPrepared();
         });
-        audioPlayer.setOnCompletionListener(mp -> mediaCompleted());
-        audioPlayer.setOnErrorListener(this::onFailToLoadMedia);
+        mediaPlayer.setOnCompletionListener(mp -> mediaCompleted());
+        mediaPlayer.setOnErrorListener(this::onFailToLoadMedia);
 
-        audioPlayer.prepareAsync(); // use prepareAsync to avoid blocking the main thread
+        mediaPlayer.prepareAsync(); // use prepareAsync to avoid blocking the main thread
       } catch (IOException e) {
         e.printStackTrace();
         mediaFailed();
@@ -244,7 +244,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void mediaPrepared() {
-    mDuration = isVideoType ? mVideoView.getDuration() : audioPlayer.getDuration();
+    mDuration = mediaPlayer.getDuration();
     mMaxDuration = Math.min(mMaxDuration, mDuration);
 
     if (isVideoType) {
@@ -332,46 +332,23 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void playOrPause() {
-    if (isVideoType) {
-      if (mVideoView.isPlaying()) {
-        onMediaPause();
-      } else {
-        // if current video time >= end time, seek to start time
-        if (mVideoView.getCurrentPosition() >= endTime) {
-          seekTo(startTime, true);
-        }
-        mVideoView.start();
-        startTimingRunnable();
-      }
-      setPlayPauseViewIcon(mVideoView.isPlaying());
-
+    if (mediaPlayer.isPlaying()) {
+      onMediaPause();
     } else {
-      if (audioPlayer.isPlaying()) {
-        onMediaPause();
-      } else {
-        if (audioPlayer.getCurrentPosition() >= endTime) {
-          seekTo(startTime, true);
-        }
-        audioPlayer.start();
-        startTimingRunnable();
+      if (mediaPlayer.getCurrentPosition() >= endTime) {
+        seekTo(startTime, true);
       }
-      setPlayPauseViewIcon(audioPlayer.isPlaying());
+      mediaPlayer.start();
+      startTimingRunnable();
     }
+    setPlayPauseViewIcon(mediaPlayer.isPlaying());
   }
 
   public void onMediaPause() {
-    if (isVideoType) {
-      if (mVideoView.isPlaying()) {
-        mTimingHandler.removeCallbacks(mTimingRunnable);
-        mVideoView.pause();
-        setPlayPauseViewIcon(false);
-      }
-    } else {
-      if (audioPlayer.isPlaying()) {
-        mTimingHandler.removeCallbacks(mTimingRunnable);
-        audioPlayer.pause();
-        setPlayPauseViewIcon(false);
-      }
+    if (mediaPlayer.isPlaying()) {
+      mTimingHandler.removeCallbacks(mTimingRunnable);
+      mediaPlayer.pause();
+      setPlayPauseViewIcon(false);
     }
   }
 
@@ -407,14 +384,10 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void seekTo(long msec, boolean needUpdateProgress) {
-    if (isVideoType) {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        videoPlayer.seekTo((int) msec, MediaPlayer.SEEK_CLOSEST);
-      } else {
-        mVideoView.seekTo((int) msec);
-      }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      mediaPlayer.seekTo((int) msec, MediaPlayer.SEEK_CLOSEST);
     } else {
-      audioPlayer.seekTo((int) msec);
+      mediaPlayer.seekTo((int) msec);
     }
 
     updateCurrentTime(needUpdateProgress);
@@ -447,9 +420,15 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       e.printStackTrace();
     }
 
-    if (audioPlayer != null) {
-      audioPlayer.stop();
-      audioPlayer.release();
+    try {
+      if (mediaPlayer != null) {
+        mediaPlayer.stop();
+        mediaPlayer.release();
+      }
+    } catch (IllegalStateException e) {
+      // if it's video, resource is released with the view, and here we also call .release which will throw exception
+      e.printStackTrace();
+      Log.d(TAG, "onDestroy mediaPlayer is already released");
     }
   }
 
@@ -542,12 +521,20 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     mTimingRunnable = new Runnable() {
       @Override
       public void run() {
-        int currentPosition;
-        if (isVideoType) {
-          currentPosition = mVideoView.getCurrentPosition();
-        } else {
-          currentPosition = audioPlayer.getCurrentPosition();
+        // prevent crashing when video is playing and we close editor
+        try {
+          if (mediaPlayer == null || !mediaPlayer.isPlaying()) {
+            mTimingHandler.removeCallbacks(mTimingRunnable);
+            return;
+          }
+        } catch (IllegalStateException e) {
+          e.printStackTrace();
+          mTimingHandler.removeCallbacks(mTimingRunnable);
+          Log.d(TAG, "startTimingRunnable mediaPlayer is already released");
+          return;
         }
+
+        int currentPosition = mediaPlayer.getCurrentPosition();
 
         if (currentPosition >= endTime) {
           onMediaPause();
@@ -562,15 +549,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void updateCurrentTime(boolean needUpdateProgress) {
-    // TODO: check the case after drag the progress indicator and hit play, it'll play a little bit earlier than the progress indicator
-
-    int currentPosition;
-    if (isVideoType) {
-      currentPosition = mVideoView.getCurrentPosition();
-    } else {
-      currentPosition = audioPlayer.getCurrentPosition();
-    }
-
+    int currentPosition = mediaPlayer.getCurrentPosition();
     int duration = mDuration;
 
     if (currentPosition >= duration - 100) {
