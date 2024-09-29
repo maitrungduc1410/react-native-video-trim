@@ -327,8 +327,10 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void mediaCompleted() {
-    setPlayPauseViewIcon(false);
-    mTimingHandler.removeCallbacks(mTimingRunnable);
+    onMediaPause();
+
+    // when mediaCompleted is called,  the endTime may not be exactly at the end of the video (can be slightly before), therefore we should seek to exact position on ended
+    seekTo(endTime, true);
   }
 
   private void playOrPause() {
@@ -345,11 +347,9 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   public void onMediaPause() {
-    if (mediaPlayer.isPlaying()) {
-      mTimingHandler.removeCallbacks(mTimingRunnable);
-      mediaPlayer.pause();
-      setPlayPauseViewIcon(false);
-    }
+    mTimingHandler.removeCallbacks(mTimingRunnable);
+    mediaPlayer.pause();
+    setPlayPauseViewIcon(false);
   }
 
   public void setOnTrimVideoListener(VideoTrimListener onTrimVideoListener) {
@@ -521,27 +521,13 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     mTimingRunnable = new Runnable() {
       @Override
       public void run() {
-        // prevent crashing when video is playing and we close editor
         try {
-          if (mediaPlayer == null || !mediaPlayer.isPlaying()) {
-            mTimingHandler.removeCallbacks(mTimingRunnable);
-            return;
-          }
+          updateCurrentTime(true);
+          mTimingHandler.postDelayed(this, TIMING_UPDATE_INTERVAL);
         } catch (IllegalStateException e) {
           e.printStackTrace();
           mTimingHandler.removeCallbacks(mTimingRunnable);
-          Log.d(TAG, "startTimingRunnable mediaPlayer is already released");
-          return;
-        }
-
-        int currentPosition = mediaPlayer.getCurrentPosition();
-
-        if (currentPosition >= endTime) {
-          onMediaPause();
-          seekTo(endTime, true); // Ensure exact end time display
-        } else {
-          updateCurrentTime(true);
-          mTimingHandler.postDelayed(this, TIMING_UPDATE_INTERVAL);
+          // this is to catch the error thrown if we close editor while playing (mediaPlayer is released)
         }
       }
     };
