@@ -53,5 +53,7 @@
 	<false/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Need access to select image</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>App needs access to your Photo Library to save videos.</string>
 </dict>
 </plist>

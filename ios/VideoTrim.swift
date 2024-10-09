@@ -121,7 +121,9 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
         }
         
         let destPath = URL(string: uri)
-        guard let destPath = destPath else { return }
+        let newPath = renameFile(at: destPath!, newName: "beforeTrim")
+      
+        guard let destPath = newPath else { return }
         
         DispatchQueue.main.async {
             self.vc = VideoTrimmerViewController()
@@ -509,7 +511,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     
     func assetLoader(_ loader: AssetLoader, didFailWithError error: any Error, forKey key: String) {
         let message = "Failed to load \(key): \(error.localizedDescription)"
-        print(message)
+        print("Failed to load \(key)", message)
         
         self.onError(message: message, code: .failToLoadMedia)
         vc?.onAssetFailToLoad()
@@ -698,4 +700,38 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
             }
         }
     }
+  
+  private func renameFile(at url: URL, newName: String) -> URL? {
+    let fileManager = FileManager.default
+    
+    // Get the directory of the existing file
+    let directory = url.deletingLastPathComponent()
+    
+    // Get the file extension
+    let fileExtension = url.pathExtension
+    
+    // Create the new file URL with the new name and the same extension
+    let newFileURL = directory.appendingPathComponent(newName).appendingPathExtension(fileExtension)
+    
+    // Check if a file with the new name already exists
+    if fileManager.fileExists(atPath: newFileURL.path) {
+      do {
+        // If the file exists, remove it first to avoid conflicts
+        try fileManager.removeItem(at: newFileURL)
+      } catch {
+        print("Error removing existing file: \(error)")
+        return nil
+      }
+    }
+    
+    do {
+      // Rename (move) the file
+      try fileManager.moveItem(at: url, to: newFileURL)
+      print("File renamed successfully to \(newFileURL.absoluteString)")
+      return newFileURL
+    } catch {
+      print("Error renaming file: \(error)")
+      return nil
+    }
+  }
 }

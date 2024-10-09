@@ -9,7 +9,7 @@ PODS:
     - React-Core (= 0.72.3)
     - React-jsi (= 0.72.3)
     - ReactCommon/turbomodule/core (= 0.72.3)
-  - ffmpeg-kit-ios-https (6.0)
+  - ffmpeg-kit-ios-min (6.0)
   - fmt (6.2.1)
   - glog (0.3.5)
   - hermes-engine (0.72.3):
@@ -319,8 +319,8 @@ PODS:
   - react-native-image-picker (7.1.2):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
-  - react-native-video-trim (2.1.0):
-    - ffmpeg-kit-ios-https (~> 6.0)
+  - react-native-video-trim (2.2.6):
+    - ffmpeg-kit-ios-min (~> 6.0)
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
   - React-NativeModulesApple (0.72.3):
@@ -483,7 +483,7 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
-    - ffmpeg-kit-ios-https
+    - ffmpeg-kit-ios-min
     - fmt
     - libevent
     - SocketRocket
@@ -578,7 +578,7 @@ SPEC CHECKSUMS:
   DoubleConversion: 5189b271737e1565bdce30deb4a08d647e3f5f54
   FBLazyVector: 4cce221dd782d3ff7c4172167bba09d58af67ccb
   FBReactNativeSpec: c6bd9e179757b3c0ecf815864fae8032377903ef
-  ffmpeg-kit-ios-https: f9c838aa5400a6c5ba12324c6b798f52197ba354
+  ffmpeg-kit-ios-min: 4e9a088f4ee9629435960b9d68e54848975f1931
   fmt: ff9d55029c625d3757ed641535fd4a75fedc7ce9
   glog: 04b94705f318337d7ead9e6d17c019bd9b1f6b1b
   hermes-engine: 10fbd3f62405c41ea07e71973ea61e1878d07322
@@ -599,7 +599,7 @@ SPEC CHECKSUMS:
   React-jsinspector: b511447170f561157547bc0bef3f169663860be7
   React-logger: c5b527272d5f22eaa09bb3c3a690fee8f237ae95
   react-native-image-picker: 51fdb07f7ef722988c8a219e1416153760a25e4d
-  react-native-video-trim: 31b20304981bbbfda10dba6d03f3cff0a14d5b15
+  react-native-video-trim: 3a038cc884b652cb3525699e20f734a15d7959ce
   React-NativeModulesApple: c57f3efe0df288a6532b726ad2d0322a9bf38472
   React-perflogger: 6bd153e776e6beed54c56b0847e1220a3ff92ba5
   React-RCTActionSheet: c0b62af44e610e69d9a2049a682f5dba4e9dff17
