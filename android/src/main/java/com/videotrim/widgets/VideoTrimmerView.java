@@ -522,8 +522,15 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       @Override
       public void run() {
         try {
-          updateCurrentTime(true);
-          mTimingHandler.postDelayed(this, TIMING_UPDATE_INTERVAL);
+          int currentPosition = mediaPlayer.getCurrentPosition();
+
+          if (currentPosition >= endTime) {
+            onMediaPause();
+            seekTo(endTime, true); // Ensure exact end time display
+          } else {
+            updateCurrentTime(true);
+            mTimingHandler.postDelayed(this, TIMING_UPDATE_INTERVAL);
+          }
         } catch (IllegalStateException e) {
           e.printStackTrace();
           mTimingHandler.removeCallbacks(mTimingRunnable);
