@@ -266,8 +266,6 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       VideoTrimmerUtil.MAX_COUNT_RANGE = Math.max((VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.mThumbWidth), VideoTrimmerUtil.MAX_COUNT_RANGE);
 
       startShootVideoThumbs(mContext, VideoTrimmerUtil.MAX_COUNT_RANGE, 0, mDuration);
-    } else {
-
     }
 
     // Set initial handle positions if mMaxDuration < video duration
@@ -348,7 +346,9 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   public void onMediaPause() {
     mTimingHandler.removeCallbacks(mTimingRunnable);
-    mediaPlayer.pause();
+    if (mediaPlayer.isPlaying()) {
+      mediaPlayer.pause();
+    }
     setPlayPauseViewIcon(false);
   }
 
