@@ -477,11 +477,18 @@ buildscript {
 ```
 
 # Naming conflict with `ffmpeg-kit-react-native`
-This issue is due to this package and `ffmpeg-kit-react-native` share FFMPEG Kit under the hood. To fix it we need to synchronize the FFMPEG Kit version of the 2 packages.
+This issue is due to this package and `ffmpeg-kit-react-native` have same ffmpegkit class name under the hood:
 
-First find out exactly FFMPEG Kit version that `ffmpeg-kit-react-native` is using. By default (if you don't change), the ffmpeg package is `https` ([check here](https://github.com/arthenica/ffmpeg-kit/blob/main/react-native/ffmpeg-kit-react-native.podspec#L19)) and version is `version` in [package.json](https://github.com/arthenica/ffmpeg-kit/blob/main/react-native/package.json#L3)
+<img src="images/error_conflict_name.png"/>
 
-When you know the package name + version, simply follow the section [Customize FFMPEG version](#customize-ffmpeg-version) in this doc
+To fix it we need to synchronize the FFMPEG Kit version of the 2 packages. For example: as shown in the image above, `ffmpeg-kit-react-native` uses `https`, version `6.0`, hence we need to run this:
+```
+FFMPEGKIT_PACKAGE=https FFMPEG_KIT_PACKAGE_VERSION=6.0 pod install
+```
+
+Another way to find out exactly FFMPEG Kit version that `ffmpeg-kit-react-native` using is to ([check here for package name](https://github.com/arthenica/ffmpeg-kit/blob/main/react-native/ffmpeg-kit-react-native.podspec#L19)) and package version is `version` in [package.json](https://github.com/arthenica/ffmpeg-kit/blob/main/react-native/package.json#L3)
+
+When you know the package name + version, simply run `pod install` with `FFMPEGKIT_PACKAGE` and `FFMPEG_KIT_PACKAGE_VERSION` like above
 
 # Thanks
 - Android part is created by modified + fix bugs from: https://github.com/iknow4/Android-Video-Trimmer
