@@ -118,15 +118,16 @@ export default function App() {
             isValidFile(url).then((res) => console.log('1isValidVideo:', res));
             isValidFile(url1).then((res) => console.log('2isValidVideo:', res));
             isValidFile(url2).then((res) => console.log('3isValidVideo:', res));
-            const url3 =
-              'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
+            // const url3 =
+            //   'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
             showEditor(result.assets![0]?.uri || '', {
               // showEditor(url3, {
               //   type: 'audio',
               // outputExt: 'wav',
               // maxDuration: 20,
               // closeWhenFinish: false,
-              minDuration: 10,
+              minDuration: 5,
+              maxDuration: 15,
               fullScreenModalIOS: true,
               saveToPhoto: true,
               removeAfterSavedToPhoto: true,

@@ -640,6 +640,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private void setHandleTouchListener(View handle, boolean isLeading) {
     handle.setOnTouchListener((view, event) -> {
+      boolean draggingDisabled = mDuration < mMinDuration; // if the video is shorter than the minimum duration, disable dragging
       switch (event.getAction()) {
         case MotionEvent.ACTION_DOWN:
           currentSelectedhandle = handle;
@@ -650,6 +651,10 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
           playHapticFeedback(true);
           break;
         case MotionEvent.ACTION_MOVE:
+          if (draggingDisabled) {
+            return false;
+          }
+
           boolean didClamp = false;
           float newX = event.getRawX() - ((float) view.getWidth() / 2);
           if (isLeading) {
