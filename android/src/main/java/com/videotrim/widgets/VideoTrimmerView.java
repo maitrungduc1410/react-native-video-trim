@@ -258,7 +258,9 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       Bitmap bitmap = mediaMetadataRetriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
 
       if (bitmap != null) {
-        VideoTrimmerUtil.mThumbWidth = VideoTrimmerUtil.THUMB_HEIGHT * bitmap.getWidth() / bitmap.getHeight();
+        int bitmapHeight = bitmap.getHeight() > 0 ? bitmap.getHeight() : VideoTrimmerUtil.THUMB_HEIGHT;
+        int bitmapWidth = bitmap.getWidth() > 0 ? bitmap.getWidth() : VideoTrimmerUtil.THUMB_WIDTH;
+        VideoTrimmerUtil.mThumbWidth = VideoTrimmerUtil.THUMB_HEIGHT * bitmapWidth / bitmapHeight;
       }
 
       VideoTrimmerUtil.SCREEN_WIDTH_FULL = this.getScreenWidthInPortraitMode();

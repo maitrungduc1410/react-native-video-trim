@@ -37,6 +37,7 @@ public class VideoTrimmerUtil {
 //  public static final int THUMB_WIDTH = (SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2) / VIDEO_MAX_TIME;
   public static int mThumbWidth = 0; // make it automatic
   public static final int THUMB_HEIGHT = UnitConverter.dpToPx(50); // x2 for better resolution
+  public static final int THUMB_WIDTH = UnitConverter.dpToPx(25); // x2 for better resolution
   private static final int THUMB_RESOLUTION_RES = 2; // double thumb resolution for better quality
 
   public static FFmpegSession trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
