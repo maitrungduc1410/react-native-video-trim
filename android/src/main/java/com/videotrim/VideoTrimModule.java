@@ -99,6 +99,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private boolean openShareSheetOnFinish = false;
   private boolean isVideoType = true;
   private boolean closeWhenFinish = true;
+  private float progressUpdateInterval = 0.1f;
 
   private static final int REQUEST_CODE_SAVE_FILE = 1;
 
@@ -194,6 +195,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     isVideoType = !config.hasKey("type") || !Objects.equals(config.getString("type"), "audio");
 
     closeWhenFinish = !config.hasKey("closeWhenFinish") || config.getBoolean("closeWhenFinish");
+    progressUpdateInterval = config.hasKey("progressUpdateInterval") ? (float) config.getDouble("progressUpdateInterval") : 0.1f;
 
     Activity activity = getReactApplicationContext().getCurrentActivity();
 
@@ -373,11 +375,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   }
 
   @Override
-  public void onLog(WritableMap log) {
-    sendEvent(getReactApplicationContext(), "onLog", log);
-  }
-
-  @Override
   public void onStatistics(WritableMap statistics) {
     sendEvent(getReactApplicationContext(), "onStatistics", statistics);
   }
@@ -468,7 +465,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
 
     mProgressDialog.setOnShowListener(dialog -> {
       sendEvent(getReactApplicationContext(), "onStartTrimming", null);
-      trimmerView.onSaveClicked();
+      trimmerView.onSaveClicked(progressUpdateInterval);
     });
 
     mProgressDialog.show();

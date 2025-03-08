@@ -243,6 +243,11 @@ export interface EditorConfig {
    * @default "Close"
    */
   alertOnFailCloseText?: string;
+  /**
+   * Progress update interval in seconds
+   * @default 0.1
+   */
+  progressUpdateInterval?: number;
 }
 
 /**

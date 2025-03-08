@@ -109,15 +109,15 @@ export default function App() {
 
             console.log(result, 1111);
 
-            const url =
-              'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+            // const url =
+            //   'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
-            const url1 =
-              'https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav';
-            const url2 = 'https://example.com';
-            isValidFile(url).then((res) => console.log('1isValidVideo:', res));
-            isValidFile(url1).then((res) => console.log('2isValidVideo:', res));
-            isValidFile(url2).then((res) => console.log('3isValidVideo:', res));
+            // const url1 =
+            //   'https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav';
+            // const url2 = 'https://example.com';
+            // isValidFile(url).then((res) => console.log('1isValidVideo:', res));
+            // isValidFile(url1).then((res) => console.log('2isValidVideo:', res));
+            // isValidFile(url2).then((res) => console.log('3isValidVideo:', res));
             // const url3 =
             //   'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
             showEditor(result.assets![0]?.uri || '', {
@@ -137,6 +137,7 @@ export default function App() {
               // headerText: 'Bunny.wav',
               headerTextSize: 20,
               headerTextColor: '#FF0000',
+              progressUpdateInterval: 0.01,
               // openDocumentsOnFinish: true,
               // removeAfterSavedToDocuments: true,
               // openShareSheetOnFinish: true,

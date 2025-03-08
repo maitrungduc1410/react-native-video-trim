@@ -32,7 +32,6 @@ import android.widget.VideoView;
 
 import androidx.appcompat.app.AlertDialog;
 
-import com.arthenica.ffmpegkit.FFmpegSession;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
 import com.videotrim.R;
@@ -109,7 +108,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private long jumpToPositionOnLoad = 0;
   private FrameLayout headerView;
   private TextView headerText;
-  private FFmpegSession ffmpegSession;
+  private VideoTrimmerUtil.TrimSession trimSession;
   private boolean alertOnFailToLoad = true;
   private String alertOnFailTitle = "Error";
   private String alertOnFailMessage = "Fail to load media. Possibly invalid file or no network connection";
@@ -366,20 +365,22 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     setHandleTouchListener(trailingHandle, false);
   }
 
-  public void onSaveClicked() {
+  public void onSaveClicked(float progressUpdateInterval) {
     onMediaPause();
-    ffmpegSession = VideoTrimmerUtil.trim(
+    trimSession = VideoTrimmerUtil.trim(
       mSourceUri.toString(),
       StorageUtil.getOutputPath(mContext, mOutputExt),
       mDuration,
       startTime,
       endTime,
-      mOnTrimVideoListener);
+      mOnTrimVideoListener,
+      progressUpdateInterval
+    );
   }
 
   public void onCancelTrimClicked() {
-    if (ffmpegSession != null) {
-      ffmpegSession.cancel();
+    if (trimSession != null) {
+      trimSession.cancel();
     } else {
       mOnTrimVideoListener.onCancelTrim();
     }

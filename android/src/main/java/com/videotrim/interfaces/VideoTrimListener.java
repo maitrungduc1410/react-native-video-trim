@@ -11,6 +11,5 @@ public interface VideoTrimListener {
   void onError(String errorMessage, ErrorCode errorCode);
   void onCancel();
   void onSave();
-  void onLog(WritableMap log);
   void onStatistics(WritableMap statistics);
 }
