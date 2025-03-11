@@ -69,7 +69,7 @@ public class VideoTrimmerUtil {
     }
   }
 
-  public static TrimSession trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback, float progressUpdateInterval) {
+  public static TrimSession trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback, float progressUpdateInterval, MediaMetadataRetriever retriever) {
     // Format creation time
     @SuppressLint("SimpleDateFormat") SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
     dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -83,6 +83,12 @@ public class VideoTrimmerUtil {
       TrimSession session = new TrimSession(Thread.currentThread());
 
       try {
+        // Get rotation metadata from input file
+        retriever.setDataSource(inputFile);
+        String rotationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+        int rotation = rotationStr != null ? Integer.parseInt(rotationStr) : 0;
+        retriever.release();
+
         extractor = new MediaExtractor();
         extractor.setDataSource(inputFile);
 
@@ -99,6 +105,9 @@ public class VideoTrimmerUtil {
           tracksAdded[i] = false;
           extractor.selectTrack(i);
         }
+
+        // Set rotation metadata on muxer
+        muxer.setOrientationHint(rotation);
 
         // Seek to start time
         long startUs = startMs * 1000; // Convert ms to μs
