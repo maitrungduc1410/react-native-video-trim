@@ -374,8 +374,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       startTime,
       endTime,
       mOnTrimVideoListener,
-      progressUpdateInterval,
-      mediaMetadataRetriever
+      progressUpdateInterval
     );
   }
 

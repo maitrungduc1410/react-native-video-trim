@@ -69,7 +69,7 @@ public class VideoTrimmerUtil {
     }
   }
 
-  public static TrimSession trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback, float progressUpdateInterval, MediaMetadataRetriever retriever) {
+  public static TrimSession trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback, float progressUpdateInterval) {
     // Format creation time
     @SuppressLint("SimpleDateFormat") SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
     dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -84,10 +84,16 @@ public class VideoTrimmerUtil {
 
       try {
         // Get rotation metadata from input file
-        retriever.setDataSource(inputFile);
-        String rotationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
-        int rotation = rotationStr != null ? Integer.parseInt(rotationStr) : 0;
-        retriever.release();
+        MediaMetadataRetriever retriever = MediaMetadataUtil.getMediaMetadataRetriever(inputFile);
+
+        int rotation = 0;
+        if (retriever != null) {
+          retriever.setDataSource(inputFile);
+          String rotationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+          rotation = rotationStr != null ? Integer.parseInt(rotationStr) : 0;
+          retriever.release();
+        }
+
 
         extractor = new MediaExtractor();
         extractor.setDataSource(inputFile);
