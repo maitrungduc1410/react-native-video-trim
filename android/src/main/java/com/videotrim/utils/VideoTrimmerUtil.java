@@ -1,7 +1,5 @@
 package com.videotrim.utils;
 
-import android.annotation.SuppressLint;
-import android.content.Context;
 import android.graphics.Bitmap;
 import android.media.MediaCodec;
 import android.media.MediaMetadataRetriever;
@@ -9,21 +7,13 @@ import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.WritableMap;
 import com.videotrim.enums.ErrorCode;
 import com.videotrim.interfaces.VideoTrimListener;
-
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.TimeZone;
-
 import iknow.android.utils.DeviceUtil;
 import iknow.android.utils.UnitConverter;
 import iknow.android.utils.callback.SingleCallback;
 import iknow.android.utils.thread.BackgroundExecutor;
-
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
-import android.os.Handler;
-import android.os.Looper;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
@@ -64,36 +54,25 @@ public class VideoTrimmerUtil {
       }
     }
 
-    public boolean isCancelled() {
+    public boolean isActive() {
       return !isCancelled;
     }
   }
 
   public static TrimSession trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback, float progressUpdateInterval) {
-    // Format creation time
-    @SuppressLint("SimpleDateFormat") SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
-    dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-    String formattedDateTime = dateFormat.format(new Date());
-
     // Start trimming in a background thread
     Thread trimThread = new Thread(() -> {
       MediaExtractor extractor = null;
       MediaMuxer muxer = null;
-//      Handler mainHandler = new Handler(Looper.getMainLooper());
       TrimSession session = new TrimSession(Thread.currentThread());
 
       try {
         // Get rotation metadata from input file
-        MediaMetadataRetriever retriever = MediaMetadataUtil.getMediaMetadataRetriever(inputFile);
-
-        int rotation = 0;
-        if (retriever != null) {
-          retriever.setDataSource(inputFile);
-          String rotationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
-          rotation = rotationStr != null ? Integer.parseInt(rotationStr) : 0;
-          retriever.release();
-        }
-
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        retriever.setDataSource(inputFile);
+        String rotationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+        int rotation = rotationStr != null ? Integer.parseInt(rotationStr) : 0;
+        retriever.release();
 
         extractor = new MediaExtractor();
         extractor.setDataSource(inputFile);
@@ -103,10 +82,22 @@ public class VideoTrimmerUtil {
         int[] trackIndices = new int[trackCount];
         long[] trackStartTimes = new long[trackCount];
         boolean[] tracksAdded = new boolean[trackCount];
+        int videoTrackIndex = -1;
 
-        // Select tracks and add to muxer
+        // Calculate trimmed duration
+        long startUs = startMs * 1000; // e.g., 5s = 5000000us
+        long endUs = endMs * 1000;     // e.g., 9s = 9000000us
+        long trimmedDurationUs = endUs - startUs; // e.g., 4s = 4000000us
+
+        // Add tracks with corrected duration
         for (int i = 0; i < trackCount; i++) {
           MediaFormat format = extractor.getTrackFormat(i);
+          String mime = format.getString(MediaFormat.KEY_MIME);
+          if (mime.startsWith("video/")) {
+            videoTrackIndex = i;
+          }
+          // Set the duration for each track to the trimmed duration
+          format.setLong(MediaFormat.KEY_DURATION, trimmedDurationUs);
           trackIndices[i] = muxer.addTrack(format);
           tracksAdded[i] = false;
           extractor.selectTrack(i);
@@ -116,16 +107,15 @@ public class VideoTrimmerUtil {
         muxer.setOrientationHint(rotation);
 
         // Seek to start time
-        long startUs = startMs * 1000; // Convert ms to μs
-        long endUs = endMs * 1000;
         extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
 
         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
         MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
         long lastProgressTime = System.currentTimeMillis();
+        boolean videoSampleWritten = false;
 
         muxer.start();
-        while (session.isCancelled()) {
+        while (session.isActive()) {
           bufferInfo.size = extractor.readSampleData(buffer, 0);
           if (bufferInfo.size < 0) break; // EOS
 
@@ -133,7 +123,6 @@ public class VideoTrimmerUtil {
           if (sampleTime > endUs) break;
 
           bufferInfo.presentationTimeUs = sampleTime;
-          // Map MediaExtractor flags to MediaCodec flags
           int extractorFlags = extractor.getSampleFlags();
           bufferInfo.flags = (extractorFlags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
           int trackIndex = extractor.getSampleTrackIndex();
@@ -144,10 +133,18 @@ public class VideoTrimmerUtil {
           }
           bufferInfo.presentationTimeUs -= trackStartTimes[trackIndex]; // Adjust time to start at 0
 
+          // Ensure presentation time doesn't exceed trimmed duration
+          if (bufferInfo.presentationTimeUs >= trimmedDurationUs) {
+            extractor.advance();
+            continue;
+          }
+
+          if (trackIndex == videoTrackIndex) {
+            videoSampleWritten = true;
+          }
           muxer.writeSampleData(trackIndices[trackIndex], buffer, bufferInfo);
           extractor.advance();
 
-          // Progress update (every progressUpdateInterval * 1000 ms)
           long currentTime = System.currentTimeMillis();
           if (currentTime - lastProgressTime >= progressUpdateInterval * 1000) {
             double progress = (double)(sampleTime - startUs) / (endUs - startUs);
@@ -158,46 +155,44 @@ public class VideoTrimmerUtil {
 
               callback.onStatistics(statsMap);
               callback.onTrimmingProgress((int)(progress * 100));
-
-//              mainHandler.post(() -> callback.onStatistics(statsMap));
-//              mainHandler.post(() -> callback.onTrimmingProgress((int)(progress * 100)));
-
             }
             lastProgressTime = currentTime;
           }
         }
 
-        if (session.isCancelled()) {
+        // For static videos: ensure one video frame if none written
+        if (!videoSampleWritten && videoTrackIndex != -1) {
+          for (int i = 0; i < trackCount; i++) {
+            if (i != videoTrackIndex) {
+              extractor.unselectTrack(i);
+            }
+          }
+          extractor.selectTrack(videoTrackIndex);
+          extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+          bufferInfo.size = extractor.readSampleData(buffer, 0);
+          if (bufferInfo.size >= 0) {
+            bufferInfo.presentationTimeUs = 0;
+            // Map MediaExtractor flags to MediaCodec flags
+            int extractorFlags = extractor.getSampleFlags();
+            bufferInfo.flags = (extractorFlags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : 0;
+            muxer.writeSampleData(trackIndices[videoTrackIndex], buffer, bufferInfo);
+          }
+        }
+
+        if (session.isActive()) {
           muxer.stop();
-
-          // Update creation_time via MediaStore
-//          android.content.ContentResolver contentResolver = context.getContentResolver();
-//          android.net.Uri uri = android.provider.MediaStore.Files.getContentUri("external");
-//          android.content.ContentValues values = new android.content.ContentValues();
-//          values.put(android.provider.MediaStore.MediaColumns.DATA, outputFile);
-//          values.put(android.provider.MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000);
-//          values.put(android.provider.MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000);
-//          values.put(android.provider.MediaStore.MediaColumns.DATE_TAKEN, System.currentTimeMillis());
-//          contentResolver.insert(uri, values);
-//          android.content.ContentValues updateValues = new android.content.ContentValues();
-//          updateValues.put(android.provider.MediaStore.MediaColumns.DATE_TAKEN, System.currentTimeMillis());
-//          contentResolver.update(uri, updateValues, android.provider.MediaStore.MediaColumns.DATA + "=?", new String[]{outputFile});
-
-//          mainHandler.post(() -> callback.onFinishTrim(outputFile, startMs, endMs, videoDuration));
           callback.onFinishTrim(outputFile, startMs, endMs, videoDuration);
         } else {
-//          mainHandler.post(callback::onCancelTrim);
           callback.onCancelTrim();
         }
 
       } catch (IOException e) {
         e.printStackTrace();
-//        mainHandler.post(() -> callback.onError("Trimming failed: " + e.getMessage(), ErrorCode.TRIMMING_FAILED));
         callback.onError("Trimming failed: " + e.getMessage(), ErrorCode.TRIMMING_FAILED);
       } finally {
         try {
-          if (muxer != null) {
-            if (session.isCancelled()) muxer.release();
+          if (muxer != null && session.isActive()) {
+            muxer.release();
           }
           if (extractor != null) extractor.release();
         } catch (Exception e) {
