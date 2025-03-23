@@ -89,11 +89,34 @@ public class VideoTrimmerUtil {
         long endUs = endMs * 1000;     // e.g., 9s = 9000000us
         long trimmedDurationUs = endUs - startUs; // e.g., 4s = 4000000us
 
+        // Determine max buffer size from video format and resolution
+        int maxBufferSize = BUFFER_SIZE; // Default 1MB
+        String widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+        String heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+        int width = widthStr != null ? Integer.parseInt(widthStr) : 0; // Default to unknown
+        int height = heightStr != null ? Integer.parseInt(heightStr) : 0;
+
+        // Adjust buffer size based on resolution
+        if (width > 3840 || height > 2160) { // 8K+
+          maxBufferSize = 16 * 1024 * 1024; // 16MB for 8K
+        } else if (width > 1920 || height > 1080) { // 4K
+          maxBufferSize = 8 * 1024 * 1024; // 8MB for 4K
+        } else if (width > 1280 || height > 720) { // 1080p
+          maxBufferSize = 4 * 1024 * 1024; // 4MB for 1080p
+        } // 720p or lower (or unknown resolution) sticks with BUFFER_SIZE (1MB)
+
         // Add tracks with corrected duration
         for (int i = 0; i < trackCount; i++) {
           MediaFormat format = extractor.getTrackFormat(i);
+
+          // Override with KEY_MAX_INPUT_SIZE if available
+          if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+            int maxInputSize = format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+            maxBufferSize = Math.max(maxBufferSize, maxInputSize);
+          }
+
           String mime = format.getString(MediaFormat.KEY_MIME);
-          if (mime.startsWith("video/")) {
+          if (mime != null && mime.startsWith("video/")) {
             videoTrackIndex = i;
           }
           // Set the duration for each track to the trimmed duration
@@ -109,7 +132,7 @@ public class VideoTrimmerUtil {
         // Seek to start time
         extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
 
-        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
+        ByteBuffer buffer = ByteBuffer.allocate(maxBufferSize);
         MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
         long lastProgressTime = System.currentTimeMillis();
         boolean videoSampleWritten = false;
