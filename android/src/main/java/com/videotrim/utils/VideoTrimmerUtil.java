@@ -72,7 +72,7 @@ public class VideoTrimmerUtil {
         retriever.setDataSource(inputFile);
         String rotationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
         int rotation = rotationStr != null ? Integer.parseInt(rotationStr) : 0;
-        retriever.release();
+
 
         extractor = new MediaExtractor();
         extractor.setDataSource(inputFile);
@@ -95,6 +95,9 @@ public class VideoTrimmerUtil {
         String heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
         int width = widthStr != null ? Integer.parseInt(widthStr) : 0; // Default to unknown
         int height = heightStr != null ? Integer.parseInt(heightStr) : 0;
+
+        // IMPORTANT: after this line, the retriever is no longer needed
+        retriever.release();
 
         // Adjust buffer size based on resolution
         if (width > 3840 || height > 2160) { // 8K+
