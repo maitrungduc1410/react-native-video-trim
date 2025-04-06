@@ -190,6 +190,11 @@ export interface EditorConfig {
    */
   enableCancelTrimmingDialog?: boolean;
   /**
+   * Whether to hide Cancel button on trimming dialog
+   * @default false
+   */
+  hideCancelTrimmingButton?: boolean;
+  /**
    * Cancel trimming dialog title
    * @default "Warning!"
    */

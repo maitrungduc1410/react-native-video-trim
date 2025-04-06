@@ -39,6 +39,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
   private var closeWhenFinish = true
   private var enableCancelTrimming = true;
   private var cancelTrimmingButtonText = "Cancel";
+  private var hideCancelTrimmingButton = false;
   private var enableCancelTrimmingDialog = true;
   private var cancelTrimmingDialogTitle = "Warning!";
   private var cancelTrimmingDialogMessage = "Are you sure want to trimming?";
@@ -105,6 +106,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     closeWhenFinish = config["closeWhenFinish"] as? Bool ?? true
     enableCancelTrimming = config["enableCancelTrimming"] as? Bool ?? true
     cancelTrimmingButtonText = config["cancelTrimmingButtonText"] as? String ?? "Cancel"
+    hideCancelTrimmingButton = config["hideCancelTrimmingButton"] as? Bool ?? false
     enableCancelTrimmingDialog = config["enableCancelTrimmingDialog"] as? Bool ?? true
     cancelTrimmingDialogTitle = config["cancelTrimmingDialogTitle"] as? String ?? "Warning!"
     cancelTrimmingDialogMessage = config["cancelTrimmingDialogMessage"] as? String ?? "Are you sure want to cancel trimming?"
@@ -125,9 +127,10 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     }
     
     let destPath = URL(string: uri)
-    let newPath = renameFile(at: destPath!, newName: "beforeTrim")
-    
-    guard let destPath = newPath else { return }
+    guard let destPath = destPath else {
+      self.onError(message: "File URL is invalid", code: .invalidFilePath)
+      return
+    }
     
     DispatchQueue.main.async {
       self.vc = VideoTrimmerViewController()
@@ -336,39 +339,46 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     
     emitEventToJS("onStartTrimming", eventData: nil)
     
-    let progressAlert = ProgressAlertController()
-    progressAlert.modalPresentationStyle = .overFullScreen
-    progressAlert.modalTransitionStyle = .crossDissolve
-    progressAlert.setTitle(trimmingText)
-    
+    var progressAlert: ProgressAlertController?
     if enableCancelTrimming {
-      progressAlert.setCancelTitle(cancelTrimmingButtonText)
-      progressAlert.showCancelBtn()
-      progressAlert.onDismiss = {
-        if self.enableCancelTrimmingDialog {
-          let dialogMessage = UIAlertController(title: self.cancelTrimmingDialogTitle, message: self.cancelTrimmingDialogMessage, preferredStyle: .alert)
-          dialogMessage.overrideUserInterfaceStyle = .dark
-          
-          let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive) { _ in
+      progressAlert = ProgressAlertController()
+      
+      guard let progressAlert = progressAlert else { return }
+      
+      progressAlert.modalPresentationStyle = .overFullScreen
+      progressAlert.modalTransitionStyle = .crossDissolve
+      progressAlert.setTitle(trimmingText)
+      
+      if !hideCancelTrimmingButton {
+        progressAlert.setCancelTitle(cancelTrimmingButtonText)
+        progressAlert.showCancelBtn()
+        
+        progressAlert.onDismiss = {
+          if self.enableCancelTrimmingDialog {
+            let dialogMessage = UIAlertController(title: self.cancelTrimmingDialogTitle, message: self.cancelTrimmingDialogMessage, preferredStyle: .alert)
+            dialogMessage.overrideUserInterfaceStyle = .dark
+            
+            let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive) { _ in
+              self.exportSession?.cancelExport()
+              progressAlert.dismiss(animated: true)
+            }
+            let cancel = UIAlertAction(title: self.cancelDialogCancelText, style: .cancel)
+            dialogMessage.addAction(ok)
+            dialogMessage.addAction(cancel)
+            
+            if let root = RCTPresentedViewController() {
+              root.present(dialogMessage, animated: true, completion: nil)
+            }
+          } else {
             self.exportSession?.cancelExport()
             progressAlert.dismiss(animated: true)
           }
-          let cancel = UIAlertAction(title: self.cancelDialogCancelText, style: .cancel)
-          dialogMessage.addAction(ok)
-          dialogMessage.addAction(cancel)
-          
-          if let root = RCTPresentedViewController() {
-            root.present(dialogMessage, animated: true, completion: nil)
-          }
-        } else {
-          self.exportSession?.cancelExport()
-          progressAlert.dismiss(animated: true)
         }
       }
-    }
-    
-    if let root = RCTPresentedViewController() {
-      root.present(progressAlert, animated: true, completion: nil)
+      
+      if let root = RCTPresentedViewController() {
+        root.present(progressAlert, animated: true, completion: nil)
+      }
     }
     
     // Setup AVAssetExportSession
@@ -379,7 +389,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     
     guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
       onError(message: "Failed to create export session", code: .trimmingFailed)
-      progressAlert.dismiss(animated: true)
+      progressAlert?.dismiss(animated: true)
       return
     }
     exportSession = session
@@ -424,7 +434,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     timer = Timer.scheduledTimer(withTimeInterval: progressUpdateInterval, repeats: true) { timer in
       let progress = manager.progress
       DispatchQueue.main.async {
-        progressAlert.setProgress(progress)
+        progressAlert?.setProgress(progress)
       }
       let statsPayload: [String: Any] = [
         "time": Int(Double(progress) * videoDuration * 1000),
@@ -440,7 +450,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
       self.timer = nil
       
       DispatchQueue.main.async {
-        progressAlert.dismiss(animated: true)
+        progressAlert?.dismiss(animated: true)
       }
       
       let finalProgress = manager.progress
@@ -700,39 +710,39 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     }
   }
   
-  private func renameFile(at url: URL, newName: String) -> URL? {
-    let fileManager = FileManager.default
-    
-    // Get the directory of the existing file
-    let directory = url.deletingLastPathComponent()
-    
-    // Get the file extension
-    let fileExtension = url.pathExtension
-    
-    // Create the new file URL with the new name and the same extension
-    let newFileURL = directory.appendingPathComponent(newName).appendingPathExtension(fileExtension)
-    
-    // Check if a file with the new name already exists
-    if fileManager.fileExists(atPath: newFileURL.path) {
-      do {
-        // If the file exists, remove it first to avoid conflicts
-        try fileManager.removeItem(at: newFileURL)
-      } catch {
-        print("Error removing existing file: \(error)")
-        return nil
-      }
-    }
-    
-    do {
-      // Rename (move) the file
-      try fileManager.moveItem(at: url, to: newFileURL)
-      print("File renamed successfully to \(newFileURL.absoluteString)")
-      return newFileURL
-    } catch {
-      print("Error renaming file: \(error)")
-      return nil
-    }
-  }
+//  private func renameFile(at url: URL, newName: String) -> URL? {
+//    let fileManager = FileManager.default
+//    
+//    // Get the directory of the existing file
+//    let directory = url.deletingLastPathComponent()
+//    
+//    // Get the file extension
+//    let fileExtension = url.pathExtension
+//    
+//    // Create the new file URL with the new name and the same extension
+//    let newFileURL = directory.appendingPathComponent(newName).appendingPathExtension(fileExtension)
+//    
+//    // Check if a file with the new name already exists
+//    if fileManager.fileExists(atPath: newFileURL.path) {
+//      do {
+//        // If the file exists, remove it first to avoid conflicts
+//        try fileManager.removeItem(at: newFileURL)
+//      } catch {
+//        print("Error removing existing file: \(error)")
+//        return nil
+//      }
+//    }
+//    
+//    do {
+//      // Rename (move) the file
+//      try fileManager.moveItem(at: url, to: newFileURL)
+//      print("File renamed successfully to \(newFileURL.absoluteString)")
+//      return newFileURL
+//    } catch {
+//      print("Error renaming file: \(error)")
+//      return nil
+//    }
+//  }
 }
 
 /// Helper class to manage export session state for legacy API without capturing in closures

@@ -13,4 +13,5 @@ enum ErrorCode: String {
     case failToSaveToPhoto = "FAIL_TO_SAVE_TO_PHOTO"
     case failToShare = "FAIL_TO_SHARE"
     case noPhotoPermission = "NO_PHOTO_PERMISSION"
+    case invalidFilePath = "INVALID_FILE_PATH"
 }
