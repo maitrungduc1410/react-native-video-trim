@@ -39,7 +39,6 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
   private var closeWhenFinish = true
   private var enableCancelTrimming = true;
   private var cancelTrimmingButtonText = "Cancel";
-  private var hideCancelTrimmingButton = false;
   private var enableCancelTrimmingDialog = true;
   private var cancelTrimmingDialogTitle = "Warning!";
   private var cancelTrimmingDialogMessage = "Are you sure want to trimming?";
@@ -106,7 +105,6 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     closeWhenFinish = config["closeWhenFinish"] as? Bool ?? true
     enableCancelTrimming = config["enableCancelTrimming"] as? Bool ?? true
     cancelTrimmingButtonText = config["cancelTrimmingButtonText"] as? String ?? "Cancel"
-    hideCancelTrimmingButton = config["hideCancelTrimmingButton"] as? Bool ?? false
     enableCancelTrimmingDialog = config["enableCancelTrimmingDialog"] as? Bool ?? true
     cancelTrimmingDialogTitle = config["cancelTrimmingDialogTitle"] as? String ?? "Warning!"
     cancelTrimmingDialogMessage = config["cancelTrimmingDialogMessage"] as? String ?? "Are you sure want to cancel trimming?"
@@ -339,46 +337,39 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     
     emitEventToJS("onStartTrimming", eventData: nil)
     
-    var progressAlert: ProgressAlertController?
+    let progressAlert = ProgressAlertController()
+    progressAlert.modalPresentationStyle = .overFullScreen
+    progressAlert.modalTransitionStyle = .crossDissolve
+    progressAlert.setTitle(trimmingText)
+    
     if enableCancelTrimming {
-      progressAlert = ProgressAlertController()
-      
-      guard let progressAlert = progressAlert else { return }
-      
-      progressAlert.modalPresentationStyle = .overFullScreen
-      progressAlert.modalTransitionStyle = .crossDissolve
-      progressAlert.setTitle(trimmingText)
-      
-      if !hideCancelTrimmingButton {
-        progressAlert.setCancelTitle(cancelTrimmingButtonText)
-        progressAlert.showCancelBtn()
-        
-        progressAlert.onDismiss = {
-          if self.enableCancelTrimmingDialog {
-            let dialogMessage = UIAlertController(title: self.cancelTrimmingDialogTitle, message: self.cancelTrimmingDialogMessage, preferredStyle: .alert)
-            dialogMessage.overrideUserInterfaceStyle = .dark
-            
-            let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive) { _ in
-              self.exportSession?.cancelExport()
-              progressAlert.dismiss(animated: true)
-            }
-            let cancel = UIAlertAction(title: self.cancelDialogCancelText, style: .cancel)
-            dialogMessage.addAction(ok)
-            dialogMessage.addAction(cancel)
-            
-            if let root = RCTPresentedViewController() {
-              root.present(dialogMessage, animated: true, completion: nil)
-            }
-          } else {
+      progressAlert.setCancelTitle(cancelTrimmingButtonText)
+      progressAlert.showCancelBtn()
+      progressAlert.onDismiss = {
+        if self.enableCancelTrimmingDialog {
+          let dialogMessage = UIAlertController(title: self.cancelTrimmingDialogTitle, message: self.cancelTrimmingDialogMessage, preferredStyle: .alert)
+          dialogMessage.overrideUserInterfaceStyle = .dark
+          
+          let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive) { _ in
             self.exportSession?.cancelExport()
             progressAlert.dismiss(animated: true)
           }
+          let cancel = UIAlertAction(title: self.cancelDialogCancelText, style: .cancel)
+          dialogMessage.addAction(ok)
+          dialogMessage.addAction(cancel)
+          
+          if let root = RCTPresentedViewController() {
+            root.present(dialogMessage, animated: true, completion: nil)
+          }
+        } else {
+          self.exportSession?.cancelExport()
+          progressAlert.dismiss(animated: true)
         }
       }
-      
-      if let root = RCTPresentedViewController() {
-        root.present(progressAlert, animated: true, completion: nil)
-      }
+    }
+    
+    if let root = RCTPresentedViewController() {
+      root.present(progressAlert, animated: true, completion: nil)
     }
     
     // Setup AVAssetExportSession
@@ -389,7 +380,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     
     guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
       onError(message: "Failed to create export session", code: .trimmingFailed)
-      progressAlert?.dismiss(animated: true)
+      progressAlert.dismiss(animated: true)
       return
     }
     exportSession = session
@@ -434,7 +425,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
     timer = Timer.scheduledTimer(withTimeInterval: progressUpdateInterval, repeats: true) { timer in
       let progress = manager.progress
       DispatchQueue.main.async {
-        progressAlert?.setProgress(progress)
+        progressAlert.setProgress(progress)
       }
       let statsPayload: [String: Any] = [
         "time": Int(Double(progress) * videoDuration * 1000),
@@ -450,7 +441,7 @@ class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate 
       self.timer = nil
       
       DispatchQueue.main.async {
-        progressAlert?.dismiss(animated: true)
+        progressAlert.dismiss(animated: true)
       }
       
       let finalProgress = manager.progress
