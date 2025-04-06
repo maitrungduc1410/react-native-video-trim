@@ -215,6 +215,7 @@ Main method to show Video Editor UI.
   - `enableCancelTrimming` (`default = true`): enable cancel trimming
   - `cancelTrimmingButtonText` (`default = "Cancel"`)
   - `enableCancelTrimmingDialog` (`default = true`)
+  - `hideCancelTrimmingButton` (`default = false`)
   - `cancelTrimmingDialogTitle` (`default = "Warning!"`)
   - `cancelTrimmingDialogMessage` (`default = "Are you sure want to cancel trimming?"`)
   - `cancelTrimmingDialogCancelText` (`default = "Close"`)
@@ -351,7 +352,7 @@ showEditor(url, {
 
 While trimming, you can press Cancel to terminate the process.
 
-Related props: `enableCancelTrimming, cancelTrimmingButtonText, enableCancelTrimmingDialog, cancelTrimmingDialogTitle, cancelTrimmingDialogMessage, cancelTrimmingDialogCancelText, cancelTrimmingDialogConfirmText`
+Related props: `enableCancelTrimming, cancelTrimmingButtonText, enableCancelTrimmingDialog, cancelTrimmingDialogTitle, cancelTrimmingDialogMessage, cancelTrimmingDialogCancelText, cancelTrimmingDialogConfirmText,hideCancelTrimmingButton`
 
 # Fail to load media
 <img src="images/fail_to_load_media.jpg" width="200" />
