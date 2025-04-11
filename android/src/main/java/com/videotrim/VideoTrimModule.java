@@ -433,7 +433,9 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
           builder.setTitle(cancelTrimmingDialogTitle);
           builder.setCancelable(false);
           builder.setPositiveButton(cancelTrimmingDialogConfirmText, (dialog, which) -> {
-            trimmerView.onCancelTrimClicked();
+            if (trimmerView != null) {
+              trimmerView.onCancelTrimClicked();
+            }
 
             if (mProgressDialog != null && mProgressDialog.isShowing()) {
               mProgressDialog.dismiss();
@@ -445,7 +447,9 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
           cancelTrimmingConfirmDialog = builder.create();
           cancelTrimmingConfirmDialog.show();
         } else {
-          trimmerView.onCancelTrimClicked();
+          if (trimmerView != null) {
+            trimmerView.onCancelTrimClicked();
+          }
 
           if (mProgressDialog != null && mProgressDialog.isShowing()) {
             mProgressDialog.dismiss();
@@ -465,7 +469,10 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
 
     mProgressDialog.setOnShowListener(dialog -> {
       sendEvent(getReactApplicationContext(), "onStartTrimming", null);
-      trimmerView.onSaveClicked(progressUpdateInterval);
+
+      if (trimmerView != null) {
+        trimmerView.onSaveClicked(progressUpdateInterval);
+      }
     });
 
     mProgressDialog.show();
