@@ -99,7 +99,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private boolean openShareSheetOnFinish = false;
   private boolean isVideoType = true;
   private boolean closeWhenFinish = true;
-  private float progressUpdateInterval = 0.1f;
 
   private static final int REQUEST_CODE_SAVE_FILE = 1;
 
@@ -195,7 +194,6 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
     isVideoType = !config.hasKey("type") || !Objects.equals(config.getString("type"), "audio");
 
     closeWhenFinish = !config.hasKey("closeWhenFinish") || config.getBoolean("closeWhenFinish");
-    progressUpdateInterval = config.hasKey("progressUpdateInterval") ? (float) config.getDouble("progressUpdateInterval") : 0.1f;
 
     Activity activity = getReactApplicationContext().getCurrentActivity();
 
@@ -375,6 +373,11 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   }
 
   @Override
+  public void onLog(WritableMap log) {
+    sendEvent(getReactApplicationContext(), "onLog", log);
+  }
+
+  @Override
   public void onStatistics(WritableMap statistics) {
     sendEvent(getReactApplicationContext(), "onStatistics", statistics);
   }
@@ -471,7 +474,7 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
       sendEvent(getReactApplicationContext(), "onStartTrimming", null);
 
       if (trimmerView != null) {
-        trimmerView.onSaveClicked(progressUpdateInterval);
+        trimmerView.onSaveClicked();
       }
     });
 
@@ -559,9 +562,9 @@ public class VideoTrimModule extends ReactContextBaseJavaModule implements Video
   private void isValidFile(String filePath, Promise promise) {
     MediaMetadataUtil.checkFileValidity(filePath, (isValid, fileType, duration) -> {
       if (isValid) {
-        System.out.println("Valid " + fileType + " file with duration: " + duration + " milliseconds");
+        Log.d(TAG, "Valid " + fileType + " file with duration: " + duration + " milliseconds");
       } else {
-        System.out.println("Invalid file");
+        Log.d(TAG, "Invalid file");
       }
 
       WritableMap map = Arguments.createMap();

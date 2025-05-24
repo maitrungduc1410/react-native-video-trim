@@ -48,6 +48,7 @@ import java.util.Locale;
 import iknow.android.utils.DeviceUtil;
 import iknow.android.utils.thread.BackgroundExecutor;
 import iknow.android.utils.thread.UiThreadExecutor;
+import com.arthenica.ffmpegkit.FFmpegSession;
 
 public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
@@ -108,7 +109,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private long jumpToPositionOnLoad = 0;
   private FrameLayout headerView;
   private TextView headerText;
-  private VideoTrimmerUtil.TrimSession trimSession;
+  private FFmpegSession ffmpegSession;
   private boolean alertOnFailToLoad = true;
   private String alertOnFailTitle = "Error";
   private String alertOnFailMessage = "Fail to load media. Possibly invalid file or no network connection";
@@ -365,22 +366,21 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     setHandleTouchListener(trailingHandle, false);
   }
 
-  public void onSaveClicked(float progressUpdateInterval) {
+  public void onSaveClicked() {
     onMediaPause();
-    trimSession = VideoTrimmerUtil.trim(
+    ffmpegSession = VideoTrimmerUtil.trim(
       mSourceUri.toString(),
       StorageUtil.getOutputPath(mContext, mOutputExt),
       mDuration,
       startTime,
       endTime,
-      mOnTrimVideoListener,
-      progressUpdateInterval
+      mOnTrimVideoListener
     );
   }
 
   public void onCancelTrimClicked() {
-    if (trimSession != null) {
-      trimSession.cancel();
+    if (ffmpegSession != null) {
+      ffmpegSession.cancel();
     } else {
       mOnTrimVideoListener.onCancelTrim();
     }

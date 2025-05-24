@@ -12,6 +12,7 @@
 - ✅ Save to Photos, Documents and Share to other apps
 - ✅ Check if file is valid video/audio
 - ✅ File operations: list, clean up, delete specific file
+- ✅ Support React Native New + Old Arch
 
 <div align="left">
 <img src="images/document_picker.png" width="300" />
@@ -21,11 +22,19 @@
 ## Installation
 
 ```sh
-npm install react-native-video-trim
+# new arch
+npm install react-native-video-trim react-native-nitro-modules
+
+# old arch
+npm install react-native-video-trim@^3.0.0
 
 # or with yarn
 
-yarn add react-native-video-trim
+# new arch
+yarn add react-native-video-trim react-native-nitro-modules
+
+# old arch
+yarn add react-native-video-trim@^3.0.0
 ```
 ## For iOS (React Native CLI project)
 Run the following command to setup for iOS:
@@ -226,7 +235,6 @@ Main method to show Video Editor UI.
   - `alertOnFailTitle` (`default = "Error"`)
   - `alertOnFailMessage` (`default = "Fail to load media. Possibly invalid file or no network connection"`)
   - `alertOnFailCloseText` (`default = "Close"`)
-  - `progressUpdateInterval` (`default = 0.1`): how fast the trimming progress update interval is, default is emit progress every 100ms (0.1 second)
 
 If `saveToPhoto = true`, you must ensure that you have request permission to write to photo/gallery
 - For Android: you need to have `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />` in AndroidManifest.xml
@@ -274,7 +282,13 @@ Clean all generated output files in app storage. Return number of successfully d
 ## deleteFile()
 Delete a file in app storage. Return `true` if success
 
-# Events
+# Callbacks (New arch)
+
+## showEditor
+
+## closeEditor
+
+# Events (Old arch)
 To listen for events you interest, do the following:
 ```js
 useEffect(() => {
