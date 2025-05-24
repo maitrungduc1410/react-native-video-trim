@@ -1,3 +1,4 @@
+# Table of contents
 - [Installation](#installation)
    * [For iOS (React Native CLI project)](#for-ios-react-native-cli-project)
    * [For Expo project](#for-expo-project)
@@ -18,8 +19,6 @@
 - [Fail to load media](#fail-to-load-media)
 - [Android: update SDK version](#android-update-sdk-version)
 - [Thanks](#thanks)
-
-<!-- TOC end -->
 
 # React Native Video Trim
 <div align="center">
