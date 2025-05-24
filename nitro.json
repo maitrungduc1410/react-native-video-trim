@@ -1,0 +1,17 @@
+{
+  "cxxNamespace": ["videotrim"],
+  "ios": {
+    "iosModuleName": "VideoTrim"
+  },
+  "android": {
+    "androidNamespace": ["videotrim"],
+    "androidCxxLibName": "videotrim"
+  },
+  "autolinking": {
+    "VideoTrim": {
+      "swift": "VideoTrim",
+      "kotlin": "VideoTrim"
+    }
+  },
+  "ignorePaths": ["node_modules"]
+}

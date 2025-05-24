@@ -1,8 +1,8 @@
 //
 //  ErrorCode.swift
-//  react-native-video-trim
+//  VideoTrim
 //
-//  Created by ByteDance on 7/27/24.
+//  Created by Duc Trung Mai on 20/5/25.
 //
 
 import Foundation

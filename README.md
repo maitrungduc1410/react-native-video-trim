@@ -1,3 +1,26 @@
+- [Installation](#installation)
+   * [For iOS (React Native CLI project)](#for-ios-react-native-cli-project)
+   * [For Expo project](#for-expo-project)
+   * [Usage](#usage)
+- [Methods](#methods)
+   * [showEditor(videoPath: string, config?: EditorConfig, onEvent?: (eventName: string, payload: Record<string, string>) => void)](#showeditorvideopath-string-config-editorconfig-onevent-eventname-string-payload-record--void)
+   * [isValidFile(videoPath: string)](#isvalidfilevideopath-string)
+   * [closeEditor()](#closeeditor)
+   * [listFiles()](#listfiles)
+   * [cleanFiles()](#cleanfiles)
+   * [deleteFile()](#deletefile)
+- [Callbacks (New arch)](#callbacks-new-arch)
+   * [showEditor](#showeditor)
+   * [closeEditor](#closeeditor-1)
+- [Events (Old arch)](#events-old-arch)
+- [Audio support](#audio-support)
+- [Cancel trimming](#cancel-trimming)
+- [Fail to load media](#fail-to-load-media)
+- [Android: update SDK version](#android-update-sdk-version)
+- [Thanks](#thanks)
+
+<!-- TOC end -->
+
 # React Native Video Trim
 <div align="center">
 <h2>Video trimmer for your React Native app</h2>
@@ -19,7 +42,7 @@
 <img src="images/share_sheet.png" width="300" />
 </div>
 
-## Installation
+# Installation
 
 ```sh
 # new arch
@@ -36,6 +59,9 @@ yarn add react-native-video-trim react-native-nitro-modules
 # old arch
 yarn add react-native-video-trim@^3.0.0
 ```
+
+> `react-native-nitro-modules` is required in New Arch as this library relies on [Nitro Modules](https://nitro.margelo.com/).
+
 ## For iOS (React Native CLI project)
 Run the following command to setup for iOS:
 ```
@@ -79,62 +105,8 @@ import {
 } from 'react-native';
 import { isValidFile, showEditor } from 'react-native-video-trim';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { useEffect } from 'react';
 
 export default function App() {
-  useEffect(() => {
-    const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
-    const subscription = eventEmitter.addListener('VideoTrim', (event) => {
-      switch (event.name) {
-        case 'onLoad': {
-          // on media loaded successfully
-          console.log('onLoadListener', event);
-          break;
-        }
-        case 'onShow': {
-          console.log('onShowListener', event);
-          break;
-        }
-        case 'onHide': {
-          console.log('onHide', event);
-          break;
-        }
-        case 'onStartTrimming': {
-          console.log('onStartTrimming', event);
-          break;
-        }
-        case 'onFinishTrimming': {
-          console.log('onFinishTrimming', event);
-          break;
-        }
-        case 'onCancelTrimming': {
-          console.log('onCancelTrimming', event);
-          break;
-        }
-        case 'onCancel': {
-          console.log('onCancel', event);
-          break;
-        }
-        case 'onError': {
-          console.log('onError', event);
-          break;
-        }
-        case 'onLog': {
-          console.log('onLog', event);
-          break;
-        }
-        case 'onStatistics': {
-          console.log('onStatistics', event);
-          break;
-        }
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
   return (
     <View style={styles.container}>
       <TouchableOpacity
@@ -150,7 +122,11 @@ export default function App() {
 
           showEditor(result.assets![0]?.uri || '', {
             maxDuration: 20,
-          });
+          }, 
+          (eventName, payload) => {
+            console.log('Event:', eventName, 'Payload:', payload);
+          }
+          );
         }}
         style={{ padding: 10, backgroundColor: 'red' }}
       >
@@ -183,7 +159,7 @@ const styles = StyleSheet.create({
 
 # Methods
 
-## showEditor(videoPath: string, config?: EditorConfig)
+## showEditor(videoPath: string, config?: EditorConfig, onEvent?: (eventName: string, payload: Record<string, string>) => void)
 Main method to show Video Editor UI.
 
 *Params*:
@@ -286,7 +262,20 @@ Delete a file in app storage. Return `true` if success
 
 ## showEditor
 
+```ts
+showEditor('file', config, (eventName, payload) => {
+  console.log(eventName, payload)
+})
+```
+
 ## closeEditor
+
+```ts
+closeEditor(() => {
+  console.log('Editor closed')
+})
+```
+
 
 # Events (Old arch)
 To listen for events you interest, do the following:

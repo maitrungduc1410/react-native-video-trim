@@ -1,93 +1,20 @@
-import * as React from 'react';
-
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  NativeEventEmitter,
-  NativeModules,
-  Modal,
-  BackHandler,
-} from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Modal } from 'react-native';
 import {
   cleanFiles,
   deleteFile,
   listFiles,
   showEditor,
   isValidFile,
+  closeEditor,
 } from 'react-native-video-trim';
 import {
   launchImageLibrary,
   type ImagePickerResponse,
 } from 'react-native-image-picker';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 export default function App() {
   const [modalVisible, setModalVisible] = useState(false);
-
-  useEffect(() => {
-    const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
-    const subscription = eventEmitter.addListener('VideoTrim', (event) => {
-      switch (event.name) {
-        case 'onLoad': {
-          console.log('onLoadListener', event);
-          break;
-        }
-        case 'onShow': {
-          console.log('onShowListener', event);
-          break;
-        }
-        case 'onHide': {
-          console.log('onHide', event);
-          break;
-        }
-        case 'onStartTrimming': {
-          console.log('onStartTrimming', event);
-          break;
-        }
-        case 'onFinishTrimming': {
-          console.log('onFinishTrimming', event);
-          break;
-        }
-        case 'onCancelTrimming': {
-          console.log('onCancelTrimming', event);
-          break;
-        }
-        case 'onCancel': {
-          console.log('onCancel', event);
-          break;
-        }
-        case 'onError': {
-          console.log('onError', event);
-          break;
-        }
-        case 'onLog': {
-          console.log('onLog', event);
-          break;
-        }
-        case 'onStatistics': {
-          console.log('onStatistics', event);
-          break;
-        }
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener(
-      'hardwareBackPress',
-      () => {
-        console.log(9999999999);
-        return true;
-      }
-    );
-    return () => backHandler.remove();
-  }, []);
 
   const onMediaLoaded = (response: ImagePickerResponse) => {
     console.log('Response', response);
@@ -120,43 +47,55 @@ export default function App() {
             // isValidFile(url2).then((res) => console.log('3isValidVideo:', res));
             // const url3 =
             //   'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
-            showEditor(result.assets![0]?.uri || '', {
-              // showEditor(url3, {
-              //   type: 'audio',
-              // outputExt: 'wav',
-              // maxDuration: 20,
-              // closeWhenFinish: false,
-              minDuration: 5,
-              maxDuration: 15,
-              fullScreenModalIOS: true,
-              saveToPhoto: true,
-              removeAfterSavedToPhoto: true,
-              enableHapticFeedback: false,
-              autoplay: true,
-              jumpToPositionOnLoad: 30000,
-              // headerText: 'Bunny.wav',
-              headerTextSize: 20,
-              headerTextColor: '#FF0000',
-              progressUpdateInterval: 0.01,
-              // openDocumentsOnFinish: true,
-              // removeAfterSavedToDocuments: true,
-              // openShareSheetOnFinish: true,
-              // removeAfterShared: true,
-              // cancelButtonText: 'hello',
-              // saveButtonText: 'world',
-              // removeAfterSavedToPhoto: true,
-              // enableCancelDialog: false,
-              // cancelDialogTitle: '1111',
-              // cancelDialogMessage: '22222',
-              // cancelDialogCancelText: '3333',
-              // cancelDialogConfirmText: '4444',
-              // enableSaveDialog: false,
-              // saveDialogTitle: '5555',
-              // saveDialogMessage: '666666',
-              // saveDialogCancelText: '77777',
-              // saveDialogConfirmText: '888888',
-              trimmingText: 'Trimming Video...',
-            });
+            showEditor(
+              result.assets![0]?.uri || '',
+              {
+                // showEditor(url3, {
+                //   type: 'audio',
+                // outputExt: 'wav',
+                // maxDuration: 20,
+                // closeWhenFinish: false,
+                minDuration: 5,
+                maxDuration: 15,
+                fullScreenModalIOS: true,
+                saveToPhoto: true,
+                removeAfterSavedToPhoto: true,
+                enableHapticFeedback: false,
+                autoplay: true,
+                jumpToPositionOnLoad: 30000,
+                // headerText: 'Bunny.wav',
+                headerTextSize: 20,
+                headerTextColor: '#FF0000',
+                // openDocumentsOnFinish: true,
+                // removeAfterSavedToDocuments: true,
+                // openShareSheetOnFinish: true,
+                // removeAfterShared: true,
+                // cancelButtonText: 'hello',
+                // saveButtonText: 'world',
+                // removeAfterSavedToPhoto: true,
+                // enableCancelDialog: false,
+                // cancelDialogTitle: '1111',
+                // cancelDialogMessage: '22222',
+                // cancelDialogCancelText: '3333',
+                // cancelDialogConfirmText: '4444',
+                // enableSaveDialog: false,
+                // saveDialogTitle: '5555',
+                // saveDialogMessage: '666666',
+                // saveDialogCancelText: '77777',
+                // saveDialogConfirmText: '888888',
+                trimmingText: 'Trimming Video...',
+              },
+              (eventName, payload) => {
+                console.log('Event:', eventName, 'Payload:', payload);
+              }
+            );
+
+            setTimeout(() => {
+              console.log('Modal should be closed');
+              closeEditor(() => {
+                console.log('Editor closed');
+              });
+            }, 3000);
           } catch (error) {
             console.log(error);
           }
@@ -260,9 +199,7 @@ export default function App() {
                 maxDuration: 30,
                 cancelButtonText: 'hello',
                 saveButtonText: 'world',
-              })
-                .then((res) => console.log(res))
-                .catch((e) => console.log(e, 1111));
+              });
             }}
             style={{ padding: 10, backgroundColor: 'red' }}
           >

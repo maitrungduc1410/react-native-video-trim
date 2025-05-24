@@ -1,3 +1,10 @@
+//
+//  VideoTrimmerViewController.swift
+//  VideoTrim
+//
+//  Created by Duc Trung Mai on 20/5/25.
+//
+
 import UIKit
 import AVKit
 
@@ -60,7 +67,7 @@ class VideoTrimmerViewController: UIViewController {
     private var jumpToPositionOnLoad: Double = 0;
     private var headerText: String?
     private var headerTextSize = 16
-    private var headerTextColor: NSNumber?
+    private var headerTextColor: Double?
     private var headerView: UIView?
     
     var isSeekInProgress: Bool = false  // Marker
@@ -224,7 +231,7 @@ class VideoTrimmerViewController: UIViewController {
             let headerTextView = UITextView()
             headerTextView.text = headerText
             headerTextView.textAlignment = .center
-            headerTextView.textColor = headerTextColor != nil ? RCTConvert.uiColor(headerTextColor) : .white
+            headerTextView.textColor = UIColor.color(fromHexNumber: headerTextColor as NSNumber?, defaultColor: .white)
             headerTextView.font = UIFont.systemFont(ofSize: CGFloat(headerTextSize))  // Set font size here
             headerTextView.translatesAutoresizingMaskIntoConstraints = false
             headerView!.addSubview(headerTextView)
@@ -435,39 +442,28 @@ class VideoTrimmerViewController: UIViewController {
         }
     }
     
-    public func configure(config: NSDictionary) {
-        if let maxDuration = config["maxDuration"] as? Int {
-            maximumDuration = maxDuration
+    public func configure(config: EditorConfig) {
+        if config.maxDuration > 0 {
+            maximumDuration = Int(config.maxDuration)
         }
         
-        if let minDuration = config["minDuration"] as? Int {
-            minimumDuration = minDuration
+        if config.minDuration > 0 {
+            minimumDuration = Int(config.minDuration)
         }
         
-        if let cancelButtonText = config["cancelButtonText"] as? String, !cancelButtonText.isEmpty {
-            self.cancelButtonText = cancelButtonText
-        }
+        self.cancelButtonText = config.cancelButtonText
+        self.saveButtonText = config.saveButtonText
+        self.jumpToPositionOnLoad = config.jumpToPositionOnLoad
         
-        if let saveButtonText = config["saveButtonText"] as? String, !saveButtonText.isEmpty {
-            self.saveButtonText = saveButtonText
-        }
         
-        if let jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Int {
-            self.jumpToPositionOnLoad = Double(jumpToPositionOnLoad)
-        }
+        enableHapticFeedback = config.enableHapticFeedback
+        autoplay = config.autoplay
         
-        enableHapticFeedback = config["enableHapticFeedback"] as? Bool ?? true
-        autoplay = config["autoplay"] as? Bool ?? false
-        
-        if let jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Int {
-            self.jumpToPositionOnLoad = Double(jumpToPositionOnLoad)
-        }
-        
-        if let headerText = config["headerText"] as? String, !headerText.isEmpty {
-            self.headerText = headerText
+        if !config.headerText.isEmpty {
+            self.headerText = config.headerText
             
-            headerTextSize = config["headerTextSize"] as? Int ?? 16
-            headerTextColor = config["headerTextColor"] as? NSNumber
+            headerTextSize = Int(config.headerTextSize)
+            headerTextColor = config.headerTextColor
         }
     }
     
@@ -485,7 +481,7 @@ class VideoTrimmerViewController: UIViewController {
                     self.saveBtn.alpha = 1
                     self.saveBtn.isEnabled = true
                 })
-            
+                
                 if jumpToPositionOnLoad > 0 {
                     let duration = (asset?.duration.seconds ?? 0) * 1000
                     let time = jumpToPositionOnLoad > duration ? duration : jumpToPositionOnLoad
@@ -534,5 +530,28 @@ private extension UILabel {
         label.textAlignment = textAlignment
         label.textColor = textColor
         return label
+    }
+}
+
+extension UIColor {
+    static func color(fromHexNumber hex: NSNumber?, defaultColor: UIColor = .black) -> UIColor {
+        guard let hexValue = hex?.int32Value else {
+            return defaultColor
+        }
+
+        // Extract RGB components from the hex value
+        let red = CGFloat((hexValue >> 16) & 0xFF) / 255.0 // Extract red (bits 16-23)
+        let green = CGFloat((hexValue >> 8) & 0xFF) / 255.0 // Extract green (bits 8-15)
+        let blue = CGFloat(hexValue & 0xFF) / 255.0 // Extract blue (bits 0-7)
+
+        // Check if alpha is included (if hex is 0xAARRGGBB)
+        let alpha: CGFloat
+        if hexValue > 0xFFFFFF { // If the value is larger than 0xFFFFFF, it includes alpha
+            alpha = CGFloat((hexValue >> 24) & 0xFF) / 255.0 // Extract alpha (bits 24-31)
+        } else {
+            alpha = 1.0 // Default to opaque
+        }
+
+        return UIColor(red: red, green: green, blue: blue, alpha: alpha)
     }
 }

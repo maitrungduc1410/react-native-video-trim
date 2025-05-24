@@ -1,8 +1,8 @@
 //
 //  ProgressAlertController.swift
-//  react-native-video-trim
+//  VideoTrim
 //
-//  Created by Duc Trung Mai on 8/18/24.
+//  Created by Duc Trung Mai on 20/5/25.
 //
 
 import UIKit

@@ -1,8 +1,8 @@
 //
 //  VideoTrimmer.swift
-//  react-native-video-trim
+//  VideoTrim
 //
-//  Created by Duc Trung Mai on 17/1/24.
+//  Created by Duc Trung Mai on 20/5/25.
 //
 
 import UIKit
@@ -870,4 +870,3 @@ fileprivate extension CGSize {
         return CGRect(origin: .zero, size: self).applying(transform).size
     }
 }
-

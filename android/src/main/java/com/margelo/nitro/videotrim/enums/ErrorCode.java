@@ -1,0 +1,10 @@
+package com.margelo.nitro.videotrim.enums;
+
+public enum ErrorCode {
+  TRIMMING_FAILED,
+  FAIL_TO_GET_VIDEO_INFO,
+  FAIL_TO_INITIALIZE_AUDIO_PLAYER,
+  FAIL_TO_LOAD_MEDIA,
+  FAIL_TO_SAVE_TO_PHOTO,
+  FAIL_TO_SAVE_TO_DOCUMENTS
+}

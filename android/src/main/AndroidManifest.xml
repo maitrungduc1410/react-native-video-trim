@@ -1,6 +1,8 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.videotrim">
+<manifest
+  xmlns:android="http://schemas.android.com/apk/res/android"
+  package="com.margelo.nitro.videotrim">
 
-  <uses-permission android:name="android.permission.VIBRATE" />
+<uses-permission android:name="android.permission.VIBRATE" />
 
   <application>
     <!-- FileProvider setup -->
