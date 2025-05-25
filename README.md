@@ -73,6 +73,8 @@ npx expo prebuild
 ```
 Then you need to restart to make the changes take effect
 
+> Note that on iOS you'll need to run on real device, Expo Go may not work because of library linking
+
 ## Usage
 
 ```js
