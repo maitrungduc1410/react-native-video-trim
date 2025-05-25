@@ -70,9 +70,8 @@ npx pod-install ios
 You need to run `prebuild` in order for native code takes effect:
 ```
 npx expo prebuild
-
-npx pod-install ios
 ```
+Then you need to restart to make the changes take effect
 
 ## Usage
 

@@ -89,13 +89,6 @@ export default function App() {
                 console.log('Event:', eventName, 'Payload:', payload);
               }
             );
-
-            setTimeout(() => {
-              console.log('Modal should be closed');
-              closeEditor(() => {
-                console.log('Editor closed');
-              });
-            }, 3000);
           } catch (error) {
             console.log(error);
           }
