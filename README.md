@@ -5,6 +5,7 @@
    * [Usage](#usage)
 - [Methods](#methods)
    * [showEditor(videoPath: string, config?: EditorConfig, onEvent?: (eventName: string, payload: Record<string, string>) => void)](#showeditorvideopath-string-config-editorconfig-onevent-eventname-string-payload-record--void)
+   * [trim(url: string, options: TrimOptions): Promise<string>](#trimurl-string-options-trimoptions-promise)
    * [isValidFile(videoPath: string)](#isvalidfilevideopath-string)
    * [closeEditor()](#closeeditor)
    * [listFiles()](#listfiles)
@@ -17,6 +18,7 @@
 - [Audio support](#audio-support)
 - [Cancel trimming](#cancel-trimming)
 - [Fail to load media](#fail-to-load-media)
+- [Use FFMPEG HTTPS version](#use-ffmpeg-https-version)
 - [Android: update SDK version](#android-update-sdk-version)
 - [Thanks](#thanks)
 
@@ -243,7 +245,7 @@ If you face issue when building Android app related to `file_paths`, then you ma
 </paths>
 ```
 
-# trim(url: string, options: TrimOptions): Promise<string>
+## trim(url: string, options: TrimOptions): Promise<string>
 
 Directly trim a file without showing editor
 
@@ -368,6 +370,10 @@ Related props: `enableCancelTrimming, cancelTrimmingButtonText, enableCancelTrim
 If there's error while loading media, there'll be a prompt
 
 Related props: `alertOnFailToLoad, alertOnFailTitle, alertOnFailMessage, alertOnFailCloseText`
+
+# Rotation
+
+To trim & rotate video you can pass `enableRotation` and `rotationAngle` to `showEditor`/`trim`. But note that it doesn't re-encode the video, instead the lib uses `display_rotation` metadata from ffmpeg, and some players/platforms may show differently.
 
 # Use FFMPEG HTTPS version
 
