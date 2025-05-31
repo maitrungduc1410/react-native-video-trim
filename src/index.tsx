@@ -1,7 +1,9 @@
 import { NitroModules } from 'react-native-nitro-modules';
 import type {
+  BaseOptions,
   EditorConfig,
   FileValidationResult,
+  TrimOptions,
   VideoTrim,
 } from './VideoTrim.nitro';
 import { processColor } from 'react-native';
@@ -9,12 +11,30 @@ import { processColor } from 'react-native';
 const VideoTrimHybridObject =
   NitroModules.createHybridObject<VideoTrim>('VideoTrim');
 
+function createBaseOptions(overrides: Partial<BaseOptions> = {}): BaseOptions {
+  return {
+    saveToPhoto: false,
+    type: 'video',
+    outputExt: 'mp4',
+    openDocumentsOnFinish: false,
+    openShareSheetOnFinish: false,
+    removeAfterSavedToPhoto: false,
+    removeAfterFailedToSavePhoto: false,
+    removeAfterSavedToDocuments: false,
+    removeAfterFailedToSaveDocuments: false,
+    removeAfterShared: false,
+    removeAfterFailedToShare: false,
+    enableRotation: false,
+    rotationAngle: 0,
+    ...overrides,
+  };
+}
+
 function createEditorConfig(
   overrides: Partial<EditorConfig> = {}
 ): EditorConfig {
   return {
     enableHapticFeedback: true,
-    saveToPhoto: false,
     maxDuration: -1, // Adjust default as needed
     minDuration: 1000,
     cancelButtonText: 'Cancel',
@@ -31,16 +51,6 @@ function createEditorConfig(
     saveDialogConfirmText: 'Proceed',
     trimmingText: 'Trimming video...',
     fullScreenModalIOS: false,
-    type: 'video',
-    outputExt: 'mp4',
-    openDocumentsOnFinish: false,
-    openShareSheetOnFinish: false,
-    removeAfterSavedToPhoto: false,
-    removeAfterFailedToSavePhoto: false,
-    removeAfterSavedToDocuments: false,
-    removeAfterFailedToSaveDocuments: false,
-    removeAfterShared: false,
-    removeAfterFailedToShare: false,
     autoplay: false, // Adjust default as needed
     jumpToPositionOnLoad: -1,
     closeWhenFinish: true,
@@ -59,6 +69,16 @@ function createEditorConfig(
     alertOnFailMessage:
       'Fail to load media. Possibly invalid file or no network connection',
     alertOnFailCloseText: 'Close',
+    ...createBaseOptions(overrides),
+    ...overrides,
+  };
+}
+
+function createTrimOptions(overrides: Partial<TrimOptions> = {}): TrimOptions {
+  return {
+    startTime: 0,
+    endTime: 1000,
+    ...createBaseOptions(overrides),
     ...overrides,
   };
 }
@@ -137,4 +157,18 @@ export function closeEditor(onComplete?: () => void): void {
  */
 export function isValidFile(url: string): Promise<FileValidationResult> {
   return VideoTrimHybridObject.isValidFile(url);
+}
+
+/**
+ * Trim a video file
+ *
+ * @param {string} url: absolute non-empty file path to edit
+ * @param {TrimOptions} options: trim options
+ * @returns {Promise<string>} A **Promise** which resolves to the trimmed file path
+ */
+export function trim(
+  url: string,
+  options: Partial<TrimOptions>
+): Promise<string> {
+  return VideoTrimHybridObject.trim(url, createTrimOptions(options));
 }

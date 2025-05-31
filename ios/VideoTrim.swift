@@ -57,4 +57,11 @@ class VideoTrim: HybridVideoTrimSpec {
             return await self.impl.isValidFile(uri: url)
         }
     }
+    
+    func trim(url: String, options: TrimOptions) throws -> NitroModules.Promise<String> {
+        return Promise.async {
+            // This runs on a separate Thread, and can use```` `await` syntax!
+            return try await self.impl.trim(url: url, options: options)
+        }
+    }
 }

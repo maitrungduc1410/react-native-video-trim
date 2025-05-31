@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
 
   s.source_files = "ios/**/*.{h,m,mm,swift}"
 
-  s.dependency 'ffmpeg-mobile-min', '~> 6.0'
+  s.dependency "ffmpeg-mobile-#{ENV['FFMPEGKIT_PACKAGE'] || 'min'}", ENV['FFMPEGKIT_PACKAGE_VERSION'] || '~> 6.0'
 
   load 'nitrogen/generated/ios/VideoTrim+autolinking.rb'
   add_nitrogen_files(s)

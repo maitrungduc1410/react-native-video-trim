@@ -30,7 +30,7 @@
 
 ## Features
 - ✅ Support video and audio
-- ✅ Support local files
+- ✅ Support local files and remote files (remote files need `https` version, see below)
 - ✅ Save to Photos, Documents and Share to other apps
 - ✅ Check if file is valid video/audio
 - ✅ File operations: list, clean up, delete specific file
@@ -211,6 +211,8 @@ Main method to show Video Editor UI.
   - `alertOnFailTitle` (`default = "Error"`)
   - `alertOnFailMessage` (`default = "Fail to load media. Possibly invalid file or no network connection"`)
   - `alertOnFailCloseText` (`default = "Close"`)
+  - `enableRotation` (`default = false`)
+  - `rotationAngle` (`default = 0`)
 
 If `saveToPhoto = true`, you must ensure that you have request permission to write to photo/gallery
 - For Android: you need to have `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />` in AndroidManifest.xml
@@ -240,6 +242,10 @@ If you face issue when building Android app related to `file_paths`, then you ma
   <external-path name="external_files" path="." />
 </paths>
 ```
+
+# trim(url: string, options: TrimOptions): Promise<string>
+
+Directly trim a file without showing editor
 
 ## isValidFile(videoPath: string)
 
@@ -363,14 +369,36 @@ If there's error while loading media, there'll be a prompt
 
 Related props: `alertOnFailToLoad, alertOnFailTitle, alertOnFailMessage, alertOnFailCloseText`
 
+# Use FFMPEG HTTPS version
+
+If you want to trim a remote file, you need to use `https` version (default is `min` which does not support remote file).
+
+Do the following:
+
+```
+// android/build.gradle
+buildscript {
+    ext {
+        VideoTrim_ffmpeg_package=https
+
+        // optional: VideoTrim_ffmpeg_version=6.0.1
+    }
+}
+
+// ios
+FFMPEGKIT_PACKAGE=https FFMPEG_KIT_PACKAGE_VERSION=6.0 pod install
+```
+
 # Android: update SDK version
 You can override sdk version to use any version in your `android/build.gradle` > `buildscript` > `ext`
 ```gradle
 buildscript {
     ext {
-        VideoTrim_compileSdkVersion = 34
-        VideoTrim_minSdkVersion = 26
-        VideoTrim_targetSdkVersion = 34
+        VideoTrim_kotlinVersion=2.0.21
+        VideoTrim_minSdkVersion=24
+        VideoTrim_targetSdkVersion=34
+        VideoTrim_compileSdkVersion=35
+        VideoTrim_ndkVersion=27.1.12297006
     }
 }
 ```

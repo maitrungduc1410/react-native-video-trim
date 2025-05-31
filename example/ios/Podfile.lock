@@ -3,7 +3,7 @@ PODS:
   - DoubleConversion (1.1.6)
   - fast_float (6.1.4)
   - FBLazyVector (0.79.2)
-  - ffmpeg-mobile-min (6.0.0)
+  - ffmpeg-mobile-min (6.0.1)
   - fmt (11.0.2)
   - glog (0.3.5)
   - hermes-engine (0.79.2):
@@ -1705,7 +1705,7 @@ PODS:
     - React-perflogger (= 0.79.2)
     - React-utils (= 0.79.2)
   - SocketRocket (0.7.1)
-  - VideoTrim (0.1.0):
+  - VideoTrim (4.0.0):
     - DoubleConversion
     - ffmpeg-mobile-min (~> 6.0)
     - glog
@@ -1969,7 +1969,7 @@ SPEC CHECKSUMS:
   DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
   fast_float: 06eeec4fe712a76acc9376682e4808b05ce978b6
   FBLazyVector: 84b955f7b4da8b895faf5946f73748267347c975
-  ffmpeg-mobile-min: 0c15bbab565e7eb6925ec8f5f3323f8860230f09
+  ffmpeg-mobile-min: bf4a1591b8207b56952e62c978d9857ee2434ee3
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
   hermes-engine: 314be5250afa5692b57b4dd1705959e1973a8ebe
@@ -2038,7 +2038,7 @@ SPEC CHECKSUMS:
   ReactCodegen: fda99a79c866370190e162083a35602fdc314e5d
   ReactCommon: 4d0da92a5eb8da86c08e3ec34bd23ab439fb2461
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
-  VideoTrim: 3e5deeeb676ca9a78b2fa212635ac99c14723a98
+  VideoTrim: 7c30b570130f820d47c84f96b4e8509f29ec54fd
   Yoga: 9f110fc4b7aa538663cba3c14cbb1c335f43c13f
 
 PODFILE CHECKSUM: 4e2ada8311008f72adbd1b15d0865bd8efa6dab0

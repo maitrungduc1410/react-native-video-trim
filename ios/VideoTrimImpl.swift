@@ -11,53 +11,12 @@ import ffmpegkit
 class VideoTrimImpl: NSObject
 {
     private let FILE_PREFIX = "trimmedVideo"
+    private let BEFORE_TRIM_PREFIX = "beforeTrim"
     private var isShowing = false
     private var vc: VideoTrimmerViewController?
     private var outputFile: URL?
-    
-//    private var saveToPhoto = false
-//    private var removeAfterSavedToPhoto = false
-//    private var removeAfterFailedToSavePhoto = false
-//    private var removeAfterSavedToDocuments = false
-//    private var removeAfterFailedToSaveDocuments = false
-//    private var removeAfterShared = false
-//    private var removeAfterFailedToShare = false
-//    
-//    private var trimmingText = "Trimming video..."
-//    private var enableCancelDialog = true
-//    private var cancelDialogTitle = "Warning!"
-//    private var cancelDialogMessage = "Are you sure want to cancel?"
-//    private var cancelDialogCancelText = "Close"
-//    private var cancelDialogConfirmText = "Proceed"
-//    private var enableSaveDialog = true
-//    private var saveDialogTitle = "Confirmation!"
-//    private var saveDialogMessage = "Are you sure want to save?"
-//    private var saveDialogCancelText = "Close"
-//    private var saveDialogConfirmText = "Proceed"
-//    private var fullScreenModalIOS = false
-//    private var cancelButtonText = "Cancel"
-//    private var saveButtonText = "Save"
-
     private var isVideoType = true
-//    private var outputExt = "mp4"
-//    private var openDocumentsOnFinish = false
-//    private var openShareSheetOnFinish = false
-
-//    private var closeWhenFinish = true
-//    private var enableCancelTrimming = true
-//    private var cancelTrimmingButtonText = "Cancel"
-//    private var enableCancelTrimmingDialog = true
-//    private var cancelTrimmingDialogTitle = "Warning!"
-//    private var cancelTrimmingDialogMessage = "Are you sure want to trimming?"
-//    private var cancelTrimmingDialogCancelText = "Close"
-//    private var cancelTrimmingDialogConfirmText = "Proceed"
-//    private var alertOnFailToLoad = true
-//    private var alertOnFailTitle = "Error"
-//    private var alertOnFailMessage =
-//    "Fail to load media. Possibly invalid file or no network connection"
-//    private var alertOnFailCloseText = "Close"
     private var editorConfig: EditorConfig!
-    
     private var onEvent: ((_ eventName: String, _ payload: Dictionary<String, String>) -> Void)?
     
     func showEditor(
@@ -71,81 +30,16 @@ class VideoTrimImpl: NSObject
         
         self.editorConfig = editorConfig
         self.onEvent = onEvent
-        //    saveToPhoto = config["saveToPhoto"] as? Bool ?? false
-        //
-        //    removeAfterSavedToPhoto =
-        //      config["removeAfterSavedToPhoto"] as? Bool ?? false
-        //    removeAfterFailedToSavePhoto =
-        //      config["removeAfterFailedToSavePhoto"] as? Bool ?? false
-        //    removeAfterSavedToDocuments =
-        //      config["removeAfterSavedToDocuments"] as? Bool ?? false
-        //    removeAfterFailedToSaveDocuments =
-        //      config["removeAfterFailedToSaveDocuments"] as? Bool ?? false
-        //    removeAfterShared = config["removeAfterShared"] as? Bool ?? false
-        //    removeAfterFailedToShare =
-        //      config["removeAfterFailedToShare"] as? Bool ?? false
-        //
-        //    enableCancelDialog = config["enableCancelDialog"] as? Bool ?? true
-        //    cancelDialogTitle = config["cancelDialogTitle"] as? String ?? "Warning!"
-        //    cancelDialogMessage =
-        //      config["cancelDialogMessage"] as? String ?? "Are you sure want to cancel?"
-        //    cancelDialogCancelText =
-        //      config["cancelDialogCancelText"] as? String ?? "Close"
-        //    cancelDialogConfirmText =
-        //      config["cancelDialogConfirmText"] as? String ?? "Proceed"
-        //
-        //    enableSaveDialog = config["enableSaveDialog"] as? Bool ?? true
-        //    saveDialogTitle = config["saveDialogTitle"] as? String ?? "Confirmation!"
-        //    saveDialogMessage =
-        //      config["saveDialogMessage"] as? String ?? "Are you sure want to save?"
-        //    saveDialogCancelText = config["saveDialogCancelText"] as? String ?? "Close"
-        //    saveDialogConfirmText =
-        //      config["saveDialogConfirmText"] as? String ?? "Proceed"
-        //    trimmingText = config["trimmingText"] as? String ?? "Trimming video..."
-        //    fullScreenModalIOS = config["fullScreenModalIOS"] as? Bool ?? false
-        isVideoType = editorConfig.type == "video"
-        //    outputExt = config["outputExt"] as? String ?? "mp4"
-        //    openDocumentsOnFinish = config["openDocumentsOnFinish"] as? Bool ?? false
-        //    openShareSheetOnFinish = config["openShareSheetOnFinish"] as? Bool ?? false
-        //
-        //    closeWhenFinish = config["closeWhenFinish"] as? Bool ?? true
-        //    enableCancelTrimming = config["enableCancelTrimming"] as? Bool ?? true
-        //    cancelTrimmingButtonText =
-        //      config["cancelTrimmingButtonText"] as? String ?? "Cancel"
-        //    enableCancelTrimmingDialog =
-        //      config["enableCancelTrimmingDialog"] as? Bool ?? true
-        //    cancelTrimmingDialogTitle =
-        //      config["cancelTrimmingDialogTitle"] as? String ?? "Warning!"
-        //    cancelTrimmingDialogMessage =
-        //      config["cancelTrimmingDialogMessage"] as? String
-        //      ?? "Are you sure want to cancel trimming?"
-        //    cancelTrimmingDialogCancelText =
-        //      config["cancelTrimmingDialogCancelText"] as? String ?? "Close"
-        //    cancelTrimmingDialogConfirmText =
-        //      config["cancelTrimmingDialogConfirmText"] as? String ?? "Proceed"
-        //    alertOnFailToLoad = config["alertOnFailToLoad"] as? Bool ?? true
-        //    alertOnFailTitle = config["alertOnFailTitle"] as? String ?? "Error"
-        //    alertOnFailMessage =
-        //      config["alertOnFailMessage"] as? String
-        //      ?? "Fail to load media. Possibly invalid file or no network connection"
-        //    alertOnFailCloseText = config["alertOnFailCloseText"] as? String ?? "Close"
-        //
-        //    if let cancelBtnText = config["cancelButtonText"] as? String,
-        //      !cancelBtnText.isEmpty
-        //    {
-        //      self.cancelButtonText = cancelBtnText
-        //    }
-        //
-        //    if let saveButtonText = config["saveButtonText"] as? String,
-        //      !saveButtonText.isEmpty
-        //    {
-        //      self.saveButtonText = saveButtonText
-        //    }
-        //
-        let destPath = URL(string: uri)
-        let newPath = renameFile(at: destPath!, newName: "beforeTrim")
+        self.isVideoType = editorConfig.type == "video"
         
-        guard let destPath = newPath else {
+        let destPath: URL?
+        if uri.starts(with: "http://") || uri.starts(with: "https://") {
+            destPath = URL(string: uri)
+        } else {
+            destPath = renameFile(at: URL(string: uri)!, newName: BEFORE_TRIM_PREFIX)
+        }
+        
+        guard let destPath = destPath else {
             onError(message: "Fail to rename file", code: .invalidFilePath)
             self.isShowing = false
             return
@@ -319,7 +213,8 @@ class VideoTrimImpl: NSObject
                 at: documentsDirectory, includingPropertiesForKeys: nil)
             
             for fileURL in directoryContents {
-                if fileURL.lastPathComponent.starts(with: FILE_PREFIX) {
+                let last = fileURL.lastPathComponent
+                if last.starts(with: FILE_PREFIX) || last.starts(with: BEFORE_TRIM_PREFIX) {
                     files.append(fileURL)
                 }
             }
@@ -427,13 +322,21 @@ class VideoTrimImpl: NSObject
             root.present(progressAlert, animated: true, completion: nil)
         }
         
-        
-        
-        let cmds = [
+        var cmds = [
             "-ss",
             "\(startTime * 1000)ms",
             "-to",
             "\(endTime * 1000)ms",
+        ]
+        
+        if self.editorConfig.enableRotation {
+            cmds = cmds + [
+                "-display_rotation",
+                "\(self.editorConfig.rotationAngle)",
+            ]
+        }
+        
+        cmds = cmds + [
             "-i",
             "\(inputFile)",
             "-c",
@@ -602,7 +505,7 @@ class VideoTrimImpl: NSObject
                     self.onError(message: message, code: .failToShare)
                     
                     if self.editorConfig.removeAfterFailedToShare {
-                        let _ = self.deleteFile(url: self.outputFile!)
+                        let _ = self.deleteFile(url: fileURL)
                     }
                     return
                 }
@@ -610,12 +513,12 @@ class VideoTrimImpl: NSObject
                 if completed {
                     print("User completed the sharing activity")
                     if self.editorConfig.removeAfterShared {
-                        let _ = self.deleteFile(url: self.outputFile!)
+                        let _ = self.deleteFile(url: fileURL)
                     }
                 } else {
                     print("User cancelled or failed to complete the sharing activity")
                     if self.editorConfig.removeAfterFailedToShare {
-                        let _ = self.deleteFile(url: self.outputFile!)
+                        let _ = self.deleteFile(url: fileURL)
                     }
                 }
                 
@@ -630,6 +533,45 @@ class VideoTrimImpl: NSObject
             
         }
         
+    }
+    
+    private func shareFile(fileURL: URL, options: TrimOptions) {
+        DispatchQueue.main.async {
+            // Create an instance of UIActivityViewController
+            let activityViewController = UIActivityViewController(
+                activityItems: [fileURL], applicationActivities: nil)
+            
+            activityViewController.completionWithItemsHandler = {
+                activityType, completed, returnedItems, error in
+                
+                if let error = error {
+                    let message = "Sharing error: \(error.localizedDescription)"
+                    print(message)
+                    
+                    if options.removeAfterFailedToShare {
+                        let _ = self.deleteFile(url: fileURL)
+                    }
+                    return
+                }
+                
+                if completed {
+                    print("User completed the sharing activity")
+                    if options.removeAfterShared {
+                        let _ = self.deleteFile(url: fileURL)
+                    }
+                } else {
+                    print("User cancelled or failed to complete the sharing activity")
+                    if options.removeAfterFailedToShare {
+                        let _ = self.deleteFile(url: fileURL)
+                    }
+                }
+            }
+            
+            // Present the share sheet
+            if let root = RCTPresentedViewController() {
+                root.present(activityViewController, animated: true, completion: nil)
+            }
+        }
     }
     
     func closeEditor(_ onComplete: (() -> Void)? = nil) {
@@ -659,6 +601,161 @@ class VideoTrimImpl: NSObject
         }
         
         return FileValidationResult(isValid: result.isValid, fileType: result.fileType, duration: result.duration)
+    }
+    
+    func trim(url: String, options: TrimOptions) async throws -> String {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let outputName = "\(FILE_PREFIX)_\(timestamp).\(options.outputExt)"
+        let documentsDirectory = FileManager.default.urls(
+            for: .documentDirectory, in: .userDomainMask
+        ).first!
+        let outputPath = documentsDirectory.appendingPathComponent(outputName)
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        let dateTime = formatter.string(from: Date())
+                        
+        return try await withCheckedThrowingContinuation { continuation in
+            var destPath = url
+            if !(url.starts(with: "http://") || url.starts(with: "https://")) {
+                let renamed = renameFile(at: URL(string: url)!, newName: "\(BEFORE_TRIM_PREFIX)_\(timestamp)")
+                
+                guard let r = renamed else {
+                    continuation.resume(
+                        throwing: NSError(
+                            domain: "VideoTrim",
+                            code: -996,
+                            userInfo: [
+                                NSLocalizedDescriptionKey: "Fail to rename file"
+                            ]
+                        )
+                    )
+                    return
+                }
+                
+                destPath = r.absoluteString
+            }
+            
+            var cmds = [
+                "-ss",
+                "\(options.startTime)ms",
+                "-to",
+                "\(options.endTime)ms",
+            ]
+            
+            if options.enableRotation {
+                cmds = cmds + [
+                    "-display_rotation",
+                    "\(options.rotationAngle)",
+                ]
+            }
+            
+            cmds = cmds + [
+                "-i",
+                "\(destPath)",
+                "-c",
+                "copy",
+                "-metadata",
+                "creation_time=\(dateTime)",
+                outputPath.absoluteString,
+            ]
+            
+            print("Command: ", cmds.joined(separator: " "))
+            
+            FFmpegKit.execute(
+                withArgumentsAsync: cmds,
+                withCompleteCallback: { session in
+                    let state = session?.getState()
+                    let returnCode = session?.getReturnCode()
+                    if ReturnCode.isSuccess(returnCode) {
+                        if options.saveToPhoto && (options.type == "video") {
+                            PHPhotoLibrary.requestAuthorization { status in
+                                guard status == .authorized else {
+                                    continuation.resume(
+                                        throwing: NSError(
+                                            domain: "VideoTrim",
+                                            code: -998,
+                                            userInfo: [
+                                                NSLocalizedDescriptionKey: "Permission to access Photo Library is not granted"
+                                            ]
+                                        )
+                                    )
+                                    return
+                                }
+                                
+                                PHPhotoLibrary.shared().performChanges({
+                                    let request =
+                                    PHAssetChangeRequest.creationRequestForAssetFromVideo(
+                                        atFileURL: outputPath)
+                                    request?.creationDate = Date()
+                                }) { success, error in
+                                    if success {
+                                        print("Edited video saved to Photo Library successfully.")
+                                        
+                                        if options.removeAfterSavedToPhoto {
+                                            let _ = self.deleteFile(url: outputPath)
+                                        }
+                                        
+                                        continuation.resume(returning: outputPath.absoluteString)
+                                    } else {
+                                        if options.removeAfterFailedToSavePhoto {
+                                            let _ = self.deleteFile(url: outputPath)
+                                        }
+                                        
+                                        continuation.resume(
+                                            throwing: NSError(
+                                                domain: "VideoTrim",
+                                                code: -997,
+                                                userInfo: [
+                                                    NSLocalizedDescriptionKey: "Failed to save edited video to Photo Library: \(error?.localizedDescription ?? "Unknown error")"
+                                                ]
+                                            )
+                                        )
+                                        return
+                                    }
+                                }
+                            }
+                            
+                        
+                        } else {
+                            if options.openDocumentsOnFinish {
+                                self.saveFileToFilesApp(fileURL: outputPath)
+                            } else if options.openShareSheetOnFinish {
+                                self.shareFile(fileURL: outputPath)
+                            }
+                            continuation.resume(returning: outputPath.absoluteString)
+                        }
+                    } else if ReturnCode.isCancel(returnCode) {
+                        // CANCEL
+                        continuation.resume(
+                            throwing: NSError(
+                                domain: "VideoTrim",
+                                code: -999,
+                                userInfo: [
+                                    NSLocalizedDescriptionKey: "Trimming cancelled"
+                                ]
+                            )
+                        )
+                    } else {
+                        // FAILURE
+                        continuation.resume(
+                            throwing: NSError(
+                                domain: "VideoTrim",
+                                code: -1,
+                                userInfo: [
+                                    NSLocalizedDescriptionKey: "Command failed with state \(String(describing: FFmpegKitConfig.sessionState(toString: state ?? .failed))) and rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))"
+                                ]
+                            )
+                        )
+                    }
+                },
+                withLogCallback: { log in
+                    print("FFmpeg process started with log " + (log!.getMessage()))
+                },
+                withStatisticsCallback: { statistics in
+                })
+        }
     }
     
     private func onError(message: String, code: ErrorCode) {

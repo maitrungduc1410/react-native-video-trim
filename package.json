@@ -1,6 +1,6 @@
 {
   "name": "react-native-video-trim",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "Video trimmer for your React Native app",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",

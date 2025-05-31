@@ -4,6 +4,7 @@ import android.R.attr.progressBarStyleHorizontal
 import android.R.attr.selectableItemBackground
 import android.R.color.holo_red_light
 import android.R.style.Theme_Black_NoTitleBar_Fullscreen
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.DialogInterface
@@ -24,6 +25,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
+import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.ReturnCode;
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.LifecycleEventListener
@@ -39,7 +42,11 @@ import iknow.android.utils.BaseUtils
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.TimeZone
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 @DoNotStrip
@@ -50,41 +57,10 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
   private var mProgressDialog: AlertDialog? = null
   private var cancelTrimmingConfirmDialog: AlertDialog? = null
   private var mProgressBar: ProgressBar? = null
-
-  //  private var enableCancelTrimming = true
-//
-//  private var cancelTrimmingButtonText: String? = "Cancel"
-//  private var enableCancelTrimmingDialog = true
-//  private var cancelTrimmingDialogTitle: String? = "Warning!"
-//  private var cancelTrimmingDialogMessage: String? = "Are you sure want to cancel trimming?"
-//  private var cancelTrimmingDialogCancelText: String? = "Close"
-//  private var cancelTrimmingDialogConfirmText: String? = "Proceed"
-//  private var enableCancelDialog = true
-//  private var cancelDialogTitle: String? = "Warning!"
-//  private var cancelDialogMessage: String? = "Are you sure want to cancel?"
-//  private var cancelDialogCancelText: String? = "Close"
-//  private var cancelDialogConfirmText: String? = "Proceed"
-//  private var enableSaveDialog = true
-//  private var saveDialogTitle: String? = "Confirmation!"
-//  private var saveDialogMessage: String? = "Are you sure want to save?"
-//  private var saveDialogCancelText: String? = "Close"
-//  private var saveDialogConfirmText: String? = "Proceed"
-//  private var trimmingText: String? = "Trimming video..."
   private var outputFile: String? = null
-//  private var saveToPhoto = false
-//  private var removeAfterSavedToPhoto = false
-//  private var removeAfterFailedToSavePhoto = false
-//  private var removeAfterSavedToDocuments = false
-//  private var removeAfterFailedToSaveDocuments = false
-
-  //  private boolean removeAfterShared = false; // TODO: on Android there's no way to know if user shared the file or share sheet closed
-  //  private boolean removeAfterFailedToShare = false; // TODO: implement this
-//  private var openDocumentsOnFinish = false
-//  private var openShareSheetOnFinish = false
   private var isVideoType = true
-//  private var closeWhenFinish = true
-
-  private lateinit var editorConfig: EditorConfig
+  private var editorConfig: EditorConfig? = null
+  private var trimOptions: TrimOptions? = null
   private var onEvent: ((eventName: String, payload: Map<String, String>) -> Unit)? = null
   private var onComplete: (() -> Unit)? = null
 
@@ -112,7 +88,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
               } ?: return
             // File saved successfully
             Log.d(TAG, "File saved successfully to $uri")
-            if (editorConfig.removeAfterSavedToDocuments) {
+            if (editorConfig?.removeAfterSavedToDocuments == true || trimOptions?.removeAfterFailedToSaveDocuments == true) {
               StorageUtil.deleteFile(outputFile)
             }
           } catch (e: Exception) {
@@ -122,7 +98,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
               "Failed to save edited video to Documents: ${e.localizedMessage}",
               ErrorCode.FAIL_TO_SAVE_TO_DOCUMENTS
             )
-            if (editorConfig.removeAfterFailedToSaveDocuments) {
+            if (editorConfig?.removeAfterFailedToSaveDocuments == true || trimOptions?.removeAfterFailedToSaveDocuments == true) {
               StorageUtil.deleteFile(outputFile)
             }
           } finally {
@@ -145,68 +121,9 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
 
     this.editorConfig = config
     this.onEvent = onEvent
-//    enableCancelTrimming =
-//      !config.hasKey("enableCancelTrimming") || config.getBoolean("enableCancelTrimming")
-//
-//    cancelTrimmingButtonText =
-//      if (config.hasKey("cancelTrimmingButtonText")) config.getString("cancelTrimmingButtonText") else "Cancel"
-//    enableCancelTrimmingDialog =
-//      !config.hasKey("enableCancelTrimmingDialog") || config.getBoolean("enableCancelTrimmingDialog")
-//    cancelTrimmingDialogTitle =
-//      if (config.hasKey("cancelTrimmingDialogTitle")) config.getString("cancelTrimmingDialogTitle") else "Warning!"
-//    cancelTrimmingDialogMessage =
-//      if (config.hasKey("cancelTrimmingDialogMessage")) config.getString("cancelTrimmingDialogMessage") else "Are you sure want to cancel trimming?"
-//    cancelTrimmingDialogCancelText =
-//      if (config.hasKey("cancelTrimmingDialogCancelText")) config.getString("cancelTrimmingDialogCancelText") else "Close"
-//    cancelTrimmingDialogConfirmText =
-//      if (config.hasKey("cancelTrimmingDialogConfirmText")) config.getString("cancelTrimmingDialogConfirmText") else "Proceed"
-//
-//    enableCancelDialog =
-//      !config.hasKey("enableCancelDialog") || config.getBoolean("enableCancelDialog")
-//    cancelDialogTitle =
-//      if (config.hasKey("cancelDialogTitle")) config.getString("cancelDialogTitle") else "Warning!"
-//    cancelDialogMessage =
-//      if (config.hasKey("cancelDialogMessage")) config.getString("cancelDialogMessage") else "Are you sure want to cancel?"
-//    cancelDialogCancelText =
-//      if (config.hasKey("cancelDialogCancelText")) config.getString("cancelDialogCancelText") else "Close"
-//    cancelDialogConfirmText =
-//      if (config.hasKey("cancelDialogConfirmText")) config.getString("cancelDialogConfirmText") else "Proceed"
-//
-//    enableSaveDialog = !config.hasKey("enableSaveDialog") || config.getBoolean("enableSaveDialog")
-//    saveDialogTitle =
-//      if (config.hasKey("saveDialogTitle")) config.getString("saveDialogTitle") else "Confirmation!"
-//    saveDialogMessage =
-//      if (config.hasKey("saveDialogMessage")) config.getString("saveDialogMessage") else "Are you sure want to save?"
-//    saveDialogCancelText =
-//      if (config.hasKey("saveDialogCancelText")) config.getString("saveDialogCancelText") else "Close"
-//    saveDialogConfirmText =
-//      if (config.hasKey("saveDialogConfirmText")) config.getString("saveDialogConfirmText") else "Proceed"
-//    trimmingText =
-//      if (config.hasKey("trimmingText")) config.getString("trimmingText") else "Trimming video..."
-//
-//    saveToPhoto = config.hasKey("saveToPhoto") && config.getBoolean("saveToPhoto")
-//    removeAfterSavedToPhoto =
-//      config.hasKey("removeAfterSavedToPhoto") && config.getBoolean("removeAfterSavedToPhoto")
-//    removeAfterFailedToSavePhoto =
-//      config.hasKey("removeAfterFailedToSavePhoto") && config.getBoolean("removeAfterFailedToSavePhoto")
-//    removeAfterSavedToDocuments =
-//      config.hasKey("removeAfterSavedToDocuments") && config.getBoolean("removeAfterSavedToDocuments")
-//    removeAfterFailedToSaveDocuments =
-//      config.hasKey("removeAfterFailedToSaveDocuments") && config.getBoolean("removeAfterFailedToSaveDocuments")
-//    //    removeAfterShared = config.hasKey("removeAfterShared") && config.getBoolean("removeAfterShared");
-////    removeAfterFailedToShare = config.hasKey("removeAfterFailedToShare") && config.getBoolean("removeAfterFailedToShare");
-//    openDocumentsOnFinish =
-//      config.hasKey("openDocumentsOnFinish") && config.getBoolean("openDocumentsOnFinish")
-//
-//    openShareSheetOnFinish =
-//      config.hasKey("openShareSheetOnFinish") && config.getBoolean("openShareSheetOnFinish")
-
-    isVideoType = config.type == "video"
-
-//    closeWhenFinish = !config.hasKey("closeWhenFinish") || config.getBoolean("closeWhenFinish")
+    this.isVideoType = config.type == "video"
 
     val activity = NitroModules.applicationContext?.currentActivity
-
     if (!isInit) {
       init()
       isInit = true
@@ -288,11 +205,11 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
       )
     )
 
-    if (editorConfig.saveToPhoto && isVideoType) {
+    if (editorConfig!!.saveToPhoto && isVideoType) {
       try {
         StorageUtil.saveVideoToGallery(NitroModules.applicationContext, outputFile)
         Log.d(TAG, "Edited video saved to Photo Library successfully.")
-        if (editorConfig.removeAfterSavedToPhoto) {
+        if (editorConfig!!.removeAfterSavedToPhoto) {
           StorageUtil.deleteFile(outputFile)
         }
       } catch (e: IOException) {
@@ -301,19 +218,19 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
           "Failed to save edited video to Photo Library: " + e.localizedMessage,
           ErrorCode.FAIL_TO_SAVE_TO_PHOTO
         )
-        if (editorConfig.removeAfterFailedToSavePhoto) {
+        if (editorConfig!!.removeAfterFailedToSavePhoto) {
           StorageUtil.deleteFile(outputFile)
         }
       } finally {
-        hideDialog(editorConfig.closeWhenFinish)
+        hideDialog(editorConfig!!.closeWhenFinish)
       }
-    } else if (editorConfig.openDocumentsOnFinish) {
+    } else if (editorConfig!!.openDocumentsOnFinish) {
       saveFileToExternalStorage(File(outputFile!!))
-    } else if (editorConfig.openShareSheetOnFinish) {
-      hideDialog(editorConfig.closeWhenFinish)
+    } else if (editorConfig!!.openShareSheetOnFinish) {
+      hideDialog(editorConfig!!.closeWhenFinish)
       shareFile(NitroModules.applicationContext!!, File(outputFile!!))
     } else {
-      hideDialog(editorConfig.closeWhenFinish)
+      hideDialog(editorConfig!!.closeWhenFinish)
     }
   }
 
@@ -331,7 +248,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
   }
 
   override fun onCancel() {
-    if (!editorConfig.enableCancelDialog) {
+    if (!editorConfig!!.enableCancelDialog) {
       sendEvent("onCancel", mapOf())
       hideDialog(true)
       return
@@ -340,16 +257,16 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     val builder = AlertDialog.Builder(
       NitroModules.applicationContext?.currentActivity!!
     )
-    builder.setMessage(editorConfig.cancelDialogMessage)
-    builder.setTitle(editorConfig.cancelDialogTitle)
+    builder.setMessage(editorConfig!!.cancelDialogMessage)
+    builder.setTitle(editorConfig!!.cancelDialogTitle)
     builder.setCancelable(false)
-    builder.setPositiveButton(editorConfig.cancelDialogConfirmText) { dialog: DialogInterface, which: Int ->
+    builder.setPositiveButton(editorConfig!!.cancelDialogConfirmText) { dialog: DialogInterface, which: Int ->
       dialog.cancel()
       sendEvent("onCancel", mapOf())
       hideDialog(true)
     }
     builder.setNegativeButton(
-      editorConfig.cancelDialogCancelText
+      editorConfig!!.cancelDialogCancelText
     ) { dialog: DialogInterface, which: Int ->
       dialog.cancel()
     }
@@ -358,7 +275,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
   }
 
   override fun onSave() {
-    if (!editorConfig.enableSaveDialog) {
+    if (!editorConfig!!.enableSaveDialog) {
       startTrim()
       return
     }
@@ -366,15 +283,15 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     val builder = AlertDialog.Builder(
       NitroModules.applicationContext?.currentActivity!!
     )
-    builder.setMessage(editorConfig.saveDialogMessage)
-    builder.setTitle(editorConfig.saveDialogTitle)
+    builder.setMessage(editorConfig!!.saveDialogMessage)
+    builder.setTitle(editorConfig!!.saveDialogTitle)
     builder.setCancelable(false)
-    builder.setPositiveButton(editorConfig.saveDialogConfirmText) { dialog: DialogInterface, which: Int ->
+    builder.setPositiveButton(editorConfig!!.saveDialogConfirmText) { dialog: DialogInterface, which: Int ->
       dialog.cancel()
       startTrim()
     }
     builder.setNegativeButton(
-      editorConfig.saveDialogCancelText
+      editorConfig!!.saveDialogCancelText
     ) { dialog: DialogInterface, _: Int ->
       dialog.cancel()
     }
@@ -408,7 +325,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
       ViewGroup.LayoutParams.WRAP_CONTENT,
       ViewGroup.LayoutParams.WRAP_CONTENT
     )
-    textView.text = editorConfig.trimmingText
+    textView.text = editorConfig!!.trimmingText
     textView.gravity = Gravity.CENTER
     textView.textSize = 18f
     layout.addView(textView)
@@ -423,14 +340,14 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     layout.addView(mProgressBar)
 
     // Create button
-    if (editorConfig.enableCancelTrimming) {
+    if (editorConfig!!.enableCancelTrimming) {
       val button = Button(activity)
       button.layoutParams = ViewGroup.LayoutParams(
         ViewGroup.LayoutParams.WRAP_CONTENT,
         ViewGroup.LayoutParams.WRAP_CONTENT
       )
       // Set the text and style it like a text button
-      button.text = editorConfig.cancelTrimmingButtonText
+      button.text = editorConfig!!.cancelTrimmingButtonText
       button.setTextColor(
         ContextCompat.getColor(
           activity!!,
@@ -443,14 +360,14 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
       activity.theme.resolveAttribute(selectableItemBackground, outValue, true)
       button.setBackgroundResource(outValue.resourceId)
       button.setOnClickListener { v: View? ->
-        if (editorConfig.enableCancelTrimmingDialog) {
+        if (editorConfig!!.enableCancelTrimmingDialog) {
           val builder = AlertDialog.Builder(
             activity
           )
-          builder.setMessage(editorConfig.cancelTrimmingDialogMessage)
-          builder.setTitle(editorConfig.cancelTrimmingDialogTitle)
+          builder.setMessage(editorConfig!!.cancelTrimmingDialogMessage)
+          builder.setTitle(editorConfig!!.cancelTrimmingDialogTitle)
           builder.setCancelable(false)
-          builder.setPositiveButton(editorConfig.cancelTrimmingDialogConfirmText) { dialog: DialogInterface?, which: Int ->
+          builder.setPositiveButton(editorConfig!!.cancelTrimmingDialogConfirmText) { dialog: DialogInterface?, which: Int ->
             if (trimmerView != null) {
               trimmerView!!.onCancelTrimClicked()
             }
@@ -459,7 +376,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
             }
           }
           builder.setNegativeButton(
-            editorConfig.cancelTrimmingDialogCancelText
+            editorConfig!!.cancelTrimmingDialogCancelText
           ) { dialog: DialogInterface, which: Int ->
             dialog.cancel()
           }
@@ -588,6 +505,106 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
       }
       // Resolve the promise with the FileValidationResult
       getValidationResult()
+    }
+  }
+
+  override fun trim(url: String, options: TrimOptions): Promise<String> {
+    return Promise.async {
+      trimOptions = options
+
+      @SuppressLint("SimpleDateFormat")
+      suspend fun getTrimresult(): String = suspendCoroutine { continuation ->
+        val currentDate = Date()
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+
+        dateFormat.timeZone = TimeZone.getTimeZone("UTC")
+        val formattedDateTime = dateFormat.format(currentDate)
+
+        var cmds = arrayOf(
+          "-ss",
+          "${options.startTime}ms",
+          "-to",
+          "${options.endTime}ms",
+        )
+
+        if (options.enableRotation) {
+          cmds += arrayOf("-display_rotation", "${options.rotationAngle}")
+        }
+
+        outputFile = StorageUtil.getOutputPath(NitroModules.applicationContext, options.outputExt)
+
+        cmds += arrayOf(
+          "-i",
+          url,
+          "-c",
+          "copy",
+          "-metadata",
+          "creation_time=$formattedDateTime",
+          outputFile!!
+        )
+
+        Log.d(TAG, "Command: ${cmds.joinToString(",")}")
+
+        FFmpegKit.executeWithArgumentsAsync(cmds, { session ->
+          val state = session.state
+          val returnCode = session.returnCode
+          when {
+            ReturnCode.isSuccess(returnCode) -> {
+              // SUCCESS
+              if (options.saveToPhoto && options.type == "video") {
+                try {
+                  StorageUtil.saveVideoToGallery(NitroModules.applicationContext, outputFile)
+                  Log.d(TAG, "Edited video saved to Photo Library successfully.")
+                  if (options.removeAfterSavedToPhoto) {
+                    StorageUtil.deleteFile(outputFile)
+                  }
+
+                  continuation.resume(outputFile!!)
+                } catch (e: IOException) {
+                  e.printStackTrace()
+
+                  if (options.removeAfterFailedToSavePhoto) {
+                    StorageUtil.deleteFile(outputFile)
+                  }
+
+                  continuation.resumeWithException(
+                    Exception("Failed to save edited video to Photo Library: " + e.localizedMessage)
+                  )
+                }
+              } else {
+                  if (options.openDocumentsOnFinish) {
+                    saveFileToExternalStorage(File(outputFile!!))
+                  } else if (options.openShareSheetOnFinish) {
+                    shareFile(NitroModules.applicationContext!!, File(outputFile!!))
+                  }
+
+                  continuation.resume(outputFile!!)
+                }
+              }
+            ReturnCode.isCancel(returnCode) -> {
+              // CANCEL
+              println("FFmpeg command was cancelled")
+              continuation.resumeWithException(
+                Exception("FFmpeg command was cancelled")
+              )
+            }
+            else -> {
+              // FAILURE
+              val errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace());
+              println(errorMessage)
+              continuation.resumeWithException(
+                Exception(errorMessage)
+              )
+            }
+          }
+        }, { log ->
+          Log.d(TAG, "FFmpeg process started with log ${log.message}")
+        }, { statistics ->
+          // Handle statistics if needed
+        })
+      }
+
+      getTrimresult()
     }
   }
 

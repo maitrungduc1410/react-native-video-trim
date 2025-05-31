@@ -30,6 +30,14 @@ def getExtOrIntegerDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["VideoTrim_" + name]).toInteger()
 }
 
+def getPackageNameOrDefault() {
+  return rootProject.ext.has("VideoTrim_ffmpeg_package") ? rootProject.ext.get("VideoTrim_ffmpeg_package") : project.properties["VideoTrim_ffmpeg_package"]
+}
+
+def getPackageVersionOrDefault() {
+  return rootProject.ext.has("VideoTrim_ffmpeg_version") ? rootProject.ext.get("VideoTrim_ffmpeg_version") : project.properties["VideoTrim_ffmpeg_version"]
+}
+
 android {
   namespace "com.margelo.nitro.videotrim"
 
@@ -126,6 +134,6 @@ dependencies {
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
   implementation project(":react-native-nitro-modules")
 
-  implementation 'io.github.maitrungduc1410:ffmpeg-kit-min:6.0.0'
+  implementation 'io.github.maitrungduc1410:ffmpeg-kit-' + getPackageNameOrDefault() +':' + getPackageVersionOrDefault()
 }
 

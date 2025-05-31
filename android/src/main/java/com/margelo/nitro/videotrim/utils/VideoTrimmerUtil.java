@@ -13,8 +13,10 @@ import com.margelo.nitro.videotrim.enums.ErrorCode;
 import com.margelo.nitro.videotrim.interfaces.VideoTrimListener;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 
@@ -43,7 +45,7 @@ public class VideoTrimmerUtil {
   public static final int THUMB_WIDTH = UnitConverter.dpToPx(25); // x2 for better resolution
   private static final int THUMB_RESOLUTION_RES = 2; // double thumb resolution for better quality
 
-  public static FFmpegSession trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, final VideoTrimListener callback) {
+  public static FFmpegSession trim(String inputFile, String outputFile, int videoDuration, long startMs, long endMs, boolean enableRotation, double rotationAngle, final VideoTrimListener callback) {
     // Get the current date and time
     Date currentDate = new Date();
 
@@ -55,26 +57,32 @@ public class VideoTrimmerUtil {
     // Format the current date and time
     String formattedDateTime = dateFormat.format(currentDate);
 
-    String[] cmds = {
-      "-ss",
-      startMs + "ms",
-      "-to",
-      endMs + "ms",
-      "-i",
-      inputFile,
-      "-c",
-      "copy",
-      "-metadata",
-      "creation_time=" + formattedDateTime,
-      outputFile
-    };
-    Log.d(TAG,"Command111: " + String.join(",", cmds));
+    // create list to store commands
+    List<String> cmds = new ArrayList<>();
+    cmds.add("-ss");
+    cmds.add(startMs + "ms");
+    cmds.add("-to");
+    cmds.add(endMs + "ms");
 
-    FFmpegSession s = FFmpegKit.execute("-protocols");
-    Log.d(TAG, "1111getOutput: " + s.getOutput());
-    Log.d(TAG, "1111getAllLogs: " + s.getAllLogs());
+    if (enableRotation) {
+      // add "-display_rotation" and rotation angle to the command, contact, not creating new
+      cmds.add("-display_rotation");
+      cmds.add(String.valueOf(rotationAngle));
+    }
 
-    return FFmpegKit.executeWithArgumentsAsync(cmds, session -> {
+    cmds.add("-i");
+    cmds.add(inputFile);
+    cmds.add("-c");
+    cmds.add("copy");
+    cmds.add("-metadata");
+    cmds.add("creation_time=" + formattedDateTime);
+    cmds.add(outputFile);
+
+    String[] command = cmds.toArray(new String[0]);
+
+    Log.d(TAG,"Command: " + String.join(",", command));
+
+    return FFmpegKit.executeWithArgumentsAsync(command, session -> {
       SessionState state = session.getState();
       ReturnCode returnCode = session.getReturnCode();
       if (ReturnCode.isSuccess(session.getReturnCode())) {

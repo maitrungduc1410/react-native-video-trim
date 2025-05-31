@@ -5,7 +5,8 @@ import {
   listFiles,
   showEditor,
   isValidFile,
-  closeEditor,
+  // closeEditor,
+  trim,
 } from 'react-native-video-trim';
 import {
   launchImageLibrary,
@@ -15,6 +16,7 @@ import { useState } from 'react';
 
 export default function App() {
   const [modalVisible, setModalVisible] = useState(false);
+  const [isTrimming, setIsTrimming] = useState(false);
 
   const onMediaLoaded = (response: ImagePickerResponse) => {
     console.log('Response', response);
@@ -37,7 +39,7 @@ export default function App() {
             console.log(result, 1111);
 
             // const url =
-            //   'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+            //   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
             // const url1 =
             //   'https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav';
@@ -84,6 +86,8 @@ export default function App() {
                 // saveDialogCancelText: '77777',
                 // saveDialogConfirmText: '888888',
                 trimmingText: 'Trimming Video...',
+                // enableRotation: true,
+                // rotationAngle: 90,
               },
               (eventName, payload) => {
                 console.log('Event:', eventName, 'Payload:', payload);
@@ -154,6 +158,48 @@ export default function App() {
         }}
       >
         <Text style={{ color: 'white' }}>Delete file</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={async () => {
+          // const result = await launchImageLibrary(
+          //   {
+          //     mediaType: 'video',
+          //     includeExtra: true,
+          //     assetRepresentationMode: 'current',
+          //   },
+          //   onMediaLoaded
+          // );
+
+          const url =
+            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+
+          setIsTrimming(true);
+          trim(url, {
+            startTime: 0,
+            endTime: 15000,
+            saveToPhoto: true,
+            enableRotation: true,
+            rotationAngle: 90,
+          })
+            .then((res) => {
+              console.log('Trimmed file:', res);
+            })
+            .catch((error) => {
+              console.error('Error trimming file:', error);
+            })
+            .finally(() => {
+              setIsTrimming(false);
+            });
+        }}
+        style={{
+          padding: 10,
+          backgroundColor: 'brown',
+          marginTop: 20,
+        }}
+      >
+        <Text style={{ color: 'white' }}>
+          {isTrimming ? 'Trimming...' : 'Trim Video'}
+        </Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => {

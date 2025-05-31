@@ -87,6 +87,9 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private RelativeLayout trimmerContainerWrapper;
 
   private long startTime = 0, endTime = 0;
+  private boolean enableRotation = false;
+  private double rotationAngle = 0.0;
+
   private Vibrator vibrator;
   private boolean didClampWhilePanning = false;
 
@@ -374,6 +377,8 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       mDuration,
       startTime,
       endTime,
+      enableRotation,
+      rotationAngle,
       mOnTrimVideoListener
     );
   }
@@ -484,12 +489,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       headerView.setVisibility(View.VISIBLE);
 
     alertOnFailToLoad = config.getAlertOnFailToLoad();
-
-      alertOnFailTitle = config.getAlertOnFailTitle();
-
-      alertOnFailMessage = config.getAlertOnFailMessage();
-
-      alertOnFailCloseText = config.getAlertOnFailCloseText();
+    alertOnFailTitle = config.getAlertOnFailTitle();
+    alertOnFailMessage = config.getAlertOnFailMessage();
+    alertOnFailCloseText = config.getAlertOnFailCloseText();
+    enableRotation = config.getEnableRotation();
+    rotationAngle = config.getRotationAngle();
   }
 
   private void startTimingRunnable() {
