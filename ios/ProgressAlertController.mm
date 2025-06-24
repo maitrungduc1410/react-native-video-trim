@@ -1,6 +1,24 @@
 #import "ProgressAlertController.h"
 
+@interface ProgressAlertController ()
+
+@property (nonatomic, strong) UILabel *titleLabel;
+@property (nonatomic, strong) UIProgressView *progressBar;
+@property (nonatomic, strong) UIButton *actionButton;
+
+@end
+
 @implementation ProgressAlertController
+
+- (instancetype)init {
+    // init early because in VideoTrim.mm we call this before presenting the view controller (before viewDidLoad)
+    if (self = [super init]) {
+        self.titleLabel = [[UILabel alloc] init];
+        self.progressBar = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
+        self.actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    }
+    return self;
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -14,26 +32,32 @@
 
 - (void)setupAlertView {
     UIView *alertView = [[UIView alloc] init];
-    alertView.backgroundColor = [UIColor colorWithRed:28/255.0 green:28/255.0 blue:30/255.0 alpha:1.0];
+    alertView.backgroundColor = [UIColor colorWithRed:28.0/255.0 green:28.0/255.0 blue:30.0/255.0 alpha:1.0];
     alertView.layer.cornerRadius = 12;
     alertView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:alertView];
+    
+    // AlertView Constraints
     [NSLayoutConstraint activateConstraints:@[
         [alertView.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [alertView.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
         [alertView.widthAnchor constraintEqualToConstant:270]
     ]];
-    self.titleLabel = [[UILabel alloc] init];
+    
+    // Title Label
     self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.titleLabel.textAlignment = NSTextAlignmentCenter;
     self.titleLabel.font = [UIFont systemFontOfSize:18];
     self.titleLabel.numberOfLines = 0;
     self.titleLabel.textColor = [UIColor whiteColor];
     [alertView addSubview:self.titleLabel];
-    self.progressBar = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
+    
+    // Progress Bar
     self.progressBar.translatesAutoresizingMaskIntoConstraints = NO;
     [alertView addSubview:self.progressBar];
-    self.actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    
+    // Action Button
+    
     [self.actionButton setTitle:@"Cancel" forState:UIControlStateNormal];
     [self.actionButton setTitleColor:[UIColor systemPinkColor] forState:UIControlStateNormal];
     self.actionButton.titleLabel.font = [UIFont systemFontOfSize:16];
@@ -41,13 +65,17 @@
     self.actionButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.actionButton.hidden = YES;
     [alertView addSubview:self.actionButton];
+    
+    // Constraints for titleLabel, progressBar, and actionButton
     [NSLayoutConstraint activateConstraints:@[
         [self.titleLabel.topAnchor constraintEqualToAnchor:alertView.topAnchor constant:16],
         [self.titleLabel.leadingAnchor constraintEqualToAnchor:alertView.leadingAnchor constant:16],
         [self.titleLabel.trailingAnchor constraintEqualToAnchor:alertView.trailingAnchor constant:-16],
+        
         [self.progressBar.topAnchor constraintEqualToAnchor:self.titleLabel.bottomAnchor constant:16],
         [self.progressBar.leadingAnchor constraintEqualToAnchor:alertView.leadingAnchor constant:16],
         [self.progressBar.trailingAnchor constraintEqualToAnchor:alertView.trailingAnchor constant:-16],
+        
         [self.actionButton.topAnchor constraintEqualToAnchor:self.progressBar.bottomAnchor constant:16],
         [self.actionButton.bottomAnchor constraintEqualToAnchor:alertView.bottomAnchor constant:-16],
         [self.actionButton.centerXAnchor constraintEqualToAnchor:alertView.centerXAnchor]
