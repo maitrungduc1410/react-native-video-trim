@@ -1,4 +1,11 @@
-import { StyleSheet, View, Text, TouchableOpacity, Modal } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  type EventSubscription,
+} from 'react-native';
 import {
   cleanFiles,
   deleteFile,
@@ -12,11 +19,83 @@ import {
   launchImageLibrary,
   type ImagePickerResponse,
 } from 'react-native-image-picker';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import NativeVideoTrim from '../../src/NativeVideoTrim';
 
 export default function App() {
   const [modalVisible, setModalVisible] = useState(false);
   const [isTrimming, setIsTrimming] = useState(false);
+  const listenerSubscription = useRef<Record<string, EventSubscription>>({});
+
+  useEffect(() => {
+    listenerSubscription.current.onLoad = NativeVideoTrim.onLoad(
+      ({ duration }) => console.log('onLoad', duration)
+    );
+
+    listenerSubscription.current.onStartTrimming =
+      NativeVideoTrim.onStartTrimming(() => console.log('onStartTrimming'));
+
+    listenerSubscription.current.onCancelTrimming =
+      NativeVideoTrim.onCancelTrimming(() => console.log('onCancelTrimming'));
+    listenerSubscription.current.onCancel = NativeVideoTrim.onCancel(() =>
+      console.log('onCancel')
+    );
+    listenerSubscription.current.onHide = NativeVideoTrim.onHide(() =>
+      console.log('onHide')
+    );
+    listenerSubscription.current.onShow = NativeVideoTrim.onShow(() =>
+      console.log('onShow')
+    );
+    listenerSubscription.current.onFinishTrimming =
+      NativeVideoTrim.onFinishTrimming(
+        ({ outputPath, startTime, endTime, duration }) =>
+          console.log(
+            'onFinishTrimming',
+            `outputPath: ${outputPath}, startTime: ${startTime}, endTime: ${endTime}, duration: ${duration}`
+          )
+      );
+    listenerSubscription.current.onLog = NativeVideoTrim.onLog(
+      ({ level, message, sessionId }) =>
+        console.log(
+          'onLog',
+          `level: ${level}, message: ${message}, sessionId: ${sessionId}`
+        )
+    );
+    listenerSubscription.current.onStatistics = NativeVideoTrim.onStatistics(
+      ({
+        sessionId,
+        videoFrameNumber,
+        videoFps,
+        videoQuality,
+        size,
+        time,
+        bitrate,
+        speed,
+      }) =>
+        console.log(
+          'onStatistics',
+          `sessionId: ${sessionId}, videoFrameNumber: ${videoFrameNumber}, videoFps: ${videoFps}, videoQuality: ${videoQuality}, size: ${size}, time: ${time}, bitrate: ${bitrate}, speed: ${speed}`
+        )
+    );
+    listenerSubscription.current.onError = NativeVideoTrim.onError(
+      ({ message, errorCode }) =>
+        console.log('onError', `message: ${message}, errorCode: ${errorCode}`)
+    );
+
+    return () => {
+      listenerSubscription.current.onLoad?.remove();
+      listenerSubscription.current.onStartTrimming?.remove();
+      listenerSubscription.current.onCancelTrimming?.remove();
+      listenerSubscription.current.onCancel?.remove();
+      listenerSubscription.current.onHide?.remove();
+      listenerSubscription.current.onShow?.remove();
+      listenerSubscription.current.onFinishTrimming?.remove();
+      listenerSubscription.current.onLog?.remove();
+      listenerSubscription.current.onStatistics?.remove();
+      listenerSubscription.current.onError?.remove();
+      listenerSubscription.current = {};
+    };
+  });
 
   const onMediaLoaded = (response: ImagePickerResponse) => {
     console.log('Response', response);
@@ -49,50 +128,43 @@ export default function App() {
             // isValidFile(url2).then((res) => console.log('3isValidVideo:', res));
             // const url3 =
             //   'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
-            showEditor(
-              result.assets![0]?.uri || '',
-              {
-                // showEditor(url3, {
-                //   type: 'audio',
-                // outputExt: 'wav',
-                // maxDuration: 20,
-                // closeWhenFinish: false,
-                minDuration: 5,
-                maxDuration: 15,
-                fullScreenModalIOS: true,
-                saveToPhoto: true,
-                removeAfterSavedToPhoto: true,
-                enableHapticFeedback: false,
-                autoplay: true,
-                jumpToPositionOnLoad: 30000,
-                // headerText: 'Bunny.wav',
-                headerTextSize: 20,
-                headerTextColor: '#FF0000',
-                // openDocumentsOnFinish: true,
-                // removeAfterSavedToDocuments: true,
-                // openShareSheetOnFinish: true,
-                // removeAfterShared: true,
-                // cancelButtonText: 'hello',
-                // saveButtonText: 'world',
-                // removeAfterSavedToPhoto: true,
-                // enableCancelDialog: false,
-                // cancelDialogTitle: '1111',
-                // cancelDialogMessage: '22222',
-                // cancelDialogCancelText: '3333',
-                // cancelDialogConfirmText: '4444',
-                // enableSaveDialog: false,
-                // saveDialogTitle: '5555',
-                // saveDialogMessage: '666666',
-                // saveDialogCancelText: '77777',
-                // saveDialogConfirmText: '888888',
-                trimmingText: 'Trimming Video...',
-                // enableRotation: true,
-                // rotationAngle: 90,
-              },
-              (eventName, payload) => {
-                console.log('Event:', eventName, 'Payload:', payload);
-              }
-            );
+            showEditor(result.assets![0]?.uri || '', {
+              // showEditor(url3, {
+              //   type: 'audio',
+              // outputExt: 'wav',
+              // closeWhenFinish: false,
+              // minDuration: 50,
+              maxDuration: 15,
+              fullScreenModalIOS: true,
+              saveToPhoto: true,
+              removeAfterSavedToPhoto: true,
+              // enableHapticFeedback: false,
+              autoplay: true,
+              jumpToPositionOnLoad: 30000,
+              // headerText: 'Bunny.wav',
+              headerTextSize: 20,
+              headerTextColor: '#FF0000',
+              // openDocumentsOnFinish: true,
+              // removeAfterSavedToDocuments: true,
+              // openShareSheetOnFinish: true,
+              // removeAfterShared: true,
+              // cancelButtonText: 'hello',
+              // saveButtonText: 'world',
+              // removeAfterSavedToPhoto: true,
+              // enableCancelDialog: false,
+              // cancelDialogTitle: '1111',
+              // cancelDialogMessage: '22222',
+              // cancelDialogCancelText: '3333',
+              // cancelDialogConfirmText: '4444',
+              // enableSaveDialog: false,
+              // saveDialogTitle: '5555',
+              // saveDialogMessage: '666666',
+              // saveDialogCancelText: '77777',
+              // saveDialogConfirmText: '888888',
+              trimmingText: 'Trimming Video...',
+              // enableRotation: true,
+              // rotationAngle: 90,
+            });
           } catch (error) {
             console.log(error);
           }

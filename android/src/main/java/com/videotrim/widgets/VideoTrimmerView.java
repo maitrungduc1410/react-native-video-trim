@@ -1,13 +1,14 @@
-package com.margelo.nitro.videotrim.widgets;
+package com.videotrim.widgets;
 
 import static com.facebook.react.bridge.UiThreadUtil.runOnUiThread;
-import static com.margelo.nitro.videotrim.utils.VideoTrimmerUtil.RECYCLER_VIEW_PADDING;
-import static com.margelo.nitro.videotrim.utils.VideoTrimmerUtil.VIDEO_FRAMES_WIDTH;
+import static com.videotrim.utils.VideoTrimmerUtil.RECYCLER_VIEW_PADDING;
+import static com.videotrim.utils.VideoTrimmerUtil.VIDEO_FRAMES_WIDTH;
 
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
@@ -34,17 +35,18 @@ import androidx.appcompat.app.AlertDialog;
 
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.facebook.react.bridge.ReactApplicationContext;
-import com.margelo.nitro.videotrim.EditorConfig;
-import com.margelo.nitro.videotrim.R;
-import com.margelo.nitro.videotrim.enums.ErrorCode;
-import com.margelo.nitro.videotrim.interfaces.IVideoTrimmerView;
-import com.margelo.nitro.videotrim.interfaces.VideoTrimListener;
-import com.margelo.nitro.videotrim.utils.MediaMetadataUtil;
-import com.margelo.nitro.videotrim.utils.StorageUtil;
-import com.margelo.nitro.videotrim.utils.VideoTrimmerUtil;
+import com.facebook.react.bridge.ReadableMap;
+import com.videotrim.R;
+import com.videotrim.enums.ErrorCode;
+import com.videotrim.interfaces.IVideoTrimmerView;
+import com.videotrim.interfaces.VideoTrimListener;
+import com.videotrim.utils.MediaMetadataUtil;
+import com.videotrim.utils.StorageUtil;
+import com.videotrim.utils.VideoTrimmerUtil;
 
 import java.io.IOException;
 import java.util.Locale;
+import java.util.Objects;
 
 import iknow.android.utils.DeviceUtil;
 import iknow.android.utils.thread.BackgroundExecutor;
@@ -119,16 +121,16 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private String alertOnFailCloseText = "Close";
   private View currentSelectedhandle;
 
-  public VideoTrimmerView(ReactApplicationContext context, EditorConfig config, AttributeSet attrs) {
+  public VideoTrimmerView(ReactApplicationContext context, ReadableMap config, AttributeSet attrs) {
     this(context, attrs, 0, config);
   }
 
-  public VideoTrimmerView(ReactApplicationContext context, AttributeSet attrs, int defStyleAttr, EditorConfig config) {
+  public VideoTrimmerView(ReactApplicationContext context, AttributeSet attrs, int defStyleAttr, ReadableMap config) {
     super(context, attrs, defStyleAttr);
     init(context, config);
   }
 
-  private void init(ReactApplicationContext context, EditorConfig config) {
+  private void init(ReactApplicationContext context, ReadableMap config) {
     this.mContext = context;
 
     context.getCurrentActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
@@ -450,50 +452,47 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     return screenWidth;
   }
 
-  private void configure(EditorConfig config) {
-    if (config.getMaxDuration() > 0) {
-      mMaxDuration = (long) Math.max(0, config.getMaxDuration() * 1000L);
+  private void configure(ReadableMap config) {
+    if (config.hasKey("maxDuration") && config.getDouble("maxDuration") > 0) {
+      mMaxDuration = (long) Math.max(0, config.getDouble("maxDuration") * 1000L);
     }
 
-    if (config.getMinDuration() > 0) {
-      mMinDuration = (long) Math.max(1000L, config.getMinDuration() * 1000L);
+    if (config.hasKey("minDuration") && config.getDouble("minDuration") > 0) {
+      mMinDuration = (long) Math.max(1000L, config.getDouble("minDuration") * 1000L);
     }
 
-    cancelBtn.setText(config.getCancelButtonText());
+    cancelBtn.setText(config.getString("cancelButtonText"));
+    saveBtn.setText(config.getString("saveButtonText"));
+    isVideoType = config.hasKey("type") && Objects.equals(config.getString("type"), "video");
+    System.out.println("1111 isVideoType: " + isVideoType);
 
-    saveBtn.setText(config.getSaveButtonText());
-
-    isVideoType = config.getType().equals("video");
-
-    mOutputExt = config.getOutputExt();
+    mOutputExt = config.hasKey("outputExt") ? config.getString("outputExt") : "mp4";
     if (!isVideoType) {
       mOutputExt = "wav";
     }
+    enableHapticFeedback = config.hasKey("enableHapticFeedback") && config.getBoolean("enableHapticFeedback");
+    autoplay = config.hasKey("autoplay") && config.getBoolean("autoplay");
 
-    enableHapticFeedback = config.getEnableHapticFeedback();
-    autoplay = config.getAutoplay();
+    if (config.hasKey("jumpToPositionOnLoad") && config.getDouble("jumpToPositionOnLoad") > 0) {
+      jumpToPositionOnLoad = (long) Math.max(0, config.getDouble("jumpToPositionOnLoad") * 1000L);
+    }
+    headerText.setText(config.hasKey("headerText") ? config.getString("headerText") : "");
 
-    if (config.getJumpToPositionOnLoad() > 0) {
-      jumpToPositionOnLoad = (long) config.getJumpToPositionOnLoad();
+    int textSize = config.hasKey("headerTextSize") ? config.getInt("headerTextSize") : 16;
+    if (textSize < 0) {
+      textSize = 16;
     }
 
-      headerText.setText(config.getHeaderText());
+    headerText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, textSize);
+    headerText.setTextColor(config.hasKey("headerTextColor") ? config.getInt("headerTextColor") : Color.BLACK);
 
-        int textSize = (int) config.getHeaderTextSize();
-        if (textSize < 0) {
-          textSize = 16;
-        }
-        headerText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, textSize);
-        headerText.setTextColor((int) config.getHeaderTextColor());
-
-      headerView.setVisibility(View.VISIBLE);
-
-    alertOnFailToLoad = config.getAlertOnFailToLoad();
-    alertOnFailTitle = config.getAlertOnFailTitle();
-    alertOnFailMessage = config.getAlertOnFailMessage();
-    alertOnFailCloseText = config.getAlertOnFailCloseText();
-    enableRotation = config.getEnableRotation();
-    rotationAngle = config.getRotationAngle();
+    headerView.setVisibility(View.VISIBLE);
+    alertOnFailToLoad = config.hasKey("alertOnFailToLoad") && config.getBoolean("alertOnFailToLoad");
+    alertOnFailTitle = config.hasKey("alertOnFailTitle") ? config.getString("alertOnFailTitle") : "Error";
+    alertOnFailMessage = config.hasKey("alertOnFailMessage") ? config.getString("alertOnFailMessage") : "Fail to load media. Possibly invalid file or no network connection";
+    alertOnFailCloseText = config.hasKey("alertOnFailCloseText") ? config.getString("alertOnFailCloseText") : "Close";
+    enableRotation = config.hasKey("enableRotation") && config.getBoolean("enableRotation");
+    rotationAngle = config.hasKey("rotationAngle") ? config.getDouble("rotationAngle") : 0.0;
   }
 
   private void startTimingRunnable() {

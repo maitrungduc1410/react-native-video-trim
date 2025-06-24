@@ -1,4 +1,4 @@
-package com.margelo.nitro.videotrim.utils;
+package com.videotrim.utils;
 
 import android.media.MediaMetadataRetriever;
 import android.util.Log;

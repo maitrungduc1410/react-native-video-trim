@@ -1,16 +1,16 @@
-package com.margelo.nitro.videotrim
+package com.videotrim
 
 import android.R.attr.progressBarStyleHorizontal
 import android.R.attr.selectableItemBackground
 import android.R.color.holo_red_light
 import android.R.style.Theme_Black_NoTitleBar_Fullscreen
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.os.Build
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -25,19 +25,17 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.ReturnCode;
-import com.facebook.proguard.annotations.DoNotStrip
-import com.facebook.react.bridge.BaseActivityEventListener
-import com.facebook.react.bridge.LifecycleEventListener
-import com.facebook.react.bridge.UiThreadUtil
-import com.margelo.nitro.NitroModules
-import com.margelo.nitro.core.Promise
-import com.margelo.nitro.videotrim.enums.ErrorCode
-import com.margelo.nitro.videotrim.interfaces.VideoTrimListener
-import com.margelo.nitro.videotrim.utils.MediaMetadataUtil
-import com.margelo.nitro.videotrim.utils.StorageUtil
-import com.margelo.nitro.videotrim.widgets.VideoTrimmerView
+import com.arthenica.ffmpegkit.ReturnCode
+import com.facebook.react.bridge.*
+import com.facebook.react.module.annotations.ReactModule
+import com.videotrim.enums.ErrorCode
+import com.videotrim.interfaces.VideoTrimListener
+import com.videotrim.utils.MediaMetadataUtil
+import com.videotrim.utils.StorageUtil
+import com.videotrim.widgets.VideoTrimmerView
 import iknow.android.utils.BaseUtils
 import java.io.File
 import java.io.FileInputStream
@@ -45,12 +43,11 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.TimeZone
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
-@DoNotStrip
-class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListener {
+@ReactModule(name = VideoTrimModule.NAME)
+class VideoTrimModule(reactContext: ReactApplicationContext) :
+  NativeVideoTrimSpec(reactContext), VideoTrimListener, LifecycleEventListener {
+
   private var isInit: Boolean = false
   private var trimmerView: VideoTrimmerView? = null
   private var alertDialog: AlertDialog? = null
@@ -59,10 +56,8 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
   private var mProgressBar: ProgressBar? = null
   private var outputFile: String? = null
   private var isVideoType = true
-  private var editorConfig: EditorConfig? = null
-  private var trimOptions: TrimOptions? = null
-  private var onEvent: ((eventName: String, payload: Map<String, String>) -> Unit)? = null
-  private var onComplete: (() -> Unit)? = null
+  private var editorConfig: ReadableMap? = null
+  private var trimOptions: ReadableMap? = null
 
   init {
     val mActivityEventListener = object : BaseActivityEventListener() {
@@ -76,7 +71,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
 
           val uri = intent?.data ?: return
           try {
-            NitroModules.applicationContext?.contentResolver?.openOutputStream(uri)
+            reactApplicationContext.contentResolver?.openOutputStream(uri)
               ?.use { outputStream ->
                 FileInputStream(outputFile).use { fileInputStream ->
                   val buffer = ByteArray(1024)
@@ -88,9 +83,14 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
               } ?: return
             // File saved successfully
             Log.d(TAG, "File saved successfully to $uri")
-            if (editorConfig?.removeAfterSavedToDocuments == true || trimOptions?.removeAfterFailedToSaveDocuments == true) {
+
+            if (
+              editorConfig?.getBoolean("removeAfterSavedToDocuments") == true ||
+              trimOptions?.getBoolean("removeAfterFailedToSaveDocuments") == true
+            ) {
               StorageUtil.deleteFile(outputFile)
             }
+
           } catch (e: Exception) {
             e.printStackTrace()
             // Handle the error
@@ -98,7 +98,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
               "Failed to save edited video to Documents: ${e.localizedMessage}",
               ErrorCode.FAIL_TO_SAVE_TO_DOCUMENTS
             )
-            if (editorConfig?.removeAfterFailedToSaveDocuments == true || trimOptions?.removeAfterFailedToSaveDocuments == true) {
+            if (editorConfig?.getBoolean("removeAfterFailedToSaveDocuments") == true || trimOptions?.getBoolean("removeAfterFailedToSaveDocuments") == true) {
               StorageUtil.deleteFile(outputFile)
             }
           } finally {
@@ -107,23 +107,22 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
         }
       }
     }
-    NitroModules.applicationContext?.addActivityEventListener(mActivityEventListener)
+    reactApplicationContext.addActivityEventListener(mActivityEventListener)
   }
 
   override fun showEditor(
     filePath: String,
-    config: EditorConfig,
-    onEvent: (eventName: String, payload: Map<String, String>) -> Unit
+    config: ReadableMap,
   ) {
     if (trimmerView != null || alertDialog != null) {
       return
     }
 
     this.editorConfig = config
-    this.onEvent = onEvent
-    this.isVideoType = config.type == "video"
 
-    val activity = NitroModules.applicationContext?.currentActivity
+    this.isVideoType = config.hasKey("type") && config.getString("type") == "video"
+
+    val activity = reactApplicationContext.currentActivity
     if (!isInit) {
       init()
       isInit = true
@@ -131,7 +130,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
 
     // here is NOT main thread, we need to create VideoTrimmerView on UI thread, so that later we can update it using same thread
     UiThreadUtil.runOnUiThread {
-      trimmerView = VideoTrimmerView(NitroModules.applicationContext, editorConfig, null)
+      trimmerView = VideoTrimmerView(reactApplicationContext, editorConfig, null)
       trimmerView?.setOnTrimVideoListener(this)
       trimmerView?.initByURI(filePath.toUri())
 
@@ -141,7 +140,13 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
       builder.setCancelable(false)
       alertDialog = builder.create()
       alertDialog?.setView(trimmerView)
-      alertDialog?.show()
+
+      // Apply safe area handling after the dialog is shown
+      alertDialog?.setOnShowListener {
+        applySafeAreaToDialog(alertDialog!!, trimmerView!!)
+
+        emitOnShow()
+      }
 
       // this is to ensure to release resource if dialog is dismissed in unexpected way (Eg. open control/notification center by dragging from top of screen)
       alertDialog!!.setOnDismissListener {
@@ -151,16 +156,44 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
           trimmerView = null
         }
         hideDialog(true)
-        sendEvent("onHide", mapOf());
+        emitOnHide()
       }
-      sendEvent("onShow", mapOf());
+
+      alertDialog?.show()
+    }
+  }
+
+  // because trimmerView is rendered within the dialog, we need to apply safe area insets to the dialog
+  // else setOnApplyWindowInsetsListener will not fire
+  private fun applySafeAreaToDialog(dialog: AlertDialog, trimmerView: VideoTrimmerView) {
+    val window = dialog.window
+    if (window != null) {
+      // Enable edge-to-edge for the dialog window
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        window.setDecorFitsSystemWindows(false)
+      }
+
+      // Get the dialog's decorView and apply insets listener
+      val decorView = window.decorView
+      ViewCompat.setOnApplyWindowInsetsListener(decorView) { _, windowInsets ->
+        val insets = windowInsets.getInsets(
+          WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+        )
+        Log.d(TAG, "Dialog insets: top=${insets.top}, left=${insets.left}, bottom=${insets.bottom}, right=${insets.right}")
+
+        // Apply padding to the trimmer view
+        trimmerView.setPadding(insets.left, insets.top, insets.right, insets.bottom)
+
+        WindowInsetsCompat.CONSUMED
+      }
+      ViewCompat.requestApplyInsets(decorView)
     }
   }
 
   private fun init() {
     isInit = true
     // we have to init this before create videoTrimmerView
-    BaseUtils.init(NitroModules.applicationContext)
+    BaseUtils.init(reactApplicationContext)
   }
 
   override fun onHostResume() {
@@ -178,8 +211,15 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     hideDialog(true)
   }
 
+  override fun invalidate() {
+    super.invalidate()
+    hideDialog(true)
+  }
+
   override fun onLoad(duration: Int) {
-    sendEvent("onLoad", mapOf("duration" to duration.toString()))
+    val map = Arguments.createMap()
+    map.putInt("duration", duration)
+    emitOnLoad(map)
   }
 
   override fun onTrimmingProgress(percentage: Int) {
@@ -196,20 +236,18 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     // save output file to use in other places
     outputFile = out
 
-    sendEvent(
-      "onFinishTrimming", mapOf(
-        "outputPath" to (outputFile ?: ""),
-        "duration" to duration.toString(),
-        "startTime" to startTime.toString(),
-        "endTime" to endTime.toString()
-      )
-    )
+    val map = Arguments.createMap()
+    map.putString("outputPath", outputFile)
+    map.putInt("duration", duration)
+    map.putDouble("startTime", startTime.toDouble())
+    map.putDouble("endTime", endTime.toDouble())
+    emitOnFinishTrimming(map)
 
-    if (editorConfig!!.saveToPhoto && isVideoType) {
+    if (editorConfig?.getBoolean("saveToPhoto") == true && isVideoType) {
       try {
-        StorageUtil.saveVideoToGallery(NitroModules.applicationContext, outputFile)
+        StorageUtil.saveVideoToGallery(reactApplicationContext, outputFile)
         Log.d(TAG, "Edited video saved to Photo Library successfully.")
-        if (editorConfig!!.removeAfterSavedToPhoto) {
+        if (editorConfig?.getBoolean("removeAfterSavedToPhoto") == true) {
           StorageUtil.deleteFile(outputFile)
         }
       } catch (e: IOException) {
@@ -218,80 +256,51 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
           "Failed to save edited video to Photo Library: " + e.localizedMessage,
           ErrorCode.FAIL_TO_SAVE_TO_PHOTO
         )
-        if (editorConfig!!.removeAfterFailedToSavePhoto) {
+        if (editorConfig?.getBoolean("removeAfterFailedToSavePhoto") == true) {
           StorageUtil.deleteFile(outputFile)
         }
       } finally {
-        hideDialog(editorConfig!!.closeWhenFinish)
+        hideDialog(editorConfig?.getBoolean("closeWhenFinish") ?: true)
       }
-    } else if (editorConfig!!.openDocumentsOnFinish) {
+    } else if (editorConfig?.getBoolean("openDocumentsOnFinish") == true) {
       saveFileToExternalStorage(File(outputFile!!))
-    } else if (editorConfig!!.openShareSheetOnFinish) {
-      hideDialog(editorConfig!!.closeWhenFinish)
-      shareFile(NitroModules.applicationContext!!, File(outputFile!!))
+    } else if (editorConfig?.getBoolean("openShareSheetOnFinish") == true) {
+      hideDialog(editorConfig?.getBoolean("closeWhenFinish") ?: true)
+      shareFile(reactApplicationContext, File(outputFile!!))
     } else {
-      hideDialog(editorConfig!!.closeWhenFinish)
+      hideDialog(editorConfig?.getBoolean("closeWhenFinish") ?: true)
     }
   }
 
   override fun onCancelTrim() {
-    sendEvent("onCancelTrimming", mapOf())
+    emitOnCancelTrimming()
   }
 
   override fun onError(errorMessage: String?, errorCode: ErrorCode) {
-    sendEvent(
-      "onError", mapOf(
-        "message" to errorMessage.toString(),
-        "errorCode" to errorCode.name
-      )
-    )
+    val map = Arguments.createMap()
+    map.putString("message", errorMessage)
+    map.putString("errorCode", errorCode.name)
+    emitOnError(map)
   }
 
   override fun onCancel() {
-    if (!editorConfig!!.enableCancelDialog) {
-      sendEvent("onCancel", mapOf())
+    if (!editorConfig?.getBoolean("enableCancelDialog")!!) {
+      emitOnCancel()
       hideDialog(true)
       return
     }
 
-    val builder = AlertDialog.Builder(
-      NitroModules.applicationContext?.currentActivity!!
-    )
-    builder.setMessage(editorConfig!!.cancelDialogMessage)
-    builder.setTitle(editorConfig!!.cancelDialogTitle)
+    val builder = AlertDialog.Builder(reactApplicationContext.currentActivity!!)
+    builder.setMessage(editorConfig?.getString("cancelDialogMessage"))
+    builder.setTitle(editorConfig?.getString("cancelDialogTitle"))
     builder.setCancelable(false)
-    builder.setPositiveButton(editorConfig!!.cancelDialogConfirmText) { dialog: DialogInterface, which: Int ->
+    builder.setPositiveButton(editorConfig?.getString("cancelDialogConfirmText")) { dialog: DialogInterface, _: Int ->
       dialog.cancel()
-      sendEvent("onCancel", mapOf())
+      emitOnCancel()
       hideDialog(true)
     }
     builder.setNegativeButton(
-      editorConfig!!.cancelDialogCancelText
-    ) { dialog: DialogInterface, which: Int ->
-      dialog.cancel()
-    }
-    val alertDialog = builder.create()
-    alertDialog.show()
-  }
-
-  override fun onSave() {
-    if (!editorConfig!!.enableSaveDialog) {
-      startTrim()
-      return
-    }
-
-    val builder = AlertDialog.Builder(
-      NitroModules.applicationContext?.currentActivity!!
-    )
-    builder.setMessage(editorConfig!!.saveDialogMessage)
-    builder.setTitle(editorConfig!!.saveDialogTitle)
-    builder.setCancelable(false)
-    builder.setPositiveButton(editorConfig!!.saveDialogConfirmText) { dialog: DialogInterface, which: Int ->
-      dialog.cancel()
-      startTrim()
-    }
-    builder.setNegativeButton(
-      editorConfig!!.saveDialogCancelText
+      editorConfig?.getString("cancelDialogCancelText") ?: "Cancel"
     ) { dialog: DialogInterface, _: Int ->
       dialog.cancel()
     }
@@ -299,16 +308,39 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     alertDialog.show()
   }
 
-  override fun onLog(log: Map<String, String>) {
-    sendEvent("onLog", log)
+  override fun onSave() {
+    if (!editorConfig?.getBoolean("enableSaveDialog")!!) {
+      startTrim()
+      return
+    }
+
+    val builder = AlertDialog.Builder(reactApplicationContext.currentActivity!!)
+    builder.setMessage(editorConfig?.getString("saveDialogMessage"))
+    builder.setTitle(editorConfig?.getString("saveDialogTitle"))
+    builder.setCancelable(false)
+    builder.setPositiveButton(editorConfig?.getString("saveDialogConfirmText")) { dialog: DialogInterface, _: Int ->
+      dialog.cancel()
+      startTrim()
+    }
+    builder.setNegativeButton(
+      editorConfig?.getString("saveDialogCancelText") ?: "Cancel"
+    ) { dialog: DialogInterface, _: Int ->
+      dialog.cancel()
+    }
+    val alertDialog = builder.create()
+    alertDialog.show()
   }
 
-  override fun onStatistics(statistics: Map<String, String>) {
-    sendEvent("onStatistics", statistics)
+  override fun onLog(log: ReadableMap) {
+    emitOnLog( log)
+  }
+
+  override fun onStatistics(statistics: ReadableMap) {
+    emitOnStatistics(statistics)
   }
 
   private fun startTrim() {
-    val activity = NitroModules.applicationContext?.currentActivity
+    val activity = reactApplicationContext.currentActivity
     // Create the parent layout for the dialog
     val layout = LinearLayout(activity)
     layout.layoutParams = ViewGroup.LayoutParams(
@@ -325,7 +357,8 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
       ViewGroup.LayoutParams.WRAP_CONTENT,
       ViewGroup.LayoutParams.WRAP_CONTENT
     )
-    textView.text = editorConfig!!.trimmingText
+    textView.text = editorConfig?.getString("trimmingText")
+      ?: "Trimming in progress..."
     textView.gravity = Gravity.CENTER
     textView.textSize = 18f
     layout.addView(textView)
@@ -340,14 +373,15 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     layout.addView(mProgressBar)
 
     // Create button
-    if (editorConfig!!.enableCancelTrimming) {
+    if (editorConfig?.getBoolean("enableCancelTrimming") == true) {
       val button = Button(activity)
       button.layoutParams = ViewGroup.LayoutParams(
         ViewGroup.LayoutParams.WRAP_CONTENT,
         ViewGroup.LayoutParams.WRAP_CONTENT
       )
       // Set the text and style it like a text button
-      button.text = editorConfig!!.cancelTrimmingButtonText
+      button.text = editorConfig?.getString("cancelTrimmingText")
+        ?: "Cancel Trimming"
       button.setTextColor(
         ContextCompat.getColor(
           activity!!,
@@ -359,15 +393,15 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
       val outValue = TypedValue()
       activity.theme.resolveAttribute(selectableItemBackground, outValue, true)
       button.setBackgroundResource(outValue.resourceId)
-      button.setOnClickListener { v: View? ->
-        if (editorConfig!!.enableCancelTrimmingDialog) {
+      button.setOnClickListener { _: View? ->
+        if (editorConfig?.getBoolean("enableCancelTrimmingDialog") == true) {
           val builder = AlertDialog.Builder(
             activity
           )
-          builder.setMessage(editorConfig!!.cancelTrimmingDialogMessage)
-          builder.setTitle(editorConfig!!.cancelTrimmingDialogTitle)
+          builder.setMessage(editorConfig?.getString("cancelTrimmingDialogMessage"))
+          builder.setTitle(editorConfig?.getString("cancelTrimmingDialogTitle"))
           builder.setCancelable(false)
-          builder.setPositiveButton(editorConfig!!.cancelTrimmingDialogConfirmText) { dialog: DialogInterface?, which: Int ->
+          builder.setPositiveButton(editorConfig?.getString("cancelTrimmingDialogConfirmText")) { _: DialogInterface?, _: Int ->
             if (trimmerView != null) {
               trimmerView!!.onCancelTrimClicked()
             }
@@ -376,8 +410,8 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
             }
           }
           builder.setNegativeButton(
-            editorConfig!!.cancelTrimmingDialogCancelText
-          ) { dialog: DialogInterface, which: Int ->
+            editorConfig?.getString("cancelTrimmingDialogCancelText") ?: "Close"
+          ) { dialog: DialogInterface, _: Int ->
             dialog.cancel()
           }
           cancelTrimmingConfirmDialog = builder.create()
@@ -406,7 +440,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     mProgressDialog = builder.create()
 
     mProgressDialog!!.setOnShowListener {
-      sendEvent("onStartTrimming", mapOf())
+      emitOnStartTrimming()
       if (trimmerView != null) {
         trimmerView!!.onSaveClicked()
       }
@@ -440,27 +474,24 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     }
   }
 
-  private fun sendEvent(
-    eventName: String,
-    params: Map<String, String>
-  ) {
-    onEvent?.let { it(eventName, params) }
+//  private fun sendEvent(
+//    eventName: String,
+//    params: Map<String, String>
+//  ) {
+//    onEvent?.let { it(eventName, params) }
+//
+//    if (eventName == "onHide" && onComplete != null) {
+//      onComplete?.let { it() }
+//      onComplete = null // Clear the callback after invoking it
+//    }
+//  }
 
-    if (eventName == "onHide" && onComplete != null) {
-      onComplete?.let { it() }
-      onComplete = null // Clear the callback after invoking it
-    }
+  override fun listFiles(promise: Promise) {
+      promise.resolve(StorageUtil.listFiles(reactApplicationContext))
   }
 
-  override fun listFiles(): Promise<Array<String>> {
-    return Promise.async {
-      StorageUtil.listFiles(NitroModules.applicationContext)
-    }
-  }
-
-  override fun cleanFiles(): Promise<Double> {
-    return Promise.async {
-      val files = StorageUtil.listFiles(NitroModules.applicationContext)
+  override fun cleanFiles(promise: Promise) {
+      val files = StorageUtil.listFiles(reactApplicationContext)
       var successCount = 0
       for (file in files) {
         val state = StorageUtil.deleteFile(file)
@@ -469,143 +500,127 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
         }
       }
 
-      successCount.toDouble()
-    }
+      promise.resolve(successCount.toDouble())
   }
 
-  override fun deleteFile(filePath: String): Promise<Boolean> {
-    return Promise.async {
-      StorageUtil.deleteFile(filePath)
-    }
+  override fun deleteFile(filePath: String?, promise: Promise) {
+      promise.resolve(StorageUtil.deleteFile(filePath))
   }
 
-  override fun closeEditor(onComplete: () -> Unit) {
-    this.onComplete = onComplete
+  override fun closeEditor() {
     hideDialog(true)
+    emitOnHide()
   }
 
-  override fun isValidFile(url: String): Promise<FileValidationResult> {
-    return Promise.async {
-      // Use a suspending function to handle the callback
-      suspend fun getValidationResult(): FileValidationResult = suspendCoroutine { continuation ->
-        MediaMetadataUtil.checkFileValidity(url) { isValid: Boolean, fileType: String, duration: Long ->
-          if (isValid) {
-            Log.d(TAG, "Valid $fileType file with duration: $duration milliseconds")
-          } else {
-            Log.d(TAG, "Invalid file")
-          }
-          // Create a FileValidationResult object
-          val result = FileValidationResult(
-            isValid = isValid,
-            fileType = fileType,
-            duration = duration.toDouble() // Convert Long to Double
-          )
-          continuation.resume(result)
-        }
+  override fun isValidFile(url: String, promise: Promise) {
+    MediaMetadataUtil.checkFileValidity(url) { isValid: Boolean, fileType: String, duration: Long ->
+      if (isValid) {
+        Log.d(TAG, "Valid $fileType file with duration: $duration milliseconds")
+      } else {
+        Log.d(TAG, "Invalid file")
       }
-      // Resolve the promise with the FileValidationResult
-      getValidationResult()
+      // Create a FileValidationResult object
+
+      val result = Arguments.createMap()
+      result.putBoolean("isValid", isValid)
+      result.putString("fileType", fileType)
+      result.putDouble("duration", duration.toDouble())
+
+      promise.resolve(result)
     }
   }
 
-  override fun trim(url: String, options: TrimOptions): Promise<String> {
-    return Promise.async {
-      trimOptions = options
+  override fun trim(url: String, options: ReadableMap?, promise: Promise) {
+    trimOptions = options
 
-      @SuppressLint("SimpleDateFormat")
-      suspend fun getTrimresult(): String = suspendCoroutine { continuation ->
-        val currentDate = Date()
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+    val currentDate = Date()
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
 
-        dateFormat.timeZone = TimeZone.getTimeZone("UTC")
-        val formattedDateTime = dateFormat.format(currentDate)
+    dateFormat.timeZone = TimeZone.getTimeZone("UTC")
+    val formattedDateTime = dateFormat.format(currentDate)
 
-        var cmds = arrayOf(
-          "-ss",
-          "${options.startTime}ms",
-          "-to",
-          "${options.endTime}ms",
-        )
+    var cmds = arrayOf(
+      "-ss",
+      "${options?.getDouble("startTime") ?: 0 }ms",
+      "-to",
+      "${options?.getDouble("endTime") ?: 1000}ms",
+    )
 
-        if (options.enableRotation) {
-          cmds += arrayOf("-display_rotation", "${options.rotationAngle}")
-        }
+    if (options?.getBoolean("enableRotation") == true) {
+      cmds += arrayOf("-display_rotation", "${options.getDouble("rotationAngle")}")
+    }
 
-        outputFile = StorageUtil.getOutputPath(NitroModules.applicationContext, options.outputExt)
+    outputFile = StorageUtil.getOutputPath(reactApplicationContext, options?.getString("outputExt") ?: "mp4")
 
-        cmds += arrayOf(
-          "-i",
-          url,
-          "-c",
-          "copy",
-          "-metadata",
-          "creation_time=$formattedDateTime",
-          outputFile!!
-        )
+    cmds += arrayOf(
+      "-i",
+      url,
+      "-c",
+      "copy",
+      "-metadata",
+      "creation_time=$formattedDateTime",
+      outputFile!!
+    )
 
-        Log.d(TAG, "Command: ${cmds.joinToString(",")}")
+    Log.d(TAG, "Command: ${cmds.joinToString(",")}")
 
-        FFmpegKit.executeWithArgumentsAsync(cmds, { session ->
-          val state = session.state
-          val returnCode = session.returnCode
-          when {
-            ReturnCode.isSuccess(returnCode) -> {
-              // SUCCESS
-              if (options.saveToPhoto && options.type == "video") {
-                try {
-                  StorageUtil.saveVideoToGallery(NitroModules.applicationContext, outputFile)
-                  Log.d(TAG, "Edited video saved to Photo Library successfully.")
-                  if (options.removeAfterSavedToPhoto) {
-                    StorageUtil.deleteFile(outputFile)
-                  }
-
-                  continuation.resume(outputFile!!)
-                } catch (e: IOException) {
-                  e.printStackTrace()
-
-                  if (options.removeAfterFailedToSavePhoto) {
-                    StorageUtil.deleteFile(outputFile)
-                  }
-
-                  continuation.resumeWithException(
-                    Exception("Failed to save edited video to Photo Library: " + e.localizedMessage)
-                  )
-                }
-              } else {
-                  if (options.openDocumentsOnFinish) {
-                    saveFileToExternalStorage(File(outputFile!!))
-                  } else if (options.openShareSheetOnFinish) {
-                    shareFile(NitroModules.applicationContext!!, File(outputFile!!))
-                  }
-
-                  continuation.resume(outputFile!!)
-                }
+    FFmpegKit.executeWithArgumentsAsync(cmds, { session ->
+      val state = session.state
+      val returnCode = session.returnCode
+      when {
+        ReturnCode.isSuccess(returnCode) -> {
+          // SUCCESS
+          if (options?.getBoolean("saveToPhoto") == true && options.getString("type") == "video") {
+            try {
+              StorageUtil.saveVideoToGallery(reactApplicationContext, outputFile)
+              Log.d(TAG, "Edited video saved to Photo Library successfully.")
+              if (options.getBoolean("removeAfterSavedToPhoto")) {
+                StorageUtil.deleteFile(outputFile)
               }
-            ReturnCode.isCancel(returnCode) -> {
-              // CANCEL
-              println("FFmpeg command was cancelled")
-              continuation.resumeWithException(
-                Exception("FFmpeg command was cancelled")
-              )
-            }
-            else -> {
-              // FAILURE
-              val errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace());
-              println(errorMessage)
-              continuation.resumeWithException(
-                Exception(errorMessage)
-              )
-            }
-          }
-        }, { log ->
-          Log.d(TAG, "FFmpeg process started with log ${log.message}")
-        }, { statistics ->
-          // Handle statistics if needed
-        })
-      }
 
-      getTrimresult()
-    }
+              promise.resolve(outputFile)
+            } catch (e: IOException) {
+              e.printStackTrace()
+
+              if (options.getBoolean("removeAfterFailedToSavePhoto")) {
+                StorageUtil.deleteFile(outputFile)
+              }
+
+              promise.reject(
+                Exception("Failed to save edited video to Photo Library: " + e.localizedMessage)
+              )
+            }
+          } else {
+            if (options?.getBoolean("openDocumentsOnFinish") == true) {
+              saveFileToExternalStorage(File(outputFile!!))
+            } else if (options?.getBoolean("openShareSheetOnFinish") == true) {
+              shareFile(reactApplicationContext, File(outputFile!!))
+            }
+
+            promise.resolve(outputFile)
+          }
+        }
+        ReturnCode.isCancel(returnCode) -> {
+          // CANCEL
+          println("FFmpeg command was cancelled")
+          promise.reject(
+            Exception("FFmpeg command was cancelled")
+          )
+        }
+        else -> {
+          // FAILURE
+          val errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace());
+          println(errorMessage)
+          promise.reject(
+            Exception(errorMessage)
+          )
+        }
+      }
+    }, { log ->
+      Log.d(TAG, "FFmpeg process started with log ${log.message}")
+    }, { statistics ->
+      // Handle statistics if needed
+    })
   }
 
   private fun saveFileToExternalStorage(file: File) {
@@ -613,8 +628,7 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     intent.addCategory(Intent.CATEGORY_OPENABLE)
     intent.setType("*/*") // Change MIME type as needed
     intent.putExtra(Intent.EXTRA_TITLE, file.name)
-    NitroModules.applicationContext?.currentActivity!!
-      .startActivityForResult(intent, REQUEST_CODE_SAVE_FILE)
+    reactApplicationContext.currentActivity?.startActivityForResult(intent, REQUEST_CODE_SAVE_FILE)
   }
 
   private fun shareFile(context: Context, file: File) {
@@ -635,11 +649,11 @@ class VideoTrim : HybridVideoTrimSpec(), VideoTrimListener, LifecycleEventListen
     }
 
     // directly use context.startActivity(shareIntent) will cause crash
-    NitroModules.applicationContext?.currentActivity!!
-      .startActivity(Intent.createChooser(shareIntent, "Share file"))
+    reactApplicationContext.currentActivity?.startActivity(Intent.createChooser(shareIntent, "Share file"))
   }
 
   companion object {
+    const val NAME = "VideoTrim"
     const val TAG = "VideoTrimModule"
     const val REQUEST_CODE_SAVE_FILE = 1
   }

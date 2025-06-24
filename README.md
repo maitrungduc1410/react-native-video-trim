@@ -4,7 +4,7 @@
    * [For Expo project](#for-expo-project)
    * [Usage](#usage)
 - [Methods](#methods)
-   * [showEditor(videoPath: string, config?: EditorConfig, onEvent?: (eventName: string, payload: Record<string, string>) => void)](#showeditorvideopath-string-config-editorconfig-onevent-eventname-string-payload-record--void)
+   * [showEditor(videoPath: string, config?: EditorConfig) => void)](#showeditorvideopath-string-config-editorconfig--void)
    * [trim(url: string, options: TrimOptions): Promise<string>](#trimurl-string-options-trimoptions-promise)
    * [isValidFile(videoPath: string)](#isvalidfilevideopath-string)
    * [closeEditor()](#closeeditor)
@@ -14,10 +14,10 @@
 - [Callbacks (New arch)](#callbacks-new-arch)
    * [showEditor](#showeditor)
    * [closeEditor](#closeeditor-1)
-- [Events (Old arch)](#events-old-arch)
 - [Audio support](#audio-support)
 - [Cancel trimming](#cancel-trimming)
 - [Fail to load media](#fail-to-load-media)
+- [Rotation](#rotation)
 - [Use FFMPEG HTTPS version](#use-ffmpeg-https-version)
 - [Android: update SDK version](#android-update-sdk-version)
 - [Thanks](#thanks)
@@ -47,7 +47,7 @@
 
 ```sh
 # new arch
-npm install react-native-video-trim react-native-nitro-modules
+npm install react-native-video-trim
 
 # old arch
 npm install react-native-video-trim@^3.0.0
@@ -55,13 +55,11 @@ npm install react-native-video-trim@^3.0.0
 # or with yarn
 
 # new arch
-yarn add react-native-video-trim react-native-nitro-modules
+yarn add react-native-video-trim
 
 # old arch
 yarn add react-native-video-trim@^3.0.0
 ```
-
-> `react-native-nitro-modules` is required in New Arch as this library relies on [Nitro Modules](https://nitro.margelo.com/).
 
 ## For iOS (React Native CLI project)
 Run the following command to setup for iOS:
@@ -94,7 +92,7 @@ showEditor(videoUrl, {
 ```
 Usually this library will be used along with other library to select video file, Eg. [react-native-image-picker](https://github.com/react-native-image-picker/react-native-image-picker). Below is real world example:
 
-```tsx
+```jsx
 import * as React from 'react';
 
 import {
@@ -104,11 +102,84 @@ import {
   TouchableOpacity,
   NativeEventEmitter,
   NativeModules,
+  type EventSubscription,
 } from 'react-native';
 import { isValidFile, showEditor } from 'react-native-video-trim';
 import { launchImageLibrary } from 'react-native-image-picker';
 
 export default function App() {
+  const listenerSubscription = useRef<Record<string, EventSubscription>>({});
+
+  useEffect(() => {
+    listenerSubscription.current.onLoad = NativeVideoTrim.onLoad(
+      ({ duration }) => console.log('onLoad', duration)
+    );
+
+    listenerSubscription.current.onStartTrimming =
+      NativeVideoTrim.onStartTrimming(() => console.log('onStartTrimming'));
+
+    listenerSubscription.current.onCancelTrimming =
+      NativeVideoTrim.onCancelTrimming(() => console.log('onCancelTrimming'));
+    listenerSubscription.current.onCancel = NativeVideoTrim.onCancel(() =>
+      console.log('onCancel')
+    );
+    listenerSubscription.current.onHide = NativeVideoTrim.onHide(() =>
+      console.log('onHide')
+    );
+    listenerSubscription.current.onShow = NativeVideoTrim.onShow(() =>
+      console.log('onShow')
+    );
+    listenerSubscription.current.onFinishTrimming =
+      NativeVideoTrim.onFinishTrimming(
+        ({ outputPath, startTime, endTime, duration }) =>
+          console.log(
+            'onFinishTrimming',
+            `outputPath: ${outputPath}, startTime: ${startTime}, endTime: ${endTime}, duration: ${duration}`
+          )
+      );
+    listenerSubscription.current.onLog = NativeVideoTrim.onLog(
+      ({ level, message, sessionId }) =>
+        console.log(
+          'onLog',
+          `level: ${level}, message: ${message}, sessionId: ${sessionId}`
+        )
+    );
+    listenerSubscription.current.onStatistics = NativeVideoTrim.onStatistics(
+      ({
+        sessionId,
+        videoFrameNumber,
+        videoFps,
+        videoQuality,
+        size,
+        time,
+        bitrate,
+        speed,
+      }) =>
+        console.log(
+          'onStatistics',
+          `sessionId: ${sessionId}, videoFrameNumber: ${videoFrameNumber}, videoFps: ${videoFps}, videoQuality: ${videoQuality}, size: ${size}, time: ${time}, bitrate: ${bitrate}, speed: ${speed}`
+        )
+    );
+    listenerSubscription.current.onError = NativeVideoTrim.onError(
+      ({ message, errorCode }) =>
+        console.log('onError', `message: ${message}, errorCode: ${errorCode}`)
+    );
+
+    return () => {
+      listenerSubscription.current.onLoad?.remove();
+      listenerSubscription.current.onStartTrimming?.remove();
+      listenerSubscription.current.onCancelTrimming?.remove();
+      listenerSubscription.current.onCancel?.remove();
+      listenerSubscription.current.onHide?.remove();
+      listenerSubscription.current.onShow?.remove();
+      listenerSubscription.current.onFinishTrimming?.remove();
+      listenerSubscription.current.onLog?.remove();
+      listenerSubscription.current.onStatistics?.remove();
+      listenerSubscription.current.onError?.remove();
+      listenerSubscription.current = {};
+    };
+  });
+
   return (
     <View style={styles.container}>
       <TouchableOpacity
@@ -124,11 +195,7 @@ export default function App() {
 
           showEditor(result.assets![0]?.uri || '', {
             maxDuration: 20,
-          }, 
-          (eventName, payload) => {
-            console.log('Event:', eventName, 'Payload:', payload);
-          }
-          );
+          });
         }}
         style={{ padding: 10, backgroundColor: 'red' }}
       >
@@ -161,7 +228,7 @@ const styles = StyleSheet.create({
 
 # Methods
 
-## showEditor(videoPath: string, config?: EditorConfig, onEvent?: (eventName: string, payload: Record<string, string>) => void)
+## showEditor(videoPath: string, config?: EditorConfig) => void)
 Main method to show Video Editor UI.
 
 *Params*:
@@ -271,75 +338,15 @@ Delete a file in app storage. Return `true` if success
 ## showEditor
 
 ```ts
-showEditor('file', config, (eventName, payload) => {
-  console.log(eventName, payload)
-})
+showEditor('file', config)
 ```
 
 ## closeEditor
 
 ```ts
-closeEditor(() => {
-  console.log('Editor closed')
-})
+closeEditor()
 ```
 
-
-# Events (Old arch)
-To listen for events you interest, do the following:
-```js
-useEffect(() => {
-  const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
-  const subscription = eventEmitter.addListener('VideoTrim', (event) => {
-    switch (event.name) {
-      case 'onLoad': {
-        console.log('onLoadListener', event);
-        break;
-      }
-      case 'onShow': {
-        console.log('onShowListener', event);
-        break;
-      }
-      case 'onHide': {
-        console.log('onHide', event);
-        break;
-      }
-      case 'onStartTrimming': {
-        console.log('onStartTrimming', event);
-        break;
-      }
-      case 'onFinishTrimming': {
-        console.log('onFinishTrimming', event);
-        break;
-      }
-      case 'onCancelTrimming': {
-        console.log('onCancelTrimming', event);
-        break;
-      }
-      case 'onCancel': {
-        console.log('onCancel', event);
-        break;
-      }
-      case 'onError': {
-        console.log('onError', event);
-        break;
-      }
-      case 'onLog': {
-        console.log('onLog', event);
-        break;
-      }
-      case 'onStatistics': {
-        console.log('onStatistics', event);
-        break;
-      }
-    }
-  });
-
-  return () => {
-    subscription.remove();
-  };
-}, []);
-```
 # Audio support
 <div align="left">
 <img src="images/audio_android.jpg" width="200" />

@@ -1,4 +1,4 @@
-package com.margelo.nitro.videotrim.utils;
+package com.videotrim.utils;
 
 import android.content.ContentValues;
 import android.content.Context;

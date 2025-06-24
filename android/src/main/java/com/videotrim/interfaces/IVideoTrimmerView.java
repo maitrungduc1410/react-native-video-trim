@@ -1,4 +1,4 @@
-package com.margelo.nitro.videotrim.interfaces;
+package com.videotrim.interfaces;
 
 public interface IVideoTrimmerView {
   void onDestroy();

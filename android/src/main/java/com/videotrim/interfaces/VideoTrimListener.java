@@ -1,6 +1,7 @@
-package com.margelo.nitro.videotrim.interfaces;
+package com.videotrim.interfaces;
 
-import com.margelo.nitro.videotrim.enums.ErrorCode;
+import com.facebook.react.bridge.ReadableMap;
+import com.videotrim.enums.ErrorCode;
 
 import java.util.Map;
 
@@ -12,6 +13,6 @@ public interface VideoTrimListener {
   void onError(String errorMessage, ErrorCode errorCode);
   void onCancel();
   void onSave();
-  void onLog(Map<String, String> log);
-  void onStatistics(Map<String, String>  statistics);
+  void onLog(ReadableMap log);
+  void onStatistics(ReadableMap statistics);
 }

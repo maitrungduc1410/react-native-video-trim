@@ -1,4 +1,4 @@
-package com.margelo.nitro.videotrim.enums;
+package com.videotrim.enums;
 
 public enum ErrorCode {
   TRIMMING_FAILED,

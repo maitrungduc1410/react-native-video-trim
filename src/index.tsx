@@ -1,15 +1,12 @@
-import { NitroModules } from 'react-native-nitro-modules';
+import VideoTrim from './NativeVideoTrim';
 import type {
   BaseOptions,
   EditorConfig,
   FileValidationResult,
   TrimOptions,
-  VideoTrim,
-} from './VideoTrim.nitro';
+} from './NativeVideoTrim';
 import { processColor } from 'react-native';
-
-const VideoTrimHybridObject =
-  NitroModules.createHybridObject<VideoTrim>('VideoTrim');
+export * from './NativeVideoTrim';
 
 function createBaseOptions(overrides: Partial<BaseOptions> = {}): BaseOptions {
   return {
@@ -35,8 +32,8 @@ function createEditorConfig(
 ): EditorConfig {
   return {
     enableHapticFeedback: true,
-    maxDuration: -1, // Adjust default as needed
-    minDuration: 1000,
+    maxDuration: -1,
+    minDuration: -1,
     cancelButtonText: 'Cancel',
     saveButtonText: 'Save',
     enableCancelDialog: true,
@@ -51,7 +48,7 @@ function createEditorConfig(
     saveDialogConfirmText: 'Proceed',
     trimmingText: 'Trimming video...',
     fullScreenModalIOS: false,
-    autoplay: false, // Adjust default as needed
+    autoplay: false,
     jumpToPositionOnLoad: -1,
     closeWhenFinish: true,
     enableCancelTrimming: true,
@@ -61,7 +58,7 @@ function createEditorConfig(
     cancelTrimmingDialogMessage: 'Are you sure want to cancel trimming?',
     cancelTrimmingDialogCancelText: 'Close',
     cancelTrimmingDialogConfirmText: 'Proceed',
-    headerText: '', // Adjust default as needed
+    headerText: '',
     headerTextSize: 16,
     headerTextColor: processColor('white') as number,
     alertOnFailToLoad: true,
@@ -83,80 +80,78 @@ function createTrimOptions(overrides: Partial<TrimOptions> = {}): TrimOptions {
   };
 }
 
-function noop() {}
-
 /**
- * Delete a file
+ * Show video editor
  *
- * @param {string} videoPath: absolute non-empty file path to edit
+ * @param {string} filePath: absolute non-empty file path to edit
  * @param {EditorConfig} config: editor configuration
- * @returns {void} A **Promise** which resolves `void`
+ * @param {Function} onEvent: event callback
+ * @returns {void}
  */
 export function showEditor(
   filePath: string,
   config: Partial<Omit<EditorConfig, 'headerTextColor'>> & {
     headerTextColor?: string;
-  },
-  onEvent?: (eventName: string, payload: Record<string, string>) => void
+  }
 ): void {
   const { headerTextColor } = config;
   const color = processColor(headerTextColor || 'white');
 
-  VideoTrimHybridObject.showEditor(
+  VideoTrim.showEditor(
     filePath,
     createEditorConfig({
       ...config,
       headerTextColor: color as any,
-    }),
-    onEvent || noop
+    })
   );
 }
 
 /**
- * Clean output files generated at all time
+ * List output files generated at all time
  *
  * @returns {Promise<string[]>} A **Promise** which resolves to array of files
  */
 export function listFiles(): Promise<string[]> {
-  return VideoTrimHybridObject.listFiles();
+  return VideoTrim.listFiles();
 }
 
 /**
  * Clean output files generated at all time
  *
- * @returns {Promise} A **Promise** which resolves to number of deleted files
+ * @returns {Promise<number>} A **Promise** which resolves to number of deleted files
  */
 export function cleanFiles(): Promise<number> {
-  return VideoTrimHybridObject.cleanFiles();
+  return VideoTrim.cleanFiles();
 }
 
 /**
  * Delete a file
  *
  * @param {string} filePath: absolute non-empty file path to delete
- * @returns {Promise} A **Promise** which resolves `true` if successful
+ * @returns {Promise<boolean>} A **Promise** which resolves `true` if successful
  */
 export function deleteFile(filePath: string): Promise<boolean> {
   if (!filePath?.trim().length) {
     throw new Error('File path cannot be empty!');
   }
-  return VideoTrimHybridObject.deleteFile(filePath);
+  return VideoTrim.deleteFile(filePath);
 }
 
 /**
  * Close editor
  */
-export function closeEditor(onComplete?: () => void): void {
-  return VideoTrimHybridObject.closeEditor(onComplete || noop);
+export function closeEditor(): void {
+  return VideoTrim.closeEditor();
 }
 
 /**
  * Check if a file is valid audio or video file
  *
- * @returns {Promise} A **Promise** which resolves file info if successful
+ * @param {string} url: file path to validate
+ * @returns {Promise<FileValidationResult>} A **Promise** which resolves file info if successful
  */
 export function isValidFile(url: string): Promise<FileValidationResult> {
-  return VideoTrimHybridObject.isValidFile(url);
+  return VideoTrim.isValidFile(url);
 }
 
 /**
@@ -170,5 +165,5 @@ export function trim(
   url: string,
   options: Partial<TrimOptions>
 ): Promise<string> {
-  return VideoTrimHybridObject.trim(url, createTrimOptions(options));
+  return VideoTrim.trim(url, createTrimOptions(options));
 }

@@ -1,4 +1,4 @@
-package com.margelo.nitro.videotrim.utils;
+package com.videotrim.utils;
 
 import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
@@ -9,8 +9,10 @@ import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
 import com.arthenica.ffmpegkit.SessionState;
-import com.margelo.nitro.videotrim.enums.ErrorCode;
-import com.margelo.nitro.videotrim.interfaces.VideoTrimListener;
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.WritableMap;
+import com.videotrim.enums.ErrorCode;
+import com.videotrim.interfaces.VideoTrimListener;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -99,11 +101,11 @@ public class VideoTrimmerUtil {
     }, log -> {
       Log.d(TAG, "FFmpeg process started with log " + log.getMessage());
 
-      Map<String, String> map = new HashMap<>();
-      map.put("level", String.valueOf(log.getLevel().getValue()));
-      map.put("message", log.getMessage());
-      map.put("sessionId", String.valueOf(log.getSessionId()));
-      map.put("logStr", log.toString());
+      WritableMap map = Arguments.createMap();
+      map.putInt("level", log.getLevel().getValue());
+      map.putString("message", log.getMessage());
+      map.putDouble("sessionId", log.getSessionId());
+      map.putString("logStr", log.toString());
 
       callback.onLog(map);
     }, statistics -> {
@@ -114,16 +116,16 @@ public class VideoTrimmerUtil {
         callback.onTrimmingProgress(Math.min(Math.max(completePercentage, 0), 100));
       }
 
-      Map<String, String> map = new HashMap<>();
-      map.put("sessionId", String.valueOf(statistics.getSessionId()));
-      map.put("videoFrameNumber", String.valueOf(statistics.getVideoFrameNumber()));
-      map.put("videoFps", String.valueOf(statistics.getVideoFps()));
-      map.put("videoQuality", String.valueOf(statistics.getVideoQuality()));
-      map.put("size", String.valueOf(statistics.getSize()));
-      map.put("time", String.valueOf(statistics.getTime()));
-      map.put("bitrate", String.valueOf(statistics.getBitrate()));
-      map.put("speed", String.valueOf(statistics.getSpeed()));
-      map.put("statisticsStr", statistics.toString());
+      WritableMap map = Arguments.createMap();
+      map.putDouble("sessionId", statistics.getSessionId());
+      map.putInt("videoFrameNumber", statistics.getVideoFrameNumber());
+      map.putDouble("videoFps", statistics.getVideoFps());
+      map.putDouble("videoQuality", statistics.getVideoQuality());
+      map.putDouble("size", statistics.getSize());
+      map.putDouble("time", statistics.getTime());
+      map.putDouble("bitrate", statistics.getBitrate());
+      map.putDouble("speed", statistics.getSpeed());
+      map.putString("statisticsStr", statistics.toString());
       callback.onStatistics(map);
     });
   }
