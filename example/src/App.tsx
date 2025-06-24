@@ -6,7 +6,7 @@ import {
   Modal,
   type EventSubscription,
 } from 'react-native';
-import {
+import NativeVideoTrim, {
   cleanFiles,
   deleteFile,
   listFiles,
@@ -20,7 +20,6 @@ import {
   type ImagePickerResponse,
 } from 'react-native-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import NativeVideoTrim from '../../src/NativeVideoTrim';
 
 export default function App() {
   const [modalVisible, setModalVisible] = useState(false);

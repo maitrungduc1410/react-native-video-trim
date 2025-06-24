@@ -167,3 +167,6 @@ export function trim(
 ): Promise<string> {
   return VideoTrim.trim(url, createTrimOptions(options));
 }
+
+export * from './NativeVideoTrim';
+export default VideoTrim;
