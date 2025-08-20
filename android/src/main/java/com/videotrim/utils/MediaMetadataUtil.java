@@ -52,7 +52,12 @@ public class MediaMetadataUtil {
     MediaMetadataRetriever retriever = new MediaMetadataRetriever();
     try {
       // For Samsung devices, try with a slight delay and different approach
-      Thread.sleep(100); // Small delay to handle Samsung timing issues
+      try {
+        Thread.sleep(100); // Small delay to handle Samsung timing issues
+      } catch (InterruptedException ie) {
+        Thread.currentThread().interrupt(); // Restore interrupted status
+        Log.w(TAG, "Samsung retry delay interrupted", ie);
+      }
       
       if (source.startsWith("http://") || source.startsWith("https://")) {
         // For remote files, use default approach
