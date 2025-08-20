@@ -255,7 +255,10 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     if (isVideoType) {
       mediaMetadataRetriever = MediaMetadataUtil.getMediaMetadataRetriever(mSourceUri.toString());
       if (mediaMetadataRetriever == null) {
-        mOnTrimVideoListener.onError("Error when retrieving video info. Please try again.", ErrorCode.FAIL_TO_GET_VIDEO_INFO);
+        String deviceInfo = Build.MANUFACTURER + " " + Build.MODEL + " (Android " + Build.VERSION.RELEASE + ")";
+        String errorMessage = "Error when retrieving video info on " + deviceInfo + ". Please check LogCat for detailed error information.";
+        Log.e(TAG, "Failed to get MediaMetadataRetriever for URI: " + mSourceUri.toString() + " on device: " + deviceInfo);
+        mOnTrimVideoListener.onError(errorMessage, ErrorCode.FAIL_TO_GET_VIDEO_INFO);
         return;
       }
 
