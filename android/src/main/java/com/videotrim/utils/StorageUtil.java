@@ -27,6 +27,12 @@ public class StorageUtil {
     return file.getAbsolutePath();
   }
 
+  public static boolean isFileExists(String filePath) {
+    if (TextUtils.isEmpty(filePath)) return false;
+    File file = new File(filePath);
+    return file.exists();
+  }
+
   public static String[] listFiles(Context context) {
     File filesDir = context.getFilesDir();
     File[] files = filesDir.listFiles((dir, name) -> name.startsWith(VideoTrimmerUtil.FILE_PREFIX));

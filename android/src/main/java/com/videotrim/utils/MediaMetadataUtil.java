@@ -1,8 +1,10 @@
 package com.videotrim.utils;
 
 import android.media.MediaMetadataRetriever;
+import android.net.Uri;
 import android.util.Log;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 
@@ -17,7 +19,22 @@ public class MediaMetadataUtil {
       if (source.startsWith("http://") || source.startsWith("https://")) {
         retriever.setDataSource(source, new HashMap<>());
       } else {
-        retriever.setDataSource(source);
+        String filePath = source;
+
+        // if "source" is not a valid file path, try to parse it as a URI
+        if (!StorageUtil.isFileExists(filePath)) {
+          Log.e(TAG, "File does not exist, trying to parse as URI: " + source);
+
+          Uri uri = Uri.parse(source);
+          filePath = uri.getPath();
+
+          if (!StorageUtil.isFileExists(filePath)) {
+            Log.e(TAG, "File does not exist at path: " + filePath);
+            return null;
+          }
+        }
+
+        retriever.setDataSource(filePath);
       }
       return retriever;
     } catch (Exception e) {

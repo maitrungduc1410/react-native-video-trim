@@ -270,7 +270,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
       VideoTrimmerUtil.SCREEN_WIDTH_FULL = this.getScreenWidthInPortraitMode();
       VideoTrimmerUtil.VIDEO_FRAMES_WIDTH = VideoTrimmerUtil.SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2;
-      VideoTrimmerUtil.MAX_COUNT_RANGE = Math.max((VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.mThumbWidth), VideoTrimmerUtil.MAX_COUNT_RANGE);
+      VideoTrimmerUtil.MAX_COUNT_RANGE = VideoTrimmerUtil.mThumbWidth != 0 ? Math.max((VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.mThumbWidth), VideoTrimmerUtil.MAX_COUNT_RANGE) : VideoTrimmerUtil.MAX_COUNT_RANGE;
 
       startShootVideoThumbs(mContext, VideoTrimmerUtil.MAX_COUNT_RANGE, 0, mDuration);
     }
