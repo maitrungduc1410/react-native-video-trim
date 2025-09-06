@@ -282,6 +282,7 @@ Main method to show Video Editor UI.
   - `alertOnFailCloseText` (`default = "Close"`)
   - `enableRotation` (`default = false`)
   - `rotationAngle` (`default = 0`)
+  - `changeStatusBarOnOpen` (`default = false`): Update status bar to black background color when editor is opened (useful in somecases where your theme has titlebar in different color than black)
 
 If `saveToPhoto = true`, you must ensure that you have request permission to write to photo/gallery
 - For Android: you need to have `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />` in AndroidManifest.xml

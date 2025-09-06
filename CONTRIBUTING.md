@@ -11,11 +11,15 @@ This project is a monorepo managed using [Yarn workspaces](https://yarnpkg.com/f
 - The library package in the root directory.
 - An example app in the `example/` directory.
 
-To get started with the project, run `yarn` in the root directory to install the required dependencies for each package:
+To get started with the project, first remove the `workspaces` in root package.json
+
+run `yarn` in the root directory + in `example` folder:
 
 ```sh
 yarn
 ```
+
+after that change `workspaces` in root package.json back
 
 > Since the project relies on Yarn workspaces, you cannot use [`npm`](https://github.com/npm/cli) for development.
 

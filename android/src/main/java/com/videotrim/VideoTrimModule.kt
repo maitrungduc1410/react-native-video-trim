@@ -10,12 +10,15 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Build
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -58,6 +61,7 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
   private var isVideoType = true
   private var editorConfig: ReadableMap? = null
   private var trimOptions: ReadableMap? = null
+  private var originalStatusBarColor: Int = Color.TRANSPARENT
 
   init {
     val mActivityEventListener = object : BaseActivityEventListener() {
@@ -160,6 +164,40 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
       }
 
       alertDialog?.show()
+
+      if (shouldChangeStatusBarOnOpen) {
+        changeStatusBarColor()
+      }
+    }
+  }
+
+  private fun changeStatusBarColor() {
+    val window = reactApplicationContext.currentActivity?.window
+    window?.let {
+      // Store the original color
+      originalStatusBarColor = it.statusBarColor
+
+      // 2. Clear flags and set the new color
+      it.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+
+      // add FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS flag to the window
+      it.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+
+      // finally change the color
+      it.statusBarColor = ContextCompat.getColor(reactApplicationContext.currentActivity!!,R.color.black)
+    }
+  }
+
+  private fun restoreStatusBarColor() {
+    val window = reactApplicationContext.currentActivity?.window
+    window?.let {
+      // 1. Restore the color to the previously stored value
+      it.statusBarColor = originalStatusBarColor
+
+      // 2. restore flags to their previous state
+      //    For most cases, just setting the color is enough.
+       it.addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+       it.clearFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
     }
   }
 
@@ -472,6 +510,10 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
         alertDialog = null
       }
     }
+
+    if (shouldChangeStatusBarOnOpen) {
+      restoreStatusBarColor()
+    }
   }
 
 //  private fun sendEvent(
@@ -651,6 +693,9 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     // directly use context.startActivity(shareIntent) will cause crash
     reactApplicationContext.currentActivity?.startActivity(Intent.createChooser(shareIntent, "Share file"))
   }
+
+  val shouldChangeStatusBarOnOpen: Boolean
+    get() = editorConfig?.hasKey("changeStatusBarOnOpen") == true && editorConfig?.getBoolean("changeStatusBarOnOpen") == true
 
   companion object {
     const val NAME = "VideoTrim"

@@ -53,6 +53,11 @@ export interface EditorConfig extends BaseOptions {
   alertOnFailTitle: string;
   alertOnFailMessage: string;
   alertOnFailCloseText: string;
+  /**
+   * Android only
+   * Update status bar to black background color when editor is opened
+   */
+  changeStatusBarOnOpen?: boolean;
 }
 
 export interface TrimOptions extends BaseOptions {
