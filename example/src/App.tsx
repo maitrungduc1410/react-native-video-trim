@@ -163,7 +163,7 @@ export default function App() {
               trimmingText: 'Trimming Video...',
               // enableRotation: true,
               // rotationAngle: 90,
-              // changeStatusBarOnOpen: true
+              // changeStatusBarColorOnOpen: true
             });
           } catch (error) {
             console.log(error);

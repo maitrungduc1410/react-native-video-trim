@@ -57,7 +57,7 @@ export interface EditorConfig extends BaseOptions {
    * Android only
    * Update status bar to black background color when editor is opened
    */
-  changeStatusBarOnOpen?: boolean;
+  changeStatusBarColorOnOpen?: boolean;
 }
 
 export interface TrimOptions extends BaseOptions {

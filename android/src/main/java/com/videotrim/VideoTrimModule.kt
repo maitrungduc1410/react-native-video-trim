@@ -165,7 +165,7 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
 
       alertDialog?.show()
 
-      if (shouldChangeStatusBarOnOpen) {
+      if (shouldChangeStatusBarColorOnOpen) {
         changeStatusBarColor()
       }
     }
@@ -511,7 +511,7 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
       }
     }
 
-    if (shouldChangeStatusBarOnOpen) {
+    if (shouldChangeStatusBarColorOnOpen) {
       restoreStatusBarColor()
     }
   }
@@ -694,8 +694,8 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     reactApplicationContext.currentActivity?.startActivity(Intent.createChooser(shareIntent, "Share file"))
   }
 
-  val shouldChangeStatusBarOnOpen: Boolean
-    get() = editorConfig?.hasKey("changeStatusBarOnOpen") == true && editorConfig?.getBoolean("changeStatusBarOnOpen") == true
+  val shouldChangeStatusBarColorOnOpen: Boolean
+    get() = editorConfig?.hasKey("changeStatusBarColorOnOpen") == true && editorConfig?.getBoolean("changeStatusBarColorOnOpen") == true
 
   companion object {
     const val NAME = "VideoTrim"
