@@ -140,7 +140,7 @@ RCT_EXPORT_MODULE()
 
 - (void)closeEditor {
   if (self->videoTrim) {
-    [self->videoTrim closeEditor];
+    [self->videoTrim closeEditor:0];
   }
 }
 

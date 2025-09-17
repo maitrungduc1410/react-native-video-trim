@@ -71,9 +71,13 @@ You need to run `prebuild` in order for native code takes effect:
 ```
 npx expo prebuild
 ```
-Then you need to restart to make the changes take effect
+Then you should to restart to make the changes take effect
 
-> Note that on iOS you'll need to run on real device, Expo Go may not work because of library linking
+Note that on iOS, Expo Go may not work because of library linking, you may see this error:
+
+<img src="images/expo_error.PNG" width="300" />
+
+To avoid the error, you should open `ios/yourproject.xcworkspace` then manually build and run your app
 
 ## Usage
 

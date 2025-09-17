@@ -381,7 +381,7 @@ public class VideoTrim: NSObject, AssetLoaderDelegate, UIDocumentPickerDelegate 
         }
         
         if self.closeWhenFinish {
-          self.closeEditor()
+          self.closeEditor(delay: 500)
         }
         
       } else if ReturnCode.isCancel(returnCode) {
@@ -391,7 +391,7 @@ public class VideoTrim: NSObject, AssetLoaderDelegate, UIDocumentPickerDelegate 
         // FAILURE
         self.onError(message: "Command failed with state \(String(describing: FFmpegKitConfig.sessionState(toString: state ?? .failed))) and rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))", code: .trimmingFailed)
         if self.closeWhenFinish {
-          self.closeEditor()
+          self.closeEditor(delay: 500)
         }
       }
       
@@ -679,10 +679,7 @@ extension VideoTrim {
         if !self.enableCancelDialog {
           self.emitEventToJS("onCancel", eventData: nil)
           
-          vc.dismiss(animated: true, completion: {
-            self.emitEventToJS("onHide", eventData: nil)
-            self.isShowing = false
-          })
+          self.closeEditor()
           return
         }
         
@@ -693,11 +690,7 @@ extension VideoTrim {
         // Create OK button with action handler
         let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive, handler: { (action) -> Void in
           self.emitEventToJS("onCancel", eventData: nil)
-          
-          vc.dismiss(animated: true, completion: {
-            self.emitEventToJS("onHide", eventData: nil)
-            self.isShowing = false
-          })
+          self.closeEditor()
         })
         
         // Create Cancel button with action handlder
@@ -760,16 +753,15 @@ extension VideoTrim {
         })
       }
     }
-    
   }
   
-  @objc(closeEditor)
-  public func closeEditor() {
+  @objc(closeEditor:)
+  public func closeEditor(delay: Int = 0) {
     guard let vc = vc else { return }
     // some how in case we trim a very short video the view controller is still visible after first .dismiss call
     // even the file is successfully saved
     // that's why we need a small delay here to ensure vc will be dismissed
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delay)) {
       vc.dismiss(animated: true, completion: {
         self.emitEventToJS("onHide", eventData: nil)
         self.isShowing = false
