@@ -1,5 +1,12 @@
-#import "VideoTrim.h"
+// because Swift class inherits from RCTEventEmitter, hence we need to import it here for both new and old arch
+#import <React/RCTEventEmitter.h>
+
+#ifdef RCT_NEW_ARCH_ENABLED
+
+#import <VideoTrimSpec/VideoTrimSpec.h>
 #import <VideoTrim-Swift.h>
+@interface VideoTrim : NativeVideoTrimSpecBase <NativeVideoTrimSpec, VideoTrimProtocol>
+@end
 
 @implementation VideoTrim {
   VideoTrimSwift  * _Nullable videoTrim;
@@ -45,9 +52,9 @@ RCT_EXPORT_MODULE()
      options:(JS::NativeVideoTrim::TrimOptions &)options
      resolve:(nonnull RCTPromiseResolveBlock)resolve
       reject:(nonnull RCTPromiseRejectBlock)reject {
-  // TODO: implement
   if (!self->videoTrim) {
     self->videoTrim = [[VideoTrimSwift alloc] init];
+    self->videoTrim.isNewArch = true;
   }
   
   NSMutableDictionary *dict = [NSMutableDictionary dictionary];
@@ -83,6 +90,7 @@ RCT_EXPORT_MODULE()
   if (!self->videoTrim) {
     self->videoTrim = [[VideoTrimSwift alloc] init];
     self->videoTrim.delegate = self;
+    self->videoTrim.isNewArch = true;
   }
   
   NSMutableDictionary *dict = [NSMutableDictionary dictionary];
@@ -178,3 +186,27 @@ RCT_EXPORT_MODULE()
 }
 
 @end
+
+#else
+
+#import <React/RCTBridgeModule.h>
+
+@interface RCT_EXTERN_REMAP_MODULE(VideoTrim, VideoTrimSwift, RCTEventEmitter)
+
+RCT_EXTERN_METHOD(showEditor:(NSString*)uri withConfig:(NSDictionary *)config)
+RCT_EXTERN_METHOD(listFiles:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(cleanFiles:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(deleteFile:(NSString*)uri withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(closeEditor)
+RCT_EXTERN_METHOD(isValidFile:(NSString*)uri withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(trim:(NSString*)uri withConfig:(NSDictionary *)config
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+@end
+
+#endif
+

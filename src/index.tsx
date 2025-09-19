@@ -1,4 +1,5 @@
-import VideoTrim from './NativeVideoTrim';
+import VideoTrimNewArch from './NativeVideoTrim';
+import VideoTrimOldArch from './OldArch';
 import type {
   BaseOptions,
   EditorConfig,
@@ -6,7 +7,10 @@ import type {
   TrimOptions,
 } from './NativeVideoTrim';
 import { processColor } from 'react-native';
-export * from './NativeVideoTrim';
+
+// React Native runtime flags like nativeFabricUIManager are not in TypeScript types. Using `any` here is intentional and safe.
+const isFabric = !!(global as any).nativeFabricUIManager;
+const VideoTrim = isFabric ? VideoTrimNewArch : VideoTrimOldArch;
 
 function createBaseOptions(overrides: Partial<BaseOptions> = {}): BaseOptions {
   return {

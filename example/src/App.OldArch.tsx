@@ -3,105 +3,93 @@ import {
   View,
   Text,
   TouchableOpacity,
+  NativeEventEmitter,
+  NativeModules,
   Modal,
-  type EventSubscription,
+  BackHandler,
 } from 'react-native';
-import NativeVideoTrim, {
+import {
   cleanFiles,
   deleteFile,
   listFiles,
   showEditor,
   isValidFile,
-  // closeEditor,
   trim,
-  type Spec,
 } from 'react-native-video-trim';
 import {
   launchImageLibrary,
   type ImagePickerResponse,
 } from 'react-native-image-picker';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function App() {
   const [modalVisible, setModalVisible] = useState(false);
   const [isTrimming, setIsTrimming] = useState(false);
-  const listenerSubscription = useRef<Record<string, EventSubscription>>({});
 
   useEffect(() => {
     console.log(1111112, (global as any)?.nativeFabricUIManager);
 
-    listenerSubscription.current.onLoad = (NativeVideoTrim as Spec).onLoad(
-      ({ duration }) => console.log('onLoad', duration)
-    );
-
-    listenerSubscription.current.onStartTrimming = (
-      NativeVideoTrim as Spec
-    ).onStartTrimming(() => console.log('onStartTrimming'));
-
-    listenerSubscription.current.onCancelTrimming = (
-      NativeVideoTrim as Spec
-    ).onCancelTrimming(() => console.log('onCancelTrimming'));
-    listenerSubscription.current.onCancel = (NativeVideoTrim as Spec).onCancel(
-      () => console.log('onCancel')
-    );
-    listenerSubscription.current.onHide = (NativeVideoTrim as Spec).onHide(() =>
-      console.log('onHide')
-    );
-    listenerSubscription.current.onShow = (NativeVideoTrim as Spec).onShow(() =>
-      console.log('onShow')
-    );
-    listenerSubscription.current.onFinishTrimming = (
-      NativeVideoTrim as Spec
-    ).onFinishTrimming(({ outputPath, startTime, endTime, duration }) =>
-      console.log(
-        'onFinishTrimming',
-        `outputPath: ${outputPath}, startTime: ${startTime}, endTime: ${endTime}, duration: ${duration}`
-      )
-    );
-    listenerSubscription.current.onLog = (NativeVideoTrim as Spec).onLog(
-      ({ level, message, sessionId }) =>
-        console.log(
-          'onLog',
-          `level: ${level}, message: ${message}, sessionId: ${sessionId}`
-        )
-    );
-    listenerSubscription.current.onStatistics = (
-      NativeVideoTrim as Spec
-    ).onStatistics(
-      ({
-        sessionId,
-        videoFrameNumber,
-        videoFps,
-        videoQuality,
-        size,
-        time,
-        bitrate,
-        speed,
-      }) =>
-        console.log(
-          'onStatistics',
-          `sessionId: ${sessionId}, videoFrameNumber: ${videoFrameNumber}, videoFps: ${videoFps}, videoQuality: ${videoQuality}, size: ${size}, time: ${time}, bitrate: ${bitrate}, speed: ${speed}`
-        )
-    );
-    listenerSubscription.current.onError = (NativeVideoTrim as Spec).onError(
-      ({ message, errorCode }) =>
-        console.log('onError', `message: ${message}, errorCode: ${errorCode}`)
-    );
+    const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
+    const subscription = eventEmitter.addListener('VideoTrim', (event) => {
+      switch (event.name) {
+        case 'onLoad': {
+          console.log('onLoadListener', event);
+          break;
+        }
+        case 'onShow': {
+          console.log('onShowListener', event);
+          break;
+        }
+        case 'onHide': {
+          console.log('onHide', event);
+          break;
+        }
+        case 'onStartTrimming': {
+          console.log('onStartTrimming', event);
+          break;
+        }
+        case 'onFinishTrimming': {
+          console.log('onFinishTrimming', event);
+          break;
+        }
+        case 'onCancelTrimming': {
+          console.log('onCancelTrimming', event);
+          break;
+        }
+        case 'onCancel': {
+          console.log('onCancel', event);
+          break;
+        }
+        case 'onError': {
+          console.log('onError', event);
+          break;
+        }
+        case 'onLog': {
+          console.log('onLog', event);
+          break;
+        }
+        case 'onStatistics': {
+          console.log('onStatistics', event);
+          break;
+        }
+      }
+    });
 
     return () => {
-      listenerSubscription.current.onLoad?.remove();
-      listenerSubscription.current.onStartTrimming?.remove();
-      listenerSubscription.current.onCancelTrimming?.remove();
-      listenerSubscription.current.onCancel?.remove();
-      listenerSubscription.current.onHide?.remove();
-      listenerSubscription.current.onShow?.remove();
-      listenerSubscription.current.onFinishTrimming?.remove();
-      listenerSubscription.current.onLog?.remove();
-      listenerSubscription.current.onStatistics?.remove();
-      listenerSubscription.current.onError?.remove();
-      listenerSubscription.current = {};
+      subscription.remove();
     };
-  });
+  }, []);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        console.log(9999999999);
+        return true;
+      }
+    );
+    return () => backHandler.remove();
+  }, []);
 
   const onMediaLoaded = (response: ImagePickerResponse) => {
     console.log('Response', response);
@@ -112,10 +100,11 @@ export default function App() {
       <TouchableOpacity
         onPress={async () => {
           try {
+            console.log('1111 Launch Image Library');
             const result = await launchImageLibrary(
               {
                 mediaType: 'video',
-                includeExtra: true,
+                // includeExtra: true,
                 assetRepresentationMode: 'current',
               },
               onMediaLoaded
@@ -124,7 +113,7 @@ export default function App() {
             console.log(result, 1111);
 
             // const url =
-            //   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+            //   'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
             // const url1 =
             //   'https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav';

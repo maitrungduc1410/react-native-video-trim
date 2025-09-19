@@ -6,7 +6,7 @@ let FILE_PREFIX = "trimmedVideo"
 let BEFORE_TRIM_PREFIX = "beforeTrim"
 
 @objc(VideoTrimSwift)
-public class VideoTrim: NSObject, AssetLoaderDelegate, UIDocumentPickerDelegate {
+public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate {
   // MARK: instance private props
   private var isShowing = false
   private var vc: VideoTrimmerViewController?
@@ -210,10 +210,41 @@ public class VideoTrim: NSObject, AssetLoaderDelegate, UIDocumentPickerDelegate 
   }
   
   @objc public weak var delegate: VideoTrimProtocol?
+  @objc public var isNewArch = false
+
+  
+  
+  // MARK: for old arch
+  private var hasListeners = false
+  
+  @objc
+  static public override func requiresMainQueueSetup() -> Bool {
+    return false
+  }
+  
+  public override func supportedEvents() -> [String]! {
+    return ["VideoTrim"]
+  }
+  
+  public override func startObserving() {
+    hasListeners = true
+  }
+  
+  public override func stopObserving() {
+    hasListeners = false
+  }
   
   
   private func emitEventToJS(_ eventName: String, eventData: [String: Any]?) {
-    delegate?.emitEventToJS(eventName: eventName, body: eventData)
+    if isNewArch {
+      delegate?.emitEventToJS(eventName: eventName, body: eventData)
+    } else {
+      if hasListeners {
+        var modifiedEventData = eventData ?? [:] // If eventData is nil, create an empty dictionary
+        modifiedEventData["name"] = eventName
+        sendEvent(withName: "VideoTrim", body: modifiedEventData)
+      }
+    }
   }
   
   private static func deleteFile(url: URL) -> Int {
@@ -433,6 +464,7 @@ public class VideoTrim: NSObject, AssetLoaderDelegate, UIDocumentPickerDelegate 
     })
   }
   
+  // New Arch
   @objc(trim:url:config:)
   public func _trim(inputFile: String, config: NSDictionary, completion: @escaping ([String: Any]?) -> Void) {
     var destPath: URL?
@@ -502,7 +534,13 @@ public class VideoTrim: NSObject, AssetLoaderDelegate, UIDocumentPickerDelegate 
     }, withLogCallback: nil, withStatisticsCallback: nil)
   }
   
-  
+  // Old Arch
+  @objc(trim:withConfig:withResolver:withRejecter:)
+  func _trim(inputFile: String, config: NSDictionary, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
+    _trim(inputFile: inputFile, config: config, completion: { payload in
+      resolve(payload)
+    })
+  }
   
   private func saveFileToFilesApp(fileURL: URL) {
     DispatchQueue.main.async {
@@ -602,6 +640,7 @@ public class VideoTrim: NSObject, AssetLoaderDelegate, UIDocumentPickerDelegate 
 
 // MARK: @objc instance methods
 extension VideoTrim {
+  // Old + New arch
   @objc(showEditor:withConfig:)
   public func showEditor(uri: String, config: NSDictionary) {
     if isShowing {
@@ -755,6 +794,7 @@ extension VideoTrim {
     }
   }
   
+  // New Arch
   @objc(closeEditor:)
   public func closeEditor(delay: Int = 0) {
     guard let vc = vc else { return }
@@ -768,15 +808,29 @@ extension VideoTrim {
       })
     }
   }
+  
+  // Old Arch
+  @objc(closeEditor)
+  func closeEditor() -> Void {
+    closeEditor()
+  }
 }
 
 // MARK: @objc static methods
 extension VideoTrim {
+  // New Arch
   @objc(listFiles)
   public static func _listFiles() -> [String] {
     return listFiles().map{ $0.absoluteString }
   }
   
+  // Old Arch
+  @objc(listFiles:withRejecter:)
+  func listFiles(resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
+    resolve(VideoTrim._listFiles())
+  }
+  
+  // New Arch
   @objc(cleanFiles)
   public static func cleanFiles() -> Int {
     let files = listFiles()
@@ -792,10 +846,23 @@ extension VideoTrim {
     return successCount
   }
   
+  // Old Arch
+  @objc(cleanFiles:withRejecter:)
+  func cleanFiles(resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
+    resolve(VideoTrim.cleanFiles())
+  }
+  
+  // New Arch
   @objc(deleteFile:)
   public static func deleteFile(uri: String) -> Bool {
     let state = deleteFile(url: URL(string: uri)!)
     return state == 0
+  }
+  
+  // Old Arch
+  @objc(deleteFile:withResolver:withRejecter:)
+  func deleteFile(uri: String, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
+    resolve(VideoTrim.deleteFile(uri: uri))
   }
   
   private static func listFiles() -> [URL] {
@@ -818,6 +885,7 @@ extension VideoTrim {
     return files
   }
   
+  // New Arch
   @objc(isValidFile:url:)
   public static func isValidFile(url: String, completion: @escaping ([String: Any]) -> Void) -> Void {
     let fileURL = URL(string: url)!
@@ -836,6 +904,15 @@ extension VideoTrim {
       
       completion(payload)
     }
+  }
+  
+  // Old Arch
+  @objc(isValidFile:withResolver:withRejecter:)
+  func isValidFile(uri: String, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
+    VideoTrim.isValidFile(url: uri, completion: { payload in
+        resolve(payload)
+      }
+    )
   }
   
   private static func checkFileValidity(url: URL, completion: @escaping (Bool, String, Double) -> Void) {

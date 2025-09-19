@@ -17,9 +17,7 @@ import com.videotrim.interfaces.VideoTrimListener;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.TimeZone;
 
 import iknow.android.utils.DeviceUtil;
@@ -81,8 +79,14 @@ public class VideoTrimmerUtil {
     cmds.add(outputFile);
 
     String[] command = cmds.toArray(new String[0]);
+    String cmdStr = "Command: " + String.join(" ", command);
 
-    Log.d(TAG,"Command: " + String.join(",", command));
+    Log.d(TAG, cmdStr);
+
+    WritableMap m = Arguments.createMap();
+    m.putString("message", cmdStr);
+
+    callback.onLog(m);
 
     return FFmpegKit.executeWithArgumentsAsync(command, session -> {
       SessionState state = session.getState();

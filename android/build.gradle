@@ -19,7 +19,9 @@ buildscript {
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 
-apply plugin: "com.facebook.react"
+if (isNewArchitectureEnabled()) {
+  apply plugin: "com.facebook.react"
+}
 
 def getExtOrIntegerDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["VideoTrim_" + name]).toInteger()
@@ -33,6 +35,10 @@ def getPackageVersionOrDefault() {
   return rootProject.ext.has("VideoTrim_ffmpeg_version") ? rootProject.ext.get("VideoTrim_ffmpeg_version") : project.properties["VideoTrim_ffmpeg_version"]
 }
 
+def isNewArchitectureEnabled() {
+  return rootProject.hasProperty("newArchEnabled") && rootProject.getProperty("newArchEnabled") == "true"
+}
+
 android {
   namespace "com.videotrim"
 
@@ -41,6 +47,7 @@ android {
   defaultConfig {
     minSdkVersion getExtOrIntegerDefault("minSdkVersion")
     targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
+    buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
   }
 
   buildFeatures {
@@ -64,10 +71,16 @@ android {
 
   sourceSets {
     main {
-      java.srcDirs += [
-        "generated/java",
-        "generated/jni"
-      ]
+      if (isNewArchitectureEnabled()) {
+        java.srcDirs += [
+          "src/newarch",
+          // Codegen specs
+          "generated/java",
+          "generated/jni"
+        ]
+      } else {
+        java.srcDirs += "src/oldarch"
+      }
     }
   }
 }
@@ -85,8 +98,10 @@ dependencies {
   implementation 'io.github.maitrungduc1410:ffmpeg-kit-' + getPackageNameOrDefault() +':' + getPackageVersionOrDefault()
 }
 
-react {
-  jsRootDir = file("../src/")
-  libraryName = "VideoTrim"
-  codegenJavaPackageName = "com.videotrim"
+if (isNewArchitectureEnabled()) {
+  react {
+    jsRootDir = file("../src/")
+    libraryName = "VideoTrim"
+    codegenJavaPackageName = "com.videotrim"
+  }
 }

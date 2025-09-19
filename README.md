@@ -1,6 +1,7 @@
 # Table of contents
 - [Installation](#installation)
    * [For iOS (React Native CLI project)](#for-ios-react-native-cli-project)
+   * [For Android New Arch (React Native CLI project)](#for-android-new-arch-react-native-cli-project)
    * [For Expo project](#for-expo-project)
    * [Usage](#usage)
 - [Methods](#methods)
@@ -11,10 +12,7 @@
    * [listFiles()](#listfiles)
    * [cleanFiles()](#cleanfiles)
    * [deleteFile()](#deletefile)
-- [Callbacks (New arch)](#callbacks-new-arch)
-   * [showEditor](#showeditor)
-   * [closeEditor](#closeeditor-1)
-- [Audio support](#audio-support)
+- [Audio only support](#audio-only-support)
 - [Cancel trimming](#cancel-trimming)
 - [Fail to load media](#fail-to-load-media)
 - [Rotation](#rotation)
@@ -45,26 +43,25 @@
 
 # Installation
 
+Both new + old arch are supported in a single distribution
+
 ```sh
-# new arch
 npm install react-native-video-trim
 
-# old arch
-npm install react-native-video-trim@^3.0.0
-
 # or with yarn
-
-# new arch
 yarn add react-native-video-trim
 
-# old arch
-yarn add react-native-video-trim@^3.0.0
 ```
 
-## For iOS (React Native CLI project)
+## iOS (RN CLI project)
 Run the following command to setup for iOS:
 ```
 npx pod-install ios
+```
+## Android New Arch (RN CLI project)
+If you are using New Arch, in `android` folder run:
+```
+./gradlew generateCodegenArtifactsFromSchema
 ```
 ## For Expo project
 You need to run `prebuild` in order for native code takes effect:
@@ -75,7 +72,7 @@ Then you should to restart to make the changes take effect
 
 Note that on iOS, Expo Go may not work because of library linking, you may see this error:
 
-<img src="images/expo_error.PNG" width="300" />
+<img src="images/expo_error.PNG" width="150" />
 
 To avoid the error, you should open `ios/yourproject.xcworkspace` then manually build and run your app
 
@@ -94,7 +91,10 @@ showEditor(videoUrl, {
   maxDuration: 20,
 });
 ```
-Usually this library will be used along with other library to select video file, Eg. [react-native-image-picker](https://github.com/react-native-image-picker/react-native-image-picker). Below is real world example:
+Usually this library will be used along with other library to select video file, Eg. [react-native-image-picker](https://github.com/react-native-image-picker/react-native-image-picker). Below are real world examples:
+
+<details>
+  <summary>New Arch usage</summary>
 
 ```jsx
 import * as React from 'react';
@@ -104,51 +104,49 @@ import {
   View,
   Text,
   TouchableOpacity,
-  NativeEventEmitter,
-  NativeModules,
   type EventSubscription,
 } from 'react-native';
-import { isValidFile, showEditor } from 'react-native-video-trim';
+import { isValidFile, showEditor, type Spec } from 'react-native-video-trim';
 import { launchImageLibrary } from 'react-native-image-picker';
 
 export default function App() {
   const listenerSubscription = useRef<Record<string, EventSubscription>>({});
 
   useEffect(() => {
-    listenerSubscription.current.onLoad = NativeVideoTrim.onLoad(
+    listenerSubscription.current.onLoad = (NativeVideoTrim as Spec).onLoad(
       ({ duration }) => console.log('onLoad', duration)
     );
 
     listenerSubscription.current.onStartTrimming =
-      NativeVideoTrim.onStartTrimming(() => console.log('onStartTrimming'));
+      (NativeVideoTrim as Spec).onStartTrimming(() => console.log('onStartTrimming'));
 
     listenerSubscription.current.onCancelTrimming =
-      NativeVideoTrim.onCancelTrimming(() => console.log('onCancelTrimming'));
-    listenerSubscription.current.onCancel = NativeVideoTrim.onCancel(() =>
+      (NativeVideoTrim as Spec).onCancelTrimming(() => console.log('onCancelTrimming'));
+    listenerSubscription.current.onCancel = (NativeVideoTrim as Spec).onCancel(() =>
       console.log('onCancel')
     );
-    listenerSubscription.current.onHide = NativeVideoTrim.onHide(() =>
+    listenerSubscription.current.onHide = (NativeVideoTrim as Spec).onHide(() =>
       console.log('onHide')
     );
-    listenerSubscription.current.onShow = NativeVideoTrim.onShow(() =>
+    listenerSubscription.current.onShow = (NativeVideoTrim as Spec).onShow(() =>
       console.log('onShow')
     );
     listenerSubscription.current.onFinishTrimming =
-      NativeVideoTrim.onFinishTrimming(
+      (NativeVideoTrim as Spec).onFinishTrimming(
         ({ outputPath, startTime, endTime, duration }) =>
           console.log(
             'onFinishTrimming',
             `outputPath: ${outputPath}, startTime: ${startTime}, endTime: ${endTime}, duration: ${duration}`
           )
       );
-    listenerSubscription.current.onLog = NativeVideoTrim.onLog(
+    listenerSubscription.current.onLog = (NativeVideoTrim as Spec).onLog(
       ({ level, message, sessionId }) =>
         console.log(
           'onLog',
           `level: ${level}, message: ${message}, sessionId: ${sessionId}`
         )
     );
-    listenerSubscription.current.onStatistics = NativeVideoTrim.onStatistics(
+    listenerSubscription.current.onStatistics = (NativeVideoTrim as Spec).onStatistics(
       ({
         sessionId,
         videoFrameNumber,
@@ -164,7 +162,7 @@ export default function App() {
           `sessionId: ${sessionId}, videoFrameNumber: ${videoFrameNumber}, videoFps: ${videoFps}, videoQuality: ${videoQuality}, size: ${size}, time: ${time}, bitrate: ${bitrate}, speed: ${speed}`
         )
     );
-    listenerSubscription.current.onError = NativeVideoTrim.onError(
+    listenerSubscription.current.onError = (NativeVideoTrim as Spec).onError(
       ({ message, errorCode }) =>
         console.log('onError', `message: ${message}, errorCode: ${errorCode}`)
     );
@@ -229,6 +227,130 @@ const styles = StyleSheet.create({
   },
 });
 ```
+</details>
+
+<br />
+
+<details>
+  <summary>Old Arch usage</summary>
+
+```jsx
+import * as React from 'react';
+
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  NativeEventEmitter,
+  NativeModules,
+} from 'react-native';
+import { isValidFile, showEditor } from 'react-native-video-trim';
+import { launchImageLibrary } from 'react-native-image-picker';
+
+export default function App() {
+  useEffect(() => {
+    const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
+    const subscription = eventEmitter.addListener('VideoTrim', (event) => {
+      switch (event.name) {
+        case 'onLoad': {
+          console.log('onLoadListener', event);
+          break;
+        }
+        case 'onShow': {
+          console.log('onShowListener', event);
+          break;
+        }
+        case 'onHide': {
+          console.log('onHide', event);
+          break;
+        }
+        case 'onStartTrimming': {
+          console.log('onStartTrimming', event);
+          break;
+        }
+        case 'onFinishTrimming': {
+          console.log('onFinishTrimming', event);
+          break;
+        }
+        case 'onCancelTrimming': {
+          console.log('onCancelTrimming', event);
+          break;
+        }
+        case 'onCancel': {
+          console.log('onCancel', event);
+          break;
+        }
+        case 'onError': {
+          console.log('onError', event);
+          break;
+        }
+        case 'onLog': {
+          console.log('onLog', event);
+          break;
+        }
+        case 'onStatistics': {
+          console.log('onStatistics', event);
+          break;
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <TouchableOpacity
+        onPress={async () => {
+          const result = await launchImageLibrary({
+            mediaType: 'video',
+            assetRepresentationMode: 'current',
+          });
+
+          isValidFile(result.assets![0]?.uri || '').then((res) =>
+            console.log(res)
+          );
+
+          showEditor(result.assets![0]?.uri || '', {
+            maxDuration: 20,
+          });
+        }}
+        style={{ padding: 10, backgroundColor: 'red' }}
+      >
+        <Text>Launch Library</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => {
+          isValidFile('invalid file path').then((res) => console.log(res));
+        }}
+        style={{
+          padding: 10,
+          backgroundColor: 'blue',
+          marginTop: 20,
+        }}
+      >
+        <Text>Check Video Valid</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+```
+</details>
+
+<br />
+
+Checkout [Example folder](./example/src/) for more details
 
 # Methods
 
@@ -286,7 +408,7 @@ Main method to show Video Editor UI.
   - `alertOnFailCloseText` (`default = "Close"`)
   - `enableRotation` (`default = false`)
   - `rotationAngle` (`default = 0`)
-  - `changeStatusBarColorOnOpen` (`default = false`): Update status bar color to black background color when editor is opened (useful in somecases where your theme has titlebar in different color than black)
+  - `changeStatusBarColorOnOpen` (`default = false`): (Android only) Update status bar color to black background color when editor is opened (useful in somecases where your theme has titlebar in different color than black)
 
 If `saveToPhoto = true`, you must ensure that you have request permission to write to photo/gallery
 - For Android: you need to have `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />` in AndroidManifest.xml
@@ -338,21 +460,7 @@ Clean all generated output files in app storage. Return number of successfully d
 ## deleteFile()
 Delete a file in app storage. Return `true` if success
 
-# Callbacks (New arch)
-
-## showEditor
-
-```ts
-showEditor('file', config)
-```
-
-## closeEditor
-
-```ts
-closeEditor()
-```
-
-# Audio support
+# Audio only support
 <div align="left">
 <img src="images/audio_android.jpg" width="200" />
 <img src="images/audio_ios.jpg" width="200" />

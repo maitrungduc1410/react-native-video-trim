@@ -17,7 +17,6 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.Window
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
@@ -32,8 +31,14 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
-import com.facebook.react.bridge.*
-import com.facebook.react.module.annotations.ReactModule
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.BaseActivityEventListener
+import com.facebook.react.bridge.LifecycleEventListener
+import com.facebook.react.bridge.Promise
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.UiThreadUtil
+import com.facebook.react.bridge.WritableMap
 import com.videotrim.enums.ErrorCode
 import com.videotrim.interfaces.VideoTrimListener
 import com.videotrim.utils.MediaMetadataUtil
@@ -47,9 +52,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.TimeZone
 
-@ReactModule(name = VideoTrimModule.NAME)
-class VideoTrimModule(reactContext: ReactApplicationContext) :
-  NativeVideoTrimSpec(reactContext), VideoTrimListener, LifecycleEventListener {
+/**
+ * Contains all shared business logic between old + new arch.
+ * Does NOT know how to emit events.
+ */
+open class BaseVideoTrimModule internal constructor(
+  private val reactApplicationContext: ReactApplicationContext,
+  private val sendEvent: (eventName: String, params: WritableMap?) -> Unit
+) : VideoTrimListener, LifecycleEventListener {
 
   private var isInit: Boolean = false
   private var trimmerView: VideoTrimmerView? = null
@@ -62,6 +72,8 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
   private var editorConfig: ReadableMap? = null
   private var trimOptions: ReadableMap? = null
   private var originalStatusBarColor: Int = Color.TRANSPARENT
+  private val shouldChangeStatusBarColorOnOpen: Boolean
+    get() = editorConfig?.hasKey("changeStatusBarColorOnOpen") == true && editorConfig?.getBoolean("changeStatusBarColorOnOpen") == true
 
   init {
     val mActivityEventListener = object : BaseActivityEventListener() {
@@ -114,7 +126,8 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     reactApplicationContext.addActivityEventListener(mActivityEventListener)
   }
 
-  override fun showEditor(
+
+  fun showEditor(
     filePath: String,
     config: ReadableMap,
   ) {
@@ -149,7 +162,7 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
       alertDialog?.setOnShowListener {
         applySafeAreaToDialog(alertDialog!!, trimmerView!!)
 
-        emitOnShow()
+        sendEvent("onShow", null)
       }
 
       // this is to ensure to release resource if dialog is dismissed in unexpected way (Eg. open control/notification center by dragging from top of screen)
@@ -160,7 +173,7 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
           trimmerView = null
         }
         hideDialog(true)
-        emitOnHide()
+        sendEvent("onHide", null)
       }
 
       alertDialog?.show()
@@ -196,8 +209,8 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
 
       // 2. restore flags to their previous state
       //    For most cases, just setting the color is enough.
-       it.addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-       it.clearFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+      it.addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+      it.clearFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
     }
   }
 
@@ -249,15 +262,15 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     hideDialog(true)
   }
 
-  override fun invalidate() {
-    super.invalidate()
-    hideDialog(true)
-  }
+//  override fun invalidate() {
+//    super.invalidate()
+//    hideDialog(true)
+//  }
 
   override fun onLoad(duration: Int) {
     val map = Arguments.createMap()
     map.putInt("duration", duration)
-    emitOnLoad(map)
+    sendEvent("onLoad", map)
   }
 
   override fun onTrimmingProgress(percentage: Int) {
@@ -279,7 +292,7 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     map.putInt("duration", duration)
     map.putDouble("startTime", startTime.toDouble())
     map.putDouble("endTime", endTime.toDouble())
-    emitOnFinishTrimming(map)
+    sendEvent("onFinishTrimming", map)
 
     if (editorConfig?.getBoolean("saveToPhoto") == true && isVideoType) {
       try {
@@ -311,19 +324,19 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
   }
 
   override fun onCancelTrim() {
-    emitOnCancelTrimming()
+    sendEvent("onCancelTrimming", null)
   }
 
   override fun onError(errorMessage: String?, errorCode: ErrorCode) {
     val map = Arguments.createMap()
     map.putString("message", errorMessage)
     map.putString("errorCode", errorCode.name)
-    emitOnError(map)
+    sendEvent("onError", map)
   }
 
   override fun onCancel() {
     if (!editorConfig?.getBoolean("enableCancelDialog")!!) {
-      emitOnCancel()
+      sendEvent("onCancel", null)
       hideDialog(true)
       return
     }
@@ -334,7 +347,7 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     builder.setCancelable(false)
     builder.setPositiveButton(editorConfig?.getString("cancelDialogConfirmText")) { dialog: DialogInterface, _: Int ->
       dialog.cancel()
-      emitOnCancel()
+      sendEvent("onCancel", null)
       hideDialog(true)
     }
     builder.setNegativeButton(
@@ -369,12 +382,12 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     alertDialog.show()
   }
 
-  override fun onLog(log: ReadableMap) {
-    emitOnLog( log)
+  override fun onLog(log: WritableMap) {
+    sendEvent("onLog", log)
   }
 
-  override fun onStatistics(statistics: ReadableMap) {
-    emitOnStatistics(statistics)
+  override fun onStatistics(statistics: WritableMap) {
+    sendEvent("onStatistics", statistics)
   }
 
   private fun startTrim() {
@@ -478,7 +491,7 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     mProgressDialog = builder.create()
 
     mProgressDialog!!.setOnShowListener {
-      emitOnStartTrimming()
+      sendEvent("onStartTrimming", null)
       if (trimmerView != null) {
         trimmerView!!.onSaveClicked()
       }
@@ -516,45 +529,33 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     }
   }
 
-//  private fun sendEvent(
-//    eventName: String,
-//    params: Map<String, String>
-//  ) {
-//    onEvent?.let { it(eventName, params) }
-//
-//    if (eventName == "onHide" && onComplete != null) {
-//      onComplete?.let { it() }
-//      onComplete = null // Clear the callback after invoking it
-//    }
-//  }
-
-  override fun listFiles(promise: Promise) {
-      promise.resolve(StorageUtil.listFiles(reactApplicationContext))
+  fun listFiles(promise: Promise) {
+    promise.resolve(Arguments.fromArray(StorageUtil.listFiles(reactApplicationContext)))
   }
 
-  override fun cleanFiles(promise: Promise) {
-      val files = StorageUtil.listFiles(reactApplicationContext)
-      var successCount = 0
-      for (file in files) {
-        val state = StorageUtil.deleteFile(file)
-        if (state) {
-          successCount++
-        }
+  fun cleanFiles(promise: Promise) {
+    val files = StorageUtil.listFiles(reactApplicationContext)
+    var successCount = 0
+    for (file in files) {
+      val state = StorageUtil.deleteFile(file)
+      if (state) {
+        successCount++
       }
+    }
 
-      promise.resolve(successCount.toDouble())
+    promise.resolve(successCount.toDouble())
   }
 
-  override fun deleteFile(filePath: String?, promise: Promise) {
-      promise.resolve(StorageUtil.deleteFile(filePath))
+  fun deleteFile(filePath: String, promise: Promise) {
+    promise.resolve(StorageUtil.deleteFile(filePath))
   }
 
-  override fun closeEditor() {
+  fun closeEditor() {
     hideDialog(true)
-    emitOnHide()
+    sendEvent("onHide", null)
   }
 
-  override fun isValidFile(url: String, promise: Promise) {
+  fun isValidFile(url: String, promise: Promise) {
     MediaMetadataUtil.checkFileValidity(url) { isValid: Boolean, fileType: String, duration: Long ->
       if (isValid) {
         Log.d(TAG, "Valid $fileType file with duration: $duration milliseconds")
@@ -572,7 +573,7 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  override fun trim(url: String, options: ReadableMap?, promise: Promise) {
+  fun trim(url: String, options: ReadableMap?, promise: Promise) {
     trimOptions = options
 
     val currentDate = Date()
@@ -693,9 +694,6 @@ class VideoTrimModule(reactContext: ReactApplicationContext) :
     // directly use context.startActivity(shareIntent) will cause crash
     reactApplicationContext.currentActivity?.startActivity(Intent.createChooser(shareIntent, "Share file"))
   }
-
-  val shouldChangeStatusBarColorOnOpen: Boolean
-    get() = editorConfig?.hasKey("changeStatusBarColorOnOpen") == true && editorConfig?.getBoolean("changeStatusBarColorOnOpen") == true
 
   companion object {
     const val NAME = "VideoTrim"
