@@ -121,6 +121,8 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private String alertOnFailCloseText = "Close";
   private View currentSelectedhandle;
 
+  private RelativeLayout trimmerView;
+
   public VideoTrimmerView(ReactApplicationContext context, ReadableMap config, AttributeSet attrs) {
     this(context, attrs, 0, config);
   }
@@ -170,6 +172,8 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
     headerView = findViewById(R.id.headerView);
     headerText = findViewById(R.id.headerText);
+
+    trimmerView = findViewById(R.id.trimmerView);
   }
 
   public void initByURI(final Uri videoURI) {
@@ -296,6 +300,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     }
 
     mOnTrimVideoListener.onLoad(mDuration);
+    ignoreSystemGestureForView(trimmerView);
   }
 
   private void updateGradientColors(int startColor, int endColor) {
@@ -464,7 +469,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     cancelBtn.setText(config.getString("cancelButtonText"));
     saveBtn.setText(config.getString("saveButtonText"));
     isVideoType = config.hasKey("type") && Objects.equals(config.getString("type"), "video");
-    System.out.println("1111 isVideoType: " + isVideoType);
+    System.out.println("isVideoType: " + isVideoType);
 
     mOutputExt = config.hasKey("outputExt") ? config.getString("outputExt") : "mp4";
     if (!isVideoType) {
@@ -781,5 +786,24 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     startShootVideoThumbs(mContext, 10, 5000, 10000);
 
     isZoomedIn = true;
+  }
+
+  private void ignoreSystemGestureForView(View v) {
+    // Android 10+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      // 1. setSystemGestureExclusionRects on a rect which is entire screen size
+      // 2. if we use the bound of the view, it's not smooth and still sometimes can trigger system gesture even our finger is within the view bound
+      // 3. even though here the bound is set to screen size, it doesn't mean the entire screen is excluded from system gesture, it only means the area within the view bound is excluded
+      v.setSystemGestureExclusionRects(
+        java.util.List.of(
+          new android.graphics.Rect(
+            0,
+            0,
+            DeviceUtil.getDeviceWidth(),
+            DeviceUtil.getDeviceHeight()
+          )
+        )
+      );
+    }
   }
 }
