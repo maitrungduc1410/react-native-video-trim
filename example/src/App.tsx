@@ -150,6 +150,8 @@ export default function App() {
               // headerText: 'Bunny.wav',
               headerTextSize: 20,
               headerTextColor: '#FF0000',
+              trimmerColor: 'red',
+              handleIconColor: 'green',
               // openDocumentsOnFinish: true,
               // removeAfterSavedToDocuments: true,
               // openShareSheetOnFinish: true,

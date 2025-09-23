@@ -58,6 +58,14 @@ export interface EditorConfig extends BaseOptions {
    * Update status bar to black background color when editor is opened
    */
   changeStatusBarColorOnOpen?: boolean;
+  /**
+   * Color of the trimmer bar
+   */
+  trimmerColor?: number;
+  /**
+   * Color of the trimmer left/right handle icons
+   */
+  handleIconColor?: number;
 }
 
 export interface TrimOptions extends BaseOptions {

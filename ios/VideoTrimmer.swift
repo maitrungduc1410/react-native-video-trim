@@ -34,7 +34,7 @@ import AVFoundation
     
     // currently there're warnings in the console saying that initial width of thumbView is 0
     // TODO: migrate all to AutoLayout
-    private let thumbView: VideoTrimmerThumb = {
+    let thumbView: VideoTrimmerThumb = {
         let view = VideoTrimmerThumb()
         view.accessibilityIdentifier = "thumbView"
         return view

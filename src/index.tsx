@@ -65,6 +65,8 @@ function createEditorConfig(
     headerText: '',
     headerTextSize: 16,
     headerTextColor: processColor('white') as number,
+    trimmerColor: processColor('#f1d247') as number,
+    handleIconColor: processColor('black') as number,
     alertOnFailToLoad: true,
     alertOnFailTitle: 'Error',
     alertOnFailMessage:
@@ -94,18 +96,26 @@ function createTrimOptions(overrides: Partial<TrimOptions> = {}): TrimOptions {
  */
 export function showEditor(
   filePath: string,
-  config: Partial<Omit<EditorConfig, 'headerTextColor'>> & {
+  config: Partial<
+    Omit<EditorConfig, 'headerTextColor' | 'trimmerColor' | 'handleIconColor'>
+  > & {
     headerTextColor?: string;
+    trimmerColor?: string;
+    handleIconColor?: string;
   }
 ): void {
-  const { headerTextColor } = config;
-  const color = processColor(headerTextColor || 'white');
+  const { headerTextColor, trimmerColor, handleIconColor } = config;
+  const _headerTextColor = processColor(headerTextColor || 'white');
+  const _trimmerColor = processColor(trimmerColor || '#f1d247');
+  const _handleIconColor = processColor(handleIconColor || 'black');
 
   VideoTrim.showEditor(
     filePath,
     createEditorConfig({
       ...config,
-      headerTextColor: color as any,
+      headerTextColor: _headerTextColor as any,
+      trimmerColor: _trimmerColor as any,
+      handleIconColor: _handleIconColor as any,
     })
   );
 }

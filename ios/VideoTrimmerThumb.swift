@@ -172,4 +172,17 @@ class VideoTrimmerThumb: UIView {
         topView.backgroundColor = color
         bottomView.backgroundColor = color
     }
+    
+    // MARK: - Public Color Update Methods
+    func updateTrimmerColor(_ color: UIColor) {
+        leadingView.backgroundColor = color
+        trailingView.backgroundColor = color
+        topView.backgroundColor = color
+        bottomView.backgroundColor = color
+    }
+    
+    func updateHandleIconColor(_ color: UIColor) {
+        leadingChevronImageView.tintColor = color
+        trailingChevronView.tintColor = color
+    }
 }

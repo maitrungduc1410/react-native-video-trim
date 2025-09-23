@@ -48,6 +48,10 @@ class VideoTrimmerViewController: UIViewController {
     var saveBtnClicked: ((CMTimeRange) -> Void)?
     private var enableHapticFeedback = true
     
+    // New color properties
+    private var trimmerColor: UIColor = UIColor.systemYellow
+    private var handleIconColor: UIColor = UIColor.black
+    
     private let playerController = AVPlayerViewController()
     private var trimmer: VideoTrimmer!
     private var timingStackView: UIStackView!
@@ -220,6 +224,17 @@ class VideoTrimmerViewController: UIViewController {
         cancelBtnClicked?()
     }
     
+    // MARK: - Color Update Methods
+    private func applyTrimmerColors() {
+        guard let trimmer = trimmer else { return }
+        
+        // Apply trimmer color to the thumb view
+        trimmer.thumbView.updateTrimmerColor(trimmerColor)
+        
+        // Apply handle icon color to the chevron image views
+        trimmer.thumbView.updateHandleIconColor(handleIconColor)
+    }
+    
     // MARK: - Setup Methods
     private func setupView() {
         self.overrideUserInterfaceStyle = .dark
@@ -350,6 +365,9 @@ class VideoTrimmerViewController: UIViewController {
         UIView.animate(withDuration: 0.25, animations: {
             self.trimmer.alpha = 1
         })
+        
+        // Apply the trimmer colors
+        applyTrimmerColors()
     }
     
     private func setupPlayerController() {
@@ -447,46 +465,25 @@ class VideoTrimmerViewController: UIViewController {
     }
     
   public func configure(config: NSDictionary) {
-    if let maxDuration = config["maxDuration"] as? Int, maxDuration > 0 {
-        maximumDuration = maxDuration
-    }
+    maximumDuration = config["maxDuration"] as? Int ?? 0
+    minimumDuration = config["minDuration"] as? Int ?? 0
+    cancelButtonText = config["cancelButtonText"] as? String ?? "Cancel"
+    saveButtonText = config["saveButtonText"] as? String ?? "Save"
+    jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Double ?? 0
+    enableHapticFeedback = config["enableHapticFeedback"] as? Bool ?? true
+    autoplay = config["autoplay"] as? Bool ?? false
+    headerText = config["headerText"] as? String
+    headerTextSize = config["headerTextSize"] as? Int ?? 16
+    headerTextColor = config["headerTextColor"] as? Double
     
-    if let minDuration = config["minDuration"] as? Int, minDuration > 0 {
-        minimumDuration = minDuration
+    // Handle new color properties
+    if let trimmerColorValue = config["trimmerColor"] as? Double {
+        trimmerColor = RCTConvert.uiColor(trimmerColorValue) ?? UIColor.systemYellow
     }
-    
-    if let cancelText = config["cancelButtonText"] as? String, !cancelText.isEmpty {
-        cancelButtonText = cancelText
+    if let handleIconColorValue = config["handleIconColor"] as? Double {
+        handleIconColor = RCTConvert.uiColor(handleIconColorValue) ?? UIColor.black
     }
-    
-    if let saveText = config["saveButtonText"] as? String, !saveText.isEmpty {
-        saveButtonText = saveText
-    }
-    
-    if let jumpPosition = config["jumpToPositionOnLoad"] as? Double, jumpPosition >= 0 {
-        jumpToPositionOnLoad = jumpPosition
-    }
-    
-    if let enableHaptic = config["enableHapticFeedback"] as? Bool {
-        enableHapticFeedback = enableHaptic
-    }
-    
-    if let autoPlay = config["autoplay"] as? Bool {
-        autoplay = autoPlay
-    }
-    
-    if let headerText = config["headerText"] as? String, !headerText.isEmpty {
-        self.headerText = headerText
-      
-      if let textSize = config["headerTextSize"] as? Int, textSize > 0 {
-        headerTextSize = textSize
-      }
-      
-      if let textColor = config["headerTextColor"] as? Double {
-        headerTextColor = textColor
-      }
-    }
-    }
+  }
     
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
         if keyPath == "status" {
@@ -553,26 +550,3 @@ private extension UILabel {
         return label
     }
 }
-
-//extension UIColor {
-//    static func color(fromHexNumber hex: NSNumber?, defaultColor: UIColor = .black) -> UIColor {
-//        guard let hexValue = hex?.int32Value else {
-//            return defaultColor
-//        }
-//
-//        // Extract RGB components from the hex value
-//        let red = CGFloat((hexValue >> 16) & 0xFF) / 255.0 // Extract red (bits 16-23)
-//        let green = CGFloat((hexValue >> 8) & 0xFF) / 255.0 // Extract green (bits 8-15)
-//        let blue = CGFloat(hexValue & 0xFF) / 255.0 // Extract blue (bits 0-7)
-//
-//        // Check if alpha is included (if hex is 0xAARRGGBB)
-//        let alpha: CGFloat
-//        if hexValue > 0xFFFFFF { // If the value is larger than 0xFFFFFF, it includes alpha
-//            alpha = CGFloat((hexValue >> 24) & 0xFF) / 255.0 // Extract alpha (bits 24-31)
-//        } else {
-//            alpha = 1.0 // Default to opaque
-//        }
-//
-//        return UIColor(red: red, green: green, blue: blue, alpha: alpha)
-//    }
-//}

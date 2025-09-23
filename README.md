@@ -1,423 +1,106 @@
-# Table of contents
+# Table of Contents
+- [Overview](#overview)
 - [Installation](#installation)
-   * [For iOS (React Native CLI project)](#for-ios-react-native-cli-project)
-   * [For Android New Arch (React Native CLI project)](#for-android-new-arch-react-native-cli-project)
-   * [For Expo project](#for-expo-project)
-   * [Usage](#usage)
-- [Methods](#methods)
-   * [showEditor(videoPath: string, config?: EditorConfig) => void)](#showeditorvideopath-string-config-editorconfig--void)
-   * [trim(url: string, options: TrimOptions): Promise<string>](#trimurl-string-options-trimoptions-promise)
-   * [isValidFile(videoPath: string)](#isvalidfilevideopath-string)
-   * [closeEditor()](#closeeditor)
-   * [listFiles()](#listfiles)
-   * [cleanFiles()](#cleanfiles)
-   * [deleteFile()](#deletefile)
-- [Audio only support](#audio-only-support)
-- [Cancel trimming](#cancel-trimming)
-- [Fail to load media](#fail-to-load-media)
-- [Rotation](#rotation)
-- [Use FFMPEG HTTPS version](#use-ffmpeg-https-version)
-- [Android: update SDK version](#android-update-sdk-version)
-- [Thanks](#thanks)
+- [Quick Start](#quick-start)
+- [API Reference](#api-reference)
+  * [showEditor()](#showeditor)
+  * [trim()](#trim)
+  * [File Management](#file-management)
+- [Configuration Options](#configuration-options)
+  * [Basic Options](#basic-options)
+  * [UI Customization](#ui-customization)
+  * [Behavior Options](#behavior-options)
+- [Platform Setup](#platform-setup)
+- [Advanced Features](#advanced-features)
+  * [Audio Trimming](#audio-trimming)
+  * [Remote Files (HTTPS)](#remote-files-https)
+  * [Video Rotation](#video-rotation)
+- [Examples](#examples)
+- [Troubleshooting](#troubleshooting)
 
 # React Native Video Trim
+
 <div align="center">
-<h2>Video trimmer for your React Native app</h2>
-
-<img src="images/android.gif" width="300" />
-<img src="images/ios.gif" width="300" />
+  <h2>📱 Professional video trimmer for React Native apps</h2>
+  
+  <img src="images/android.gif" width="300" />
+  <img src="images/ios.gif" width="300" />
+  
+  <p>
+    <strong>✅ iOS & Android</strong> • 
+    <strong>✅ New & Old Architecture</strong> • 
+    <strong>✅ Expo Compatible</strong>
+  </p>
 </div>
 
-## Features
-- ✅ Support video and audio
-- ✅ Support local files and remote files (remote files need `https` version, see below)
-- ✅ Save to Photos, Documents and Share to other apps
-- ✅ Check if file is valid video/audio
-- ✅ File operations: list, clean up, delete specific file
-- ✅ Support React Native New + Old Arch
+## Overview
 
-<div align="left">
-<img src="images/document_picker.png" width="300" />
-<img src="images/share_sheet.png" width="300" />
+A powerful, easy-to-use video and audio trimming library for React Native applications.
+
+### ✨ Key Features
+
+- **📹 Video & Audio Support** - Trim both video and audio files
+- **🌐 Local & Remote Files** - Support for local storage and HTTPS URLs
+- **💾 Multiple Save Options** - Photos, Documents, or Share to other apps
+- **✅ File Validation** - Built-in validation for media files
+- **🗂️ File Management** - List, clean up, and delete specific files
+- **🔄 Universal Architecture** - Works with both New and Old React Native architectures
+
+### 🎛️ Core Capabilities
+
+| Feature | Description |
+|---------|-------------|
+| **Trimming** | Precise video/audio trimming with visual controls |
+| **Validation** | Check if files are valid video/audio before processing |
+| **Save Options** | Photos, Documents, Share sheet integration |
+| **File Management** | Complete file lifecycle management |
+| **Customization** | Extensive UI and behavior customization |
+
+<div align="center">
+  <img src="images/document_picker.png" width="250" />
+  <img src="images/share_sheet.png" width="250" />
 </div>
 
-# Installation
+## Installation
 
-Both new + old arch are supported in a single distribution
-
-```sh
+```bash
 npm install react-native-video-trim
-
-# or with yarn
+# or
 yarn add react-native-video-trim
-
 ```
 
-## iOS (RN CLI project)
-Run the following command to setup for iOS:
-```
+### Platform Setup
+
+<details>
+<summary><strong>📱 iOS Setup (React Native CLI)</strong></summary>
+
+```bash
 npx pod-install ios
 ```
-## Android New Arch (RN CLI project)
-If you are using New Arch, in `android` folder run:
-```
-./gradlew generateCodegenArtifactsFromSchema
-```
-## For Expo project
-You need to run `prebuild` in order for native code takes effect:
-```
-npx expo prebuild
-```
-Then you should to restart to make the changes take effect
 
-Note that on iOS, Expo Go may not work because of library linking, you may see this error:
-
-<img src="images/expo_error.PNG" width="150" />
-
-To avoid the error, you should open `ios/yourproject.xcworkspace` then manually build and run your app
-
-## Usage
-
-```js
-import { showEditor } from 'react-native-video-trim';
-
-// ...
-
-showEditor(videoUrl);
-
-// or with output length limit
-
-showEditor(videoUrl, {
-  maxDuration: 20,
-});
-```
-Usually this library will be used along with other library to select video file, Eg. [react-native-image-picker](https://github.com/react-native-image-picker/react-native-image-picker). Below are real world examples:
-
-<details>
-  <summary>New Arch usage</summary>
-
-```jsx
-import * as React from 'react';
-
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  type EventSubscription,
-} from 'react-native';
-import { isValidFile, showEditor, type Spec } from 'react-native-video-trim';
-import { launchImageLibrary } from 'react-native-image-picker';
-
-export default function App() {
-  const listenerSubscription = useRef<Record<string, EventSubscription>>({});
-
-  useEffect(() => {
-    listenerSubscription.current.onLoad = (NativeVideoTrim as Spec).onLoad(
-      ({ duration }) => console.log('onLoad', duration)
-    );
-
-    listenerSubscription.current.onStartTrimming =
-      (NativeVideoTrim as Spec).onStartTrimming(() => console.log('onStartTrimming'));
-
-    listenerSubscription.current.onCancelTrimming =
-      (NativeVideoTrim as Spec).onCancelTrimming(() => console.log('onCancelTrimming'));
-    listenerSubscription.current.onCancel = (NativeVideoTrim as Spec).onCancel(() =>
-      console.log('onCancel')
-    );
-    listenerSubscription.current.onHide = (NativeVideoTrim as Spec).onHide(() =>
-      console.log('onHide')
-    );
-    listenerSubscription.current.onShow = (NativeVideoTrim as Spec).onShow(() =>
-      console.log('onShow')
-    );
-    listenerSubscription.current.onFinishTrimming =
-      (NativeVideoTrim as Spec).onFinishTrimming(
-        ({ outputPath, startTime, endTime, duration }) =>
-          console.log(
-            'onFinishTrimming',
-            `outputPath: ${outputPath}, startTime: ${startTime}, endTime: ${endTime}, duration: ${duration}`
-          )
-      );
-    listenerSubscription.current.onLog = (NativeVideoTrim as Spec).onLog(
-      ({ level, message, sessionId }) =>
-        console.log(
-          'onLog',
-          `level: ${level}, message: ${message}, sessionId: ${sessionId}`
-        )
-    );
-    listenerSubscription.current.onStatistics = (NativeVideoTrim as Spec).onStatistics(
-      ({
-        sessionId,
-        videoFrameNumber,
-        videoFps,
-        videoQuality,
-        size,
-        time,
-        bitrate,
-        speed,
-      }) =>
-        console.log(
-          'onStatistics',
-          `sessionId: ${sessionId}, videoFrameNumber: ${videoFrameNumber}, videoFps: ${videoFps}, videoQuality: ${videoQuality}, size: ${size}, time: ${time}, bitrate: ${bitrate}, speed: ${speed}`
-        )
-    );
-    listenerSubscription.current.onError = (NativeVideoTrim as Spec).onError(
-      ({ message, errorCode }) =>
-        console.log('onError', `message: ${message}, errorCode: ${errorCode}`)
-    );
-
-    return () => {
-      listenerSubscription.current.onLoad?.remove();
-      listenerSubscription.current.onStartTrimming?.remove();
-      listenerSubscription.current.onCancelTrimming?.remove();
-      listenerSubscription.current.onCancel?.remove();
-      listenerSubscription.current.onHide?.remove();
-      listenerSubscription.current.onShow?.remove();
-      listenerSubscription.current.onFinishTrimming?.remove();
-      listenerSubscription.current.onLog?.remove();
-      listenerSubscription.current.onStatistics?.remove();
-      listenerSubscription.current.onError?.remove();
-      listenerSubscription.current = {};
-    };
-  });
-
-  return (
-    <View style={styles.container}>
-      <TouchableOpacity
-        onPress={async () => {
-          const result = await launchImageLibrary({
-            mediaType: 'video',
-            assetRepresentationMode: 'current',
-          });
-
-          isValidFile(result.assets![0]?.uri || '').then((res) =>
-            console.log(res)
-          );
-
-          showEditor(result.assets![0]?.uri || '', {
-            maxDuration: 20,
-          });
-        }}
-        style={{ padding: 10, backgroundColor: 'red' }}
-      >
-        <Text>Launch Library</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => {
-          isValidFile('invalid file path').then((res) => console.log(res));
-        }}
-        style={{
-          padding: 10,
-          backgroundColor: 'blue',
-          marginTop: 20,
-        }}
-      >
-        <Text>Check Video Valid</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
-```
+**Permissions Required:**
+- For saving to Photos: Add `NSPhotoLibraryUsageDescription` to `Info.plist`
 </details>
 
-<br />
-
 <details>
-  <summary>Old Arch usage</summary>
+<summary><strong>🤖 Android Setup (React Native CLI)</strong></summary>
 
-```jsx
-import * as React from 'react';
-
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  NativeEventEmitter,
-  NativeModules,
-} from 'react-native';
-import { isValidFile, showEditor } from 'react-native-video-trim';
-import { launchImageLibrary } from 'react-native-image-picker';
-
-export default function App() {
-  useEffect(() => {
-    const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
-    const subscription = eventEmitter.addListener('VideoTrim', (event) => {
-      switch (event.name) {
-        case 'onLoad': {
-          console.log('onLoadListener', event);
-          break;
-        }
-        case 'onShow': {
-          console.log('onShowListener', event);
-          break;
-        }
-        case 'onHide': {
-          console.log('onHide', event);
-          break;
-        }
-        case 'onStartTrimming': {
-          console.log('onStartTrimming', event);
-          break;
-        }
-        case 'onFinishTrimming': {
-          console.log('onFinishTrimming', event);
-          break;
-        }
-        case 'onCancelTrimming': {
-          console.log('onCancelTrimming', event);
-          break;
-        }
-        case 'onCancel': {
-          console.log('onCancel', event);
-          break;
-        }
-        case 'onError': {
-          console.log('onError', event);
-          break;
-        }
-        case 'onLog': {
-          console.log('onLog', event);
-          break;
-        }
-        case 'onStatistics': {
-          console.log('onStatistics', event);
-          break;
-        }
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
-  return (
-    <View style={styles.container}>
-      <TouchableOpacity
-        onPress={async () => {
-          const result = await launchImageLibrary({
-            mediaType: 'video',
-            assetRepresentationMode: 'current',
-          });
-
-          isValidFile(result.assets![0]?.uri || '').then((res) =>
-            console.log(res)
-          );
-
-          showEditor(result.assets![0]?.uri || '', {
-            maxDuration: 20,
-          });
-        }}
-        style={{ padding: 10, backgroundColor: 'red' }}
-      >
-        <Text>Launch Library</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => {
-          isValidFile('invalid file path').then((res) => console.log(res));
-        }}
-        style={{
-          padding: 10,
-          backgroundColor: 'blue',
-          marginTop: 20,
-        }}
-      >
-        <Text>Check Video Valid</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+**For New Architecture:**
+```bash
+cd android && ./gradlew generateCodegenArtifactsFromSchema
 ```
-</details>
 
-<br />
-
-Checkout [Example folder](./example/src/) for more details
-
-# Methods
-
-## showEditor(videoPath: string, config?: EditorConfig) => void)
-Main method to show Video Editor UI.
-
-*Params*:
-- `videoPath`: Path to video file, if this is an invalid path, `onError` event will be fired
-- `config` (optional, every sub props of `config` is optional): 
-  
-  - `type` (`default = video`): which player to use, `video` or `audio`
-  - `outputExt` (`default = mp4`): output file extension
-  - `enableHapticFeedback` (`default = true`): whether to enable haptic feedback
-  - `saveToPhoto` (Video-only, `default = false`): whether to save video to photo/gallery after editing
-  - `openDocumentsOnFinish` (`default = false`): open Document Picker on done trimming
-  - `openShareSheetOnFinish` (`default = false`): open Share Sheet on done trimming
-  - `removeAfterSavedToPhoto` (`default = false`): whether to remove output file from storage after saved to Photo successfully
-  - `removeAfterFailedToSavePhoto` (`default = false`): whether to remove output file if fail to save to Photo
-  - `removeAfterSavedToDocuments` (`default = false`): whether to remove output file from storage after saved Documents successfully
-  - `removeAfterFailedToSaveDocuments` (`default = false`): whether to remove output file from storage after fail to save to Documents
-  - `removeAfterShared` (`default = false`): whether to remove output file from storage after saved Share successfully. iOS only, on Android you'll have to manually remove the file (this is because on Android there's no way to detect when sharing is successful)
-  - `removeAfterFailedToShare` (`default = false`): whether to remove output file from storage after fail to Share. iOS only, on Android you'll have to manually remove the file
-  - `maxDuration` (optional): maximum duration for the trimmed video
-  - `minDuration` (`default = 1000`): minimum duration for the trimmed video
-  - `cancelButtonText` (`default= "Cancel"`): text of left button in Editor dialog
-  - `saveButtonText` (`default= "Save"`): text of right button in Editor dialog
-  - `enableCancelDialog` (`default = true`): whether to show alert dialog on press Cancel
-  - `cancelDialogTitle` (`default = "Warning!"`)
-  - `cancelDialogMessage` (`default = "Are you sure want to cancel?"`)
-  - `cancelDialogCancelText` (`default = "Close"`)
-  - `cancelDialogConfirmText` (`default = "Proceed"`)
-  - `enableSaveDialog` (`default = true`): whether to show alert dialog on press Save
-  - `saveDialogTitle` (`default = "Confirmation!"`)
-  - `saveDialogMessage` (`default = "Are you sure want to save?"`)
-  - `saveDialogCancelText` (`default = "Close"`)
-  - `saveDialogConfirmText` (`default = "Proceed"`)
-  - `fullScreenModalIOS` (`default = false`): whether to open editor in fullscreen modal
-  - `trimmingText` (`default = "Trimming video..."`): trimming text on the progress dialog
-  - `autoplay` (`default = false`): whether to autoplay media on load
-  - `jumpToPositionOnLoad` (optional): which time position should jump on media loaded (millisecond)
-  - `closeWhenFinish` (`default = true`): should editor close on finish trimming
-  - `enableCancelTrimming` (`default = true`): enable cancel trimming
-  - `cancelTrimmingButtonText` (`default = "Cancel"`)
-  - `enableCancelTrimmingDialog` (`default = true`)
-  - `cancelTrimmingDialogTitle` (`default = "Warning!"`)
-  - `cancelTrimmingDialogMessage` (`default = "Are you sure want to cancel trimming?"`)
-  - `cancelTrimmingDialogCancelText` (`default = "Close"`)
-  - `cancelTrimmingDialogConfirmText` (`default = "Proceed"`)
-  - `headerText` (optional)
-  - `headerTextSize` (`default = 16`)
-  - `headerTextColor` (`default = white`)
-  - `alertOnFailToLoad` (`default = true`)
-  - `alertOnFailTitle` (`default = "Error"`)
-  - `alertOnFailMessage` (`default = "Fail to load media. Possibly invalid file or no network connection"`)
-  - `alertOnFailCloseText` (`default = "Close"`)
-  - `enableRotation` (`default = false`)
-  - `rotationAngle` (`default = 0`)
-  - `changeStatusBarColorOnOpen` (`default = false`): (Android only) Update status bar color to black background color when editor is opened (useful in somecases where your theme has titlebar in different color than black)
-
-If `saveToPhoto = true`, you must ensure that you have request permission to write to photo/gallery
-- For Android: you need to have `<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />` in AndroidManifest.xml
-- For iOS: you need `NSPhotoLibraryUsageDescription` in Info.plist
-
-If `openShareSheetOnFinish=true`, on Android you'll need to update `AndroidManifest.xml` like below:
+**Permissions Required:**
+- For saving to Photos: Add to `AndroidManifest.xml`:
 ```xml
-</application>
-  ...
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+```
+
+**For Share Sheet functionality**, add to `AndroidManifest.xml`:
+```xml
+<application>
+  <!-- your other configs -->
+  
   <provider
     android:name="androidx.core.content.FileProvider"
     android:authorities="${applicationId}.provider"
@@ -430,7 +113,7 @@ If `openShareSheetOnFinish=true`, on Android you'll need to update `AndroidManif
 </application>
 ```
 
-If you face issue when building Android app related to `file_paths`, then you may need to create `res/xml/file_paths.xml`: with the following content:
+Create `android/app/src/main/res/xml/file_paths.xml`:
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
@@ -438,97 +121,455 @@ If you face issue when building Android app related to `file_paths`, then you ma
   <external-path name="external_files" path="." />
 </paths>
 ```
+</details>
 
-## trim(url: string, options: TrimOptions): Promise<string>
+<details>
+<summary><strong>🔧 Expo Setup</strong></summary>
 
-Directly trim a file without showing editor
-
-## isValidFile(videoPath: string)
-
-This method is to check if a path is a valid video/audio
-
-## closeEditor()
-
-Close Editor
-
-## listFiles()
-Return array of generated output files in app storage. (`Promise<string[]>`)
-
-## cleanFiles()
-Clean all generated output files in app storage. Return number of successfully deleted files (`Promise<number>`)
-
-## deleteFile()
-Delete a file in app storage. Return `true` if success
-
-# Audio only support
-<div align="left">
-<img src="images/audio_android.jpg" width="200" />
-<img src="images/audio_ios.jpg" width="200" />
-</div>
-
-For audio only you have to pass `type=audio` and `outputExt`:
-```ts
-showEditor(url, {
-  type: 'audio', // important
-  outputExt: 'wav', // important: any audio type for output file extension
-})
+```bash
+npx expo prebuild
 ```
 
-# Cancel trimming
-<div align="left">
-<img src="images/progress.jpg" width="200" />
-<img src="images/cancel_confirm.jpg" width="200" />
-</div>
+Then rebuild your app. **Note:** Expo Go may not work due to native dependencies - use development builds or `expo run:ios`/`expo run:android`.
+</details>
 
-While trimming, you can press Cancel to terminate the process.
+## Quick Start
 
-Related props: `enableCancelTrimming, cancelTrimmingButtonText, enableCancelTrimmingDialog, cancelTrimmingDialogTitle, cancelTrimmingDialogMessage, cancelTrimmingDialogCancelText, cancelTrimmingDialogConfirmText`
+Get up and running in 3 simple steps:
 
-# Fail to load media
-<img src="images/fail_to_load_media.jpg" width="200" />
+```javascript
+import { showEditor } from 'react-native-video-trim';
 
-If there's error while loading media, there'll be a prompt
+// 1. Basic usage - open video editor
+showEditor(videoUrl);
 
-Related props: `alertOnFailToLoad, alertOnFailTitle, alertOnFailMessage, alertOnFailCloseText`
+// 2. With duration limit
+showEditor(videoUrl, {
+  maxDuration: 20,
+});
 
-# Rotation
-
-To trim & rotate video you can pass `enableRotation` and `rotationAngle` to `showEditor`/`trim`. But note that it doesn't re-encode the video, instead the lib uses `display_rotation` metadata from ffmpeg, and some players/platforms may show differently.
-
-# Use FFMPEG HTTPS version
-
-If you want to trim a remote file, you need to use `https` version (default is `min` which does not support remote file).
-
-Do the following:
-
+// 3. With save options
+showEditor(videoUrl, {
+  maxDuration: 30,
+  saveToPhoto: true,
+  openShareSheetOnFinish: true,
+});
 ```
-// android/build.gradle
-buildscript {
-    ext {
-        VideoTrim_ffmpeg_package=https
 
-        // optional: VideoTrim_ffmpeg_version=6.0.1
+### Complete Example with File Picker
+
+```javascript
+import { showEditor } from 'react-native-video-trim';
+import { launchImageLibrary } from 'react-native-image-picker';
+
+const trimVideo = () => {
+  // Pick a video
+  launchImageLibrary({ mediaType: 'video' }, (response) => {
+    if (response.assets && response.assets[0]) {
+      const videoUri = response.assets[0].uri;
+      
+      // Open editor
+      showEditor(videoUri, {
+        maxDuration: 60, // 60 seconds max
+        saveToPhoto: true,
+      });
     }
+  });
+};
+```
+
+> 💡 **More Examples:** Check the [example folder](./example/src/) for complete implementation details with event listeners for both New and Old architectures.
+
+## API Reference
+
+### showEditor()
+
+Opens the video trimmer interface.
+
+```typescript
+showEditor(videoPath: string, config?: EditorConfig): void
+```
+
+**Parameters:**
+- `videoPath` (string): Path to video file (local or remote HTTPS URL)
+- `config` (EditorConfig, optional): Configuration options (see [Configuration Options](#configuration-options))
+
+**Example:**
+```javascript
+showEditor('/path/to/video.mp4', {
+  maxDuration: 30,
+  saveToPhoto: true,
+});
+```
+
+### trim()
+
+Programmatically trim a video without showing the UI.
+
+```typescript
+trim(url: string, options: TrimOptions): Promise<string>
+```
+
+**Returns:** Promise resolving to the output file path
+
+**Example:**
+```javascript
+const outputPath = await trim('/path/to/video.mp4', {
+  startTime: 5000,  // 5 seconds
+  endTime: 25000,   // 25 seconds
+});
+```
+
+### File Management
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `isValidFile(videoPath)` | Check if file is valid video/audio | `Promise<boolean>` |
+| `listFiles()` | List all generated output files | `Promise<string[]>` |
+| `cleanFiles()` | Delete all generated files | `Promise<number>` |
+| `deleteFile(filePath)` | Delete specific file | `Promise<boolean>` |
+| `closeEditor()` | Close the editor interface | `void` |
+
+**Examples:**
+```javascript
+// Validate file before processing
+const isValid = await isValidFile('/path/to/video.mp4');
+if (!isValid) {
+  console.log('Invalid video file');
+  return;
 }
 
-// ios
-FFMPEGKIT_PACKAGE=https FFMPEG_KIT_PACKAGE_VERSION=6.0 pod install
+// Clean up generated files
+const deletedCount = await cleanFiles();
+console.log(`Deleted ${deletedCount} files`);
 ```
 
-# Android: update SDK version
-You can override sdk version to use any version in your `android/build.gradle` > `buildscript` > `ext`
+## Configuration Options
+
+All configuration options are optional. Here are the most commonly used ones:
+
+### Basic Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `type` | `'video' \| 'audio'` | `'video'` | Media type to trim |
+| `outputExt` | `string` | `'mp4'` | Output file extension |
+| `maxDuration` | `number` | - | Maximum duration in milliseconds |
+| `minDuration` | `number` | `1000` | Minimum duration in milliseconds |
+| `autoplay` | `boolean` | `false` | Auto-play media on load |
+| `jumpToPositionOnLoad` | `number` | - | Initial position in milliseconds |
+
+### Save & Share Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `saveToPhoto` | `boolean` | `false` | Save to photo gallery (requires permissions) |
+| `openDocumentsOnFinish` | `boolean` | `false` | Open document picker when done |
+| `openShareSheetOnFinish` | `boolean` | `false` | Open share sheet when done |
+| `removeAfterSavedToPhoto` | `boolean` | `false` | Delete file after saving to photos |
+| `removeAfterShared` | `boolean` | `false` | Delete file after sharing (iOS only) |
+
+### UI Customization
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cancelButtonText` | `string` | `"Cancel"` | Cancel button text |
+| `saveButtonText` | `string` | `"Save"` | Save button text |
+| `trimmingText` | `string` | `"Trimming video..."` | Progress dialog text |
+| `headerText` | `string` | - | Header text |
+| `headerTextSize` | `number` | `16` | Header text size |
+| `headerTextColor` | `string` | `"white"` | Header text color |
+| `trimmerColor` | `string` | - | Trimmer bar color |
+| `handleIconColor` | `string` | - | Trimmer handle color |
+| `fullScreenModalIOS` | `boolean` | `false` | Use fullscreen modal on iOS |
+
+### Advanced Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enableHapticFeedback` | `boolean` | `true` | Enable haptic feedback |
+| `closeWhenFinish` | `boolean` | `true` | Close editor when done |
+| `enableRotation` | `boolean` | `false` | Enable video rotation |
+| `rotationAngle` | `number` | `0` | Rotation angle in degrees |
+| `changeStatusBarColorOnOpen` | `boolean` | `false` | Change status bar color (Android) |
+| `alertOnFailToLoad` | `boolean` | `true` | Show alert on load failure |
+
+### Example Configuration
+
+```javascript
+showEditor(videoPath, {
+  // Basic settings
+  maxDuration: 60000,
+  minDuration: 3000,
+  
+  // Save options
+  saveToPhoto: true,
+  openShareSheetOnFinish: true,
+  removeAfterSavedToPhoto: true,
+  
+  // UI customization
+  headerText: "Trim Your Video",
+  cancelButtonText: "Back",
+  saveButtonText: "Done",
+  trimmerColor: "#007AFF",
+  
+  // Behavior
+  autoplay: true,
+  enableCancelTrimming: true,
+});
+```
+
+## Platform Setup
+
+### Android SDK Customization
+
+You can override SDK versions in `android/build.gradle`:
+
 ```gradle
 buildscript {
     ext {
-        VideoTrim_kotlinVersion=2.0.21
-        VideoTrim_minSdkVersion=24
-        VideoTrim_targetSdkVersion=34
-        VideoTrim_compileSdkVersion=35
-        VideoTrim_ndkVersion=27.1.12297006
+        VideoTrim_kotlinVersion = '2.0.21'
+        VideoTrim_minSdkVersion = 24
+        VideoTrim_targetSdkVersion = 34
+        VideoTrim_compileSdkVersion = 35
+        VideoTrim_ndkVersion = '27.1.12297006'
     }
 }
 ```
 
-# Thanks
-- Android part is created by modified + fix bugs from: https://github.com/iknow4/Android-Video-Trimmer
-- iOS UI is created from: https://github.com/AndreasVerhoeven/VideoTrimmerControl
+## Advanced Features
+
+### Audio Trimming
+
+<div align="center">
+  <img src="images/audio_android.jpg" width="200" />
+  <img src="images/audio_ios.jpg" width="200" />
+</div>
+
+For audio-only trimming, specify the media type and output format:
+
+```javascript
+showEditor(audioUrl, {
+  type: 'audio',        // Enable audio mode
+  outputExt: 'wav',     // Output format (mp3, wav, m4a, etc.)
+  maxDuration: 30000,   // 30 seconds max
+});
+```
+
+### Remote Files (HTTPS)
+
+To trim remote files, you need the HTTPS-enabled version of FFmpeg:
+
+**Android:**
+```gradle
+// android/build.gradle
+buildscript {
+    ext {
+        VideoTrim_ffmpeg_package = 'https'
+        // Optional: VideoTrim_ffmpeg_version = '6.0.1'
+    }
+}
+```
+
+**iOS:**
+```bash
+FFMPEGKIT_PACKAGE=https FFMPEG_KIT_PACKAGE_VERSION=6.0 pod install
+```
+
+**Usage:**
+```javascript
+showEditor('https://example.com/video.mp4', {
+  maxDuration: 60000,
+});
+```
+
+### Video Rotation
+
+Rotate videos during trimming using metadata (doesn't re-encode):
+
+```javascript
+showEditor(videoUrl, {
+  enableRotation: true,
+  rotationAngle: 90,    // 90, 180, 270 degrees
+});
+```
+
+**Note:** Uses `display_rotation` metadata - playback may vary by platform/player.
+
+### Trimming Progress & Cancellation
+
+<div align="center">
+  <img src="images/progress.jpg" width="200" />
+  <img src="images/cancel_confirm.jpg" width="200" />
+</div>
+
+Users can cancel trimming while in progress:
+
+```javascript
+showEditor(videoUrl, {
+  enableCancelTrimming: true,
+  cancelTrimmingButtonText: "Stop",
+  trimmingText: "Processing video...",
+});
+```
+
+### Error Handling
+
+<img src="images/fail_to_load_media.jpg" width="200" />
+
+Handle loading errors gracefully:
+
+```javascript
+showEditor(videoUrl, {
+  alertOnFailToLoad: true,
+  alertOnFailTitle: "Oops!",
+  alertOnFailMessage: "Cannot load this video file",
+  alertOnFailCloseText: "OK",
+});
+```
+
+## Examples
+
+### Complete Implementation (New Architecture)
+
+```javascript
+import React, { useEffect, useRef } from 'react';
+import { TouchableOpacity, Text, View } from 'react-native';
+import { showEditor, isValidFile, type Spec } from 'react-native-video-trim';
+import { launchImageLibrary } from 'react-native-image-picker';
+
+export default function VideoTrimmer() {
+  const listeners = useRef({});
+
+  useEffect(() => {
+    // Set up event listeners
+    listeners.current.onFinishTrimming = (NativeVideoTrim as Spec)
+      .onFinishTrimming(({ outputPath, startTime, endTime, duration }) => {
+        console.log('Trimming completed:', {
+          outputPath,
+          startTime,
+          endTime,
+          duration
+        });
+      });
+
+    listeners.current.onError = (NativeVideoTrim as Spec)
+      .onError(({ message, errorCode }) => {
+        console.error('Trimming error:', message, errorCode);
+      });
+
+    return () => {
+      // Cleanup listeners
+      Object.values(listeners.current).forEach(listener => 
+        listener?.remove()
+      );
+    };
+  }, []);
+
+  const selectAndTrimVideo = async () => {
+    const result = await launchImageLibrary({
+      mediaType: 'video',
+      quality: 1,
+    });
+
+    if (result.assets?.[0]?.uri) {
+      const videoUri = result.assets[0].uri;
+      
+      // Validate file first
+      const isValid = await isValidFile(videoUri);
+      if (!isValid) {
+        console.log('Invalid video file');
+        return;
+      }
+
+      // Open editor
+      showEditor(videoUri, {
+        maxDuration: 60000,        // 1 minute max
+        saveToPhoto: true,         // Save to gallery
+        openShareSheetOnFinish: true,
+        headerText: "Trim Video",
+        trimmerColor: "#007AFF",
+      });
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <TouchableOpacity 
+        onPress={selectAndTrimVideo}
+        style={{ 
+          backgroundColor: '#007AFF', 
+          padding: 15, 
+          borderRadius: 8 
+        }}
+      >
+        <Text style={{ color: 'white', fontSize: 16 }}>
+          Select & Trim Video
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+```
+
+### Old Architecture Implementation
+
+```javascript
+import React, { useEffect } from 'react';
+import { NativeEventEmitter, NativeModules } from 'react-native';
+import { showEditor } from 'react-native-video-trim';
+
+export default function VideoTrimmer() {
+  useEffect(() => {
+    const eventEmitter = new NativeEventEmitter(NativeModules.VideoTrim);
+    
+    const subscription = eventEmitter.addListener('VideoTrim', (event) => {
+      switch (event.name) {
+        case 'onFinishTrimming':
+          console.log('Video trimmed:', event.outputPath);
+          break;
+        case 'onError':
+          console.error('Trimming failed:', event.message);
+          break;
+        // Handle other events...
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  // Rest of implementation...
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Android Build Errors:**
+- Ensure `file_paths.xml` exists for share functionality
+- Check SDK versions match your project requirements
+- Verify permissions in `AndroidManifest.xml`
+
+**iOS Build Errors:**
+- Run `pod install` after installation
+- Check Info.plist permissions for photo access
+- Use development builds with Expo (not Expo Go)
+
+**Runtime Issues:**
+- Validate files with `isValidFile()` before processing
+- Use HTTPS version for remote files
+- Check network connectivity for remote files
+- Ensure proper permissions for save operations
+
+### Performance Tips
+
+- Use `trim()` for batch processing without UI
+- Clean up generated files regularly with `cleanFiles()`
+- Consider file compression for large videos
+- Use appropriate `maxDuration` limits
+
+## Credits
+
+- **Android:** Based on [Android-Video-Trimmer](https://github.com/iknow4/Android-Video-Trimmer)
+- **iOS:** UI from [VideoTrimmerControl](https://github.com/AndreasVerhoeven/VideoTrimmerControl)

@@ -123,6 +123,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private RelativeLayout trimmerView;
 
+  private int trimmerColor = Color.parseColor(getContext().getString(R.string.trim_color)); // Default color if not set
+  private int handleIconColor = Color.BLACK; // Default chevron color
+  private ImageView leadingChevron;
+  private ImageView trailingChevron;
+
   public VideoTrimmerView(ReactApplicationContext context, ReadableMap config, AttributeSet attrs) {
     this(context, attrs, 0, config);
   }
@@ -174,6 +179,9 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     headerText = findViewById(R.id.headerText);
 
     trimmerView = findViewById(R.id.trimmerView);
+
+    leadingChevron = findViewById(R.id.leadingChevron);
+    trailingChevron = findViewById(R.id.trailingChevron);
   }
 
   public void initByURI(final Uri videoURI) {
@@ -498,6 +506,42 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     alertOnFailCloseText = config.hasKey("alertOnFailCloseText") ? config.getString("alertOnFailCloseText") : "Close";
     enableRotation = config.hasKey("enableRotation") && config.getBoolean("enableRotation");
     rotationAngle = config.hasKey("rotationAngle") ? config.getDouble("rotationAngle") : 0.0;
+
+    trimmerColor = config.hasKey("trimmerColor") ? config.getInt("trimmerColor") : Color.parseColor(getContext().getString(R.string.trim_color));
+    handleIconColor = config.hasKey("handleIconColor") ? config.getInt("handleIconColor") : Color.BLACK;
+
+    applyTrimmerColor();
+  }
+
+  private void applyTrimmerColor() {
+    // Trimmer border (stroke only)
+    GradientDrawable borderDrawable = new GradientDrawable();
+    borderDrawable.setShape(GradientDrawable.RECTANGLE);
+    borderDrawable.setColor(Color.TRANSPARENT);
+    borderDrawable.setStroke(dpToPx(4), trimmerColor);
+    trimmerContainer.setBackground(borderDrawable);
+
+    // Leading handle (rounded left corners)
+    GradientDrawable leadingHandleDrawable = new GradientDrawable();
+    leadingHandleDrawable.setShape(GradientDrawable.RECTANGLE);
+    leadingHandleDrawable.setColor(trimmerColor);
+    leadingHandleDrawable.setCornerRadii(new float[]{dpToPx(6), dpToPx(6), 0, 0, 0, 0, dpToPx(6), dpToPx(6)});
+    leadingHandle.setBackground(leadingHandleDrawable);
+
+    // Trailing handle (rounded right corners)
+    GradientDrawable trailingHandleDrawable = new GradientDrawable();
+    trailingHandleDrawable.setShape(GradientDrawable.RECTANGLE);
+    trailingHandleDrawable.setColor(trimmerColor);
+    trailingHandleDrawable.setCornerRadii(new float[]{0, 0, dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6), 0, 0});
+    trailingHandle.setBackground(trailingHandleDrawable);
+
+    // Chevron colors
+    leadingChevron.setColorFilter(handleIconColor, android.graphics.PorterDuff.Mode.SRC_IN);
+    trailingChevron.setColorFilter(handleIconColor, android.graphics.PorterDuff.Mode.SRC_IN);
+  }
+
+  private int dpToPx(int dp) {
+    return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp, getResources().getDisplayMetrics());
   }
 
   private void startTimingRunnable() {

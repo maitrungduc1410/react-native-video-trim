@@ -16,7 +16,6 @@ RCT_EXPORT_MODULE()
 
 - (instancetype)init {
   if (self = [super init]) {
-//    self.BEFORE_TRIM_PREFIX = @"beforeTrim";
   }
   return self;
 }
@@ -143,6 +142,17 @@ RCT_EXPORT_MODULE()
   dict[@"alertOnFailMessage"] = config.alertOnFailMessage();
   dict[@"alertOnFailCloseText"] = config.alertOnFailCloseText();
   
+  // Handle optional color values
+  auto trimmerColorOpt = config.trimmerColor();
+  if (trimmerColorOpt.has_value()) {
+    dict[@"trimmerColor"] = @(trimmerColorOpt.value());
+  }
+  
+  auto handleIconColorOpt = config.handleIconColor();
+  if (handleIconColorOpt.has_value()) {
+    dict[@"handleIconColor"] = @(handleIconColorOpt.value());
+  }
+  
   [self->videoTrim showEditor:filePath withConfig:dict];
 }
 
@@ -209,4 +219,3 @@ RCT_EXTERN_METHOD(trim:(NSString*)uri withConfig:(NSDictionary *)config
 @end
 
 #endif
-
