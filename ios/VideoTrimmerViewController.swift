@@ -465,8 +465,14 @@ class VideoTrimmerViewController: UIViewController {
     }
     
   public func configure(config: NSDictionary) {
-    maximumDuration = config["maxDuration"] as? Int ?? 0
-    minimumDuration = config["minDuration"] as? Int ?? 0
+    if let maxDuration = config["maxDuration"] as? Int, maxDuration > 0 {
+      maximumDuration = maxDuration
+    }
+    
+    if let minDuration = config["minDuration"] as? Int, minDuration > 0 {
+      minimumDuration = minDuration
+    }
+    
     cancelButtonText = config["cancelButtonText"] as? String ?? "Cancel"
     saveButtonText = config["saveButtonText"] as? String ?? "Save"
     jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Double ?? 0

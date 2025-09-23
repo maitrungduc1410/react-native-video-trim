@@ -811,7 +811,7 @@ extension VideoTrim {
   
   // Old Arch
   @objc(closeEditor)
-  func closeEditor() -> Void {
+  func _closeEditor() -> Void {
     closeEditor()
   }
 }
