@@ -99,6 +99,13 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private boolean isZoomedIn = false;
   private final Handler zoomWaitTimer = new Handler();
   private Runnable zoomRunnable;
+  private long zoomedInRangeStart = 0;
+  private long zoomedInRangeDuration = 0;
+  private boolean isTrimmingLeading = false;
+
+  // thumbnail caching for zoom functionality
+  private final java.util.List<ImageView> cachedFullViewThumbnails = new java.util.ArrayList<>();
+  private volatile boolean isGeneratingThumbnails = false;
 
   private MediaMetadataRetriever mediaMetadataRetriever;
   private ProgressBar loadingIndicator;
@@ -244,6 +251,8 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   private void startShootVideoThumbs(final Context context, int totalThumbsCount, long startPosition, long endPosition) {
     mThumbnailContainer.removeAllViews();
+    cachedFullViewThumbnails.clear(); // Clear previous cache
+
     VideoTrimmerUtil.shootVideoThumbInBackground(mediaMetadataRetriever, totalThumbsCount, startPosition, endPosition,
       (bitmap, interval) -> {
         if (bitmap != null) {
@@ -255,6 +264,13 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
             layoutParams.width = VideoTrimmerUtil.VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.MAX_COUNT_RANGE;
             thumbImageView.setLayoutParams(layoutParams);
             mThumbnailContainer.addView(thumbImageView);
+
+            // Cache the thumbnail for zoom functionality
+            ImageView cachedView = new ImageView(context);
+            cachedView.setImageBitmap(bitmap);
+            cachedView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            cachedView.setLayoutParams(layoutParams);
+            cachedFullViewThumbnails.add(cachedView);
           });
         }
       });
@@ -327,12 +343,9 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void updateHandlePositions() {
-    float startPercent = (float) startTime / mDuration;
-    float endPercent = (float) endTime / mDuration;
-
-    float containerWidth = trimmerContainerBg.getWidth();
-    float leadingHandleX = startPercent * containerWidth;
-    float trailingHandleX = endPercent * containerWidth;
+    // Use zoom-aware position calculation
+    float leadingHandleX = positionForTime(startTime);
+    float trailingHandleX = positionForTime(endTime);
 
     leadingHandle.setX(leadingHandleX);
     trailingHandle.setX(trailingHandleX + trailingHandle.getWidth());
@@ -429,11 +442,16 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
   @Override
   public void onDestroy() {
+    // Stop any ongoing operations
+    isGeneratingThumbnails = false;
     BackgroundExecutor.cancelAll("", true);
     UiThreadExecutor.cancelAll("");
     mContext.getCurrentActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
     mTimingHandler.removeCallbacks(mTimingRunnable);
     zoomWaitTimer.removeCallbacks(zoomRunnable);
+
+    // Clear cached thumbnails to prevent memory leaks
+    cachedFullViewThumbnails.clear();
 
     try {
       if (mediaMetadataRetriever != null) {
@@ -590,15 +608,41 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     endTimeText.setText(endTime);
 
     if (needUpdateProgress) {
-      // Update progressIndicator position
-      float indicatorPosition = (float) currentPosition / duration * (trimmerContainerBg.getWidth() - progressIndicator.getWidth()) + leadingHandle.getWidth();
+      // Update progressIndicator position using zoom-aware calculation
+      float indicatorPosition;
+
+      if (isZoomedIn) {
+        // Calculate position relative to zoomed range
+        long visibleRangeStart = getVisibleRangeStart();
+        long visibleRangeDuration = getVisibleRangeDuration();
+
+        // Ensure current position is within visible range for proper calculation
+        if (currentPosition < visibleRangeStart || currentPosition > visibleRangeStart + visibleRangeDuration) {
+          // If current position is outside visible range, clamp it
+          currentPosition = (int) Math.max(visibleRangeStart, Math.min(visibleRangeStart + visibleRangeDuration, currentPosition));
+        }
+
+        float ratio = visibleRangeDuration > 0 ? (float) (currentPosition - visibleRangeStart) / visibleRangeDuration : 0;
+        indicatorPosition = ratio * (trimmerContainerBg.getWidth() - progressIndicator.getWidth()) + leadingHandle.getWidth();
+      } else {
+        // Calculate position relative to full duration (original logic)
+        indicatorPosition = mDuration > 0 ? (float) currentPosition / mDuration * (trimmerContainerBg.getWidth() - progressIndicator.getWidth()) + leadingHandle.getWidth() : leadingHandle.getWidth();
+      }
+
+      // Ensure indicator stays within handle bounds using actual handle positions
+      float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+      float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+
+      // Apply bounds checking based on actual handle positions
+      indicatorPosition = Math.max(leftBoundary, Math.min(rightBoundary, indicatorPosition));
 
       if (currentSelectedhandle == leadingHandle) {
-        float leftBoundary = trimmerContainer.getX();
         progressIndicator.setX(Math.max(leftBoundary, indicatorPosition));
-      } else {
-        float rightBoundary = trimmerContainer.getX() + trimmerContainer.getWidth() - progressIndicator.getWidth();
+      } else if (currentSelectedhandle == trailingHandle) {
         progressIndicator.setX(Math.min(rightBoundary, indicatorPosition));
+      } else {
+        // Normal playback - use calculated position with handle bounds
+        progressIndicator.setX(indicatorPosition);
       }
     }
   }
@@ -636,9 +680,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private void onTrimmerContainerPanned(MotionEvent event) {
     float newX = event.getRawX();
     boolean didClamp = false;
-    // Ensure newX is within valid range
-    float leftBoundary = trimmerContainer.getX();
-    float rightBoundary = trimmerContainer.getX() + trimmerContainer.getWidth() - progressIndicator.getWidth();
+
+    // Use handle positions for boundaries instead of trimmer container
+    float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+    float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+
     newX = Math.max(leftBoundary, newX);
     newX = Math.min(rightBoundary, newX);
 
@@ -658,9 +704,21 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
     float indicatorPosition = newX - (trimmerContainerBg.getX());
 
-    // TODO: check this
-    float indicatorPositionPercent = indicatorPosition / (trimmerContainerBg.getWidth() - progressIndicator.getWidth());
-    long newVideoPosition = (long) (indicatorPositionPercent * mDuration);
+    // Calculate video position based on zoom state
+    float indicatorPositionPercent;
+    long newVideoPosition;
+
+    if (isZoomedIn) {
+      // Calculate relative to zoomed range
+      indicatorPositionPercent = indicatorPosition / (trimmerContainerBg.getWidth() - progressIndicator.getWidth());
+      long visibleStart = getVisibleRangeStart();
+      long visibleDuration = getVisibleRangeDuration();
+      newVideoPosition = visibleStart + (long) (indicatorPositionPercent * visibleDuration);
+    } else {
+      // Calculate relative to full duration
+      indicatorPositionPercent = indicatorPosition / (trimmerContainerBg.getWidth() - progressIndicator.getWidth());
+      newVideoPosition = (long) (indicatorPositionPercent * mDuration);
+    }
 
     seekTo(newVideoPosition, false);
   }
@@ -676,6 +734,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
           fadeOutProgressIndicator();
           seekTo(isLeading ? startTime : endTime, true);
           playHapticFeedback(true);
+          isTrimmingLeading = isLeading;
           break;
         case MotionEvent.ACTION_MOVE:
           if (draggingDisabled) {
@@ -684,6 +743,8 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
           boolean didClamp = false;
           float newX = event.getRawX() - ((float) view.getWidth() / 2);
+
+          // Handle constraints need to consider zoom state
           if (isLeading) {
             newX = Math.max(0, Math.min(newX, trailingHandle.getX() - view.getWidth()));
           } else {
@@ -692,54 +753,114 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
 
           view.setX(newX);
 
-          // Calculate new startTime or endTime
+          // Calculate new startTime or endTime based on zoom state
           if (isLeading) {
             // Calculate the new startTime based on the handle's new position
-            long newStartTime = (long) ((newX / trimmerContainerBg.getWidth()) * mDuration);
+            long newStartTime = timeForPosition(newX);
             // Calculate the duration between the new startTime and the current endTime
             long duration = endTime - newStartTime;
             if (duration >= mMinDuration && duration <= mMaxDuration) {
               // If the duration is within the allowed range, update startTime and move the progress indicator
               startTime = newStartTime;
-              progressIndicator.setX(newX + view.getWidth());
+              float indicatorX = newX + view.getWidth();
+              // Ensure progress indicator stays within handle bounds
+              float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+              float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+              progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
             } else if (duration < mMinDuration) {
               didClamp = true;
-              // If the duration is less than the minimum, set startTime to the maximum possible to maintain the minimum duration
+              // If the duration is less than the minimum, calculate maximum startTime to maintain minimum duration
               startTime = endTime - mMinDuration;
-              // Adjust the handle position accordingly
-              view.setX((float) startTime / mDuration * trimmerContainerBg.getWidth());
-              progressIndicator.setX(view.getX() + view.getWidth());
+
+              // In zoom mode, don't recalculate position - keep handle where it is but update times
+              if (isZoomedIn) {
+                // Keep handle at current position but clamp times
+                float indicatorX = newX + view.getWidth();
+                float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+                float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+                progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
+              } else {
+                // Normal mode - adjust handle position
+                view.setX(positionForTime(startTime));
+                float indicatorX = view.getX() + view.getWidth();
+                float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+                float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+                progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
+              }
             } else {
               didClamp = true;
-              // If the duration is greater than the maximum, set startTime to the minimum possible to maintain the maximum duration
+              // If the duration is greater than the maximum, calculate minimum startTime to maintain maximum duration
               startTime = endTime - mMaxDuration;
-              // Adjust the handle position accordingly
-              view.setX((float) startTime / mDuration * trimmerContainerBg.getWidth());
-              progressIndicator.setX(view.getX() + view.getWidth());
+
+              // In zoom mode, don't recalculate position - keep handle where it is but update times
+              if (isZoomedIn) {
+                // Keep handle at current position but clamp times
+                float indicatorX = newX + view.getWidth();
+                float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+                float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+                progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
+              } else {
+                // Normal mode - adjust handle position
+                view.setX(positionForTime(startTime));
+                float indicatorX = view.getX() + view.getWidth();
+                float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+                float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+                progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
+              }
             }
           } else {
             // Calculate the new endTime based on the handle's new position
-            long newEndTime = (long) (((newX - view.getWidth()) / trimmerContainerBg.getWidth()) * mDuration);
+            long newEndTime = timeForPosition(newX - view.getWidth());
             // Calculate the duration between the new endTime and the current startTime
             long duration = newEndTime - startTime;
             if (duration >= mMinDuration && duration <= mMaxDuration) {
               // If the duration is within the allowed range, update endTime and move the progress indicator
               endTime = newEndTime;
-              progressIndicator.setX(newX - progressIndicator.getWidth());
+              float indicatorX = newX - progressIndicator.getWidth();
+              // Ensure progress indicator stays within handle bounds
+              float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+              float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+              progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
             } else if (duration < mMinDuration) {
               didClamp = true;
-              // If the duration is less than the minimum, set endTime to the minimum possible to maintain the minimum duration
+              // If the duration is less than the minimum, calculate minimum endTime to maintain minimum duration
               endTime = startTime + mMinDuration;
-              // Adjust the handle position accordingly
-              view.setX((float) endTime / mDuration * trimmerContainerBg.getWidth() + view.getWidth());
-              progressIndicator.setX(view.getX() - progressIndicator.getWidth());
+
+              // In zoom mode, don't recalculate position - keep handle where it is but update times
+              if (isZoomedIn) {
+                // Keep handle at current position but clamp times
+                float indicatorX = newX - progressIndicator.getWidth();
+                float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+                float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+                progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
+              } else {
+                // Normal mode - adjust handle position
+                view.setX(positionForTime(endTime) + view.getWidth());
+                float indicatorX = view.getX() - progressIndicator.getWidth();
+                float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+                float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+                progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
+              }
             } else {
               didClamp = true;
-              // If the duration is greater than the maximum, set endTime to the maximum possible to maintain the maximum duration
+              // If the duration is greater than the maximum, calculate maximum endTime to maintain maximum duration
               endTime = startTime + mMaxDuration;
-              // Adjust the handle position accordingly
-              view.setX((float) endTime / mDuration * trimmerContainerBg.getWidth() + view.getWidth());
-              progressIndicator.setX(view.getX() - progressIndicator.getWidth());
+
+              // In zoom mode, don't recalculate position - keep handle where it is but update times
+              if (isZoomedIn) {
+                // Keep handle at current position but clamp times
+                float indicatorX = newX - progressIndicator.getWidth();
+                float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+                float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+                progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
+              } else {
+                // Normal mode - adjust handle position
+                view.setX(positionForTime(endTime) + view.getWidth());
+                float indicatorX = view.getX() - progressIndicator.getWidth();
+                float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+                float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+                progressIndicator.setX(Math.max(leftBoundary, Math.min(rightBoundary, indicatorX)));
+              }
             }
           }
 
@@ -751,11 +872,11 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
           updateTrimmerContainerWidth();
           seekTo(isLeading ? startTime : endTime, false);
 
-          // TODO: create zoom feature like iOS
-//          startZoomWaitTimer();
+          // Start zoom wait timer when dragging handles
+          startZoomWaitTimer();
           break;
         case MotionEvent.ACTION_UP:
-//          stopZoomIfNeeded();
+          stopZoomIfNeeded();
           fadeInProgressIndicator();
           view.performClick();
           break;
@@ -805,7 +926,6 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     }
 
     zoomRunnable = () -> {
-      Log.i("tag", "A Kiss after 500ms");
       stopZoomWaitTimer();
       zoomIfNeeded();
     };
@@ -814,12 +934,32 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   }
 
   private void stopZoomWaitTimer() {
-    zoomWaitTimer.removeCallbacks(zoomRunnable);
+    if (zoomRunnable != null) {
+      zoomWaitTimer.removeCallbacks(zoomRunnable);
+    }
   }
 
   private void stopZoomIfNeeded() {
     stopZoomWaitTimer();
-    isZoomedIn = false;
+    if (isZoomedIn) {
+      // Stop any ongoing thumbnail generation immediately
+      isGeneratingThumbnails = false;
+
+      // Cancel any ongoing background tasks for thumbnail generation
+      BackgroundExecutor.cancelAll("progressive_thumbs", true);
+
+      isZoomedIn = false;
+
+      // Immediately restore cached thumbnails without waiting for animation
+      restoreCachedThumbnails();
+
+      // Then apply smooth transition animation
+      animateZoomTransition(() -> {
+        updateHandlePositions();
+        // Force update progress indicator position after exiting zoom
+        updateCurrentTime(true);
+      });
+    }
   }
 
   private void zoomIfNeeded() {
@@ -827,9 +967,200 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
       return;
     }
 
-    startShootVideoThumbs(mContext, 10, 5000, 10000);
+    // Store current handle positions to maintain visual continuity
+    float currentLeadingX = leadingHandle.getX();
+    float currentTrailingX = trailingHandle.getX();
+
+    // Calculate zoom range similar to iOS implementation
+    long newDuration = mDuration > 4000 ? 2000 : Math.max(1000, mDuration / 2); // At least 1 second, max 2 seconds or half duration
+
+    // Ensure zoom duration doesn't exceed video duration
+    newDuration = Math.min(newDuration, mDuration);
+
+    long rangeStart;
+    if (isTrimmingLeading) {
+      // Zoom around the start time, but ensure we don't go before video start
+      rangeStart = Math.max(0, startTime - (newDuration / 2));
+      // If range would extend past video end, adjust start
+      if (rangeStart + newDuration > mDuration) {
+        rangeStart = Math.max(0, mDuration - newDuration);
+      }
+    } else {
+      // Zoom around the end time
+      rangeStart = Math.max(0, endTime - (newDuration / 2));
+      // If range would extend past video end, adjust start
+      if (rangeStart + newDuration > mDuration) {
+        rangeStart = Math.max(0, mDuration - newDuration);
+      }
+    }
+
+    // Final bounds check
+    zoomedInRangeStart = Math.max(0, rangeStart);
+    zoomedInRangeDuration = Math.min(newDuration, mDuration - zoomedInRangeStart);
 
     isZoomedIn = true;
+
+    // Start progressive thumbnail generation immediately
+    startProgressiveThumbnailGeneration();
+
+    // Update handle positions immediately without delay
+    updateHandlePositionsForZoom(currentLeadingX, currentTrailingX);
+
+    // Provide haptic feedback
+    playHapticFeedback(true);
+  }
+
+  private void updateHandlePositionsForZoom(float previousLeadingX, float previousTrailingX) {
+    // During zoom, we want to keep handles at their current visual positions
+    // Don't recalculate based on zoom range - this causes jumping
+
+    Log.d(TAG, "Maintaining handle positions during zoom - Leading: " + previousLeadingX + ", Trailing: " + previousTrailingX);
+
+    // Keep handles exactly where they were visually
+    leadingHandle.setX(previousLeadingX);
+    trailingHandle.setX(previousTrailingX);
+
+    // Don't update times here - let the individual handle drag logic handle that
+    // This prevents unwanted changes to startTime/endTime during zoom transition
+
+    // Update trimmer container width based on current handle positions
+    updateTrimmerContainerWidth();
+
+    // Ensure progress indicator is positioned correctly within the handle bounds
+    float leftBoundary = leadingHandle.getX() + leadingHandle.getWidth();
+    float rightBoundary = trailingHandle.getX() - progressIndicator.getWidth();
+    float currentX = progressIndicator.getX();
+
+    // If progress indicator is out of bounds, position it properly
+    if (currentX < leftBoundary || currentX > rightBoundary) {
+      // Position it based on the current media position
+      updateCurrentTime(true);
+    } else {
+      updateCurrentTime(false);
+    }
+
+    trimmerContainerWrapper.setVisibility(View.VISIBLE);
+    if (trimmerContainerWrapper.getAlpha() == 0f) {
+      trimmerContainerWrapper.animate().alpha(1f).setDuration(250).start();
+    }
+  }
+
+  private void startProgressiveThumbnailGeneration() {
+    if (isGeneratingThumbnails || mediaMetadataRetriever == null) {
+      return;
+    }
+
+    isGeneratingThumbnails = true;
+
+    // Immediately create placeholder thumbnails with subtle animation
+    UiThreadExecutor.runTask("", () -> {
+      mThumbnailContainer.removeAllViews();
+
+      // Calculate proper number of thumbnails based on container width
+      final int thumbnailWidth = VideoTrimmerUtil.VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.MAX_COUNT_RANGE;
+      final int numberOfThumbnails = Math.max(8, mThumbnailContainer.getWidth() / thumbnailWidth);
+
+      // Create placeholder thumbnails first
+      for (int i = 0; i < numberOfThumbnails; i++) {
+        ImageView placeholder = new ImageView(getContext());
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(thumbnailWidth, LinearLayout.LayoutParams.MATCH_PARENT);
+        placeholder.setLayoutParams(layoutParams);
+        placeholder.setBackgroundColor(Color.parseColor("#F0F0F0")); // Light gray placeholder
+        placeholder.setAlpha(0.2f);
+        mThumbnailContainer.addView(placeholder);
+      }
+    }, 0);
+
+    // Start background thumbnail generation
+    BackgroundExecutor.execute(new BackgroundExecutor.Task("progressive_thumbs", 0L, "") {
+      @Override
+      public void execute() {
+        try {
+          final int thumbnailWidth = VideoTrimmerUtil.VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.MAX_COUNT_RANGE;
+          final int numberOfThumbnails = Math.max(8, mThumbnailContainer.getWidth() / thumbnailWidth);
+          final long visibleDuration = isZoomedIn ? zoomedInRangeDuration : mDuration;
+          final long visibleStart = isZoomedIn ? zoomedInRangeStart : 0;
+          final long interval = visibleDuration > 0 ? visibleDuration / numberOfThumbnails : 0;
+
+          // Generate thumbnails progressively
+          for (int i = 0; i < numberOfThumbnails && isGeneratingThumbnails && isZoomedIn; i++) {
+            // Check if we should continue generating
+            if (!isGeneratingThumbnails || !isZoomedIn) {
+              Log.d(TAG, "Thumbnail generation cancelled at index " + i);
+              return;
+            }
+
+            final int index = i;
+            final long timeUs = (visibleStart + (i * interval)) * 1000; // Convert to microseconds
+            final long clampedTimeUs = Math.max(0, Math.min(timeUs, mDuration * 1000L));
+
+            try {
+              Bitmap bitmap = mediaMetadataRetriever.getFrameAtTime(clampedTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+              if (bitmap != null && isGeneratingThumbnails && isZoomedIn) {
+                // Update UI immediately for each thumbnail
+                UiThreadExecutor.runTask("", () -> {
+                  // Double-check zoom state before updating UI
+                  if (isZoomedIn && index < mThumbnailContainer.getChildCount()) {
+                    ImageView thumbnailView = (ImageView) mThumbnailContainer.getChildAt(index);
+                    if (thumbnailView != null) {
+                      thumbnailView.setImageBitmap(bitmap);
+                      thumbnailView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                      thumbnailView.setBackground(null); // Remove placeholder background
+
+                      // Smooth fade-in animation for each thumbnail
+                      thumbnailView.animate()
+                          .alpha(1.0f)
+                          .setDuration(150)
+                          .setStartDelay(index * 50L) // Stagger animations
+                          .start();
+                    }
+                  }
+                }, 0);
+
+                // Small delay between generations to avoid blocking
+                Thread.sleep(10);
+              }
+            } catch (Exception e) {
+              Log.w(TAG, "Error generating progressive thumbnail at " + clampedTimeUs, e);
+            }
+          }
+
+          // Only finalize if we're still in zoom mode
+          if (isGeneratingThumbnails && isZoomedIn) {
+            isGeneratingThumbnails = false;
+          } else {
+            isGeneratingThumbnails = false;
+          }
+
+        } catch (Exception e) {
+          Log.e(TAG, "Error in progressive thumbnail generation", e);
+          isGeneratingThumbnails = false;
+        }
+      }
+    });
+  }
+
+  private void animateZoomTransition(Runnable onComplete) {
+    // Only animate if we're still transitioning
+    if (mThumbnailContainer != null) {
+      mThumbnailContainer.animate()
+          .alpha(0.7f)
+          .setDuration(200) // Shorter duration for better responsiveness
+          .withEndAction(() -> {
+            if (onComplete != null) {
+              onComplete.run();
+            }
+            if (mThumbnailContainer != null) {
+              mThumbnailContainer.animate()
+                  .alpha(1.0f)
+                  .setDuration(200)
+                  .start();
+            }
+          })
+          .start();
+    } else if (onComplete != null) {
+      onComplete.run();
+    }
   }
 
   private void ignoreSystemGestureForView(View v) {
@@ -848,6 +1179,56 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
           )
         )
       );
+    }
+  }
+
+  // Helper methods for position/time conversion considering zoom state
+  private long timeForPosition(float position) {
+    if (trimmerContainerBg.getWidth() <= 0) return 0;
+
+    if (isZoomedIn) {
+      // Convert position to time within zoomed range
+      float ratio = position / trimmerContainerBg.getWidth();
+      return zoomedInRangeStart + (long) (ratio * zoomedInRangeDuration);
+    } else {
+      // Convert position to time within full duration
+      return (long) ((position / trimmerContainerBg.getWidth()) * mDuration);
+    }
+  }
+
+  private float positionForTime(long time) {
+    if (isZoomedIn) {
+      // Convert time to position within zoomed range
+      if (zoomedInRangeDuration <= 0) return 0;
+      float ratio = (float) (time - zoomedInRangeStart) / zoomedInRangeDuration;
+      return Math.max(0, Math.min(trimmerContainerBg.getWidth(), ratio * trimmerContainerBg.getWidth()));
+    } else {
+      // Convert time to position within full duration
+      if (mDuration <= 0) return 0;
+      return Math.max(0, Math.min(trimmerContainerBg.getWidth(), ((float) time / mDuration) * trimmerContainerBg.getWidth()));
+    }
+  }
+
+  private long getVisibleRangeStart() {
+    return isZoomedIn ? zoomedInRangeStart : 0;
+  }
+
+  private long getVisibleRangeDuration() {
+    return isZoomedIn ? zoomedInRangeDuration : mDuration;
+  }
+
+  private void restoreCachedThumbnails() {
+    // Clear current thumbnails
+    mThumbnailContainer.removeAllViews();
+
+    // Restore cached thumbnails efficiently
+    for (ImageView cachedThumbnail : cachedFullViewThumbnails) {
+      // Create a new ImageView with the same bitmap to avoid view reuse issues
+      ImageView restoredView = new ImageView(getContext());
+      restoredView.setImageBitmap(((android.graphics.drawable.BitmapDrawable) cachedThumbnail.getDrawable()).getBitmap());
+      restoredView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+      restoredView.setLayoutParams(cachedThumbnail.getLayoutParams());
+      mThumbnailContainer.addView(restoredView);
     }
   }
 }
