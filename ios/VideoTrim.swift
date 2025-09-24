@@ -466,7 +466,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   
   // New Arch
   @objc(trim:url:config:)
-  public func _trim(inputFile: String, config: NSDictionary, completion: @escaping ([String: Any]?) -> Void) {
+  public func _trim(inputFile: String, config: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
     var destPath: URL?
     
     if inputFile.hasPrefix("http://") || inputFile.hasPrefix("https://") {
@@ -476,7 +476,13 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     }
     
     guard let destPath = destPath else {
-      completion(nil)
+      let result = [
+        "success": false,
+        "message": "Invalid input file path",
+      ] as [String : Any]
+      
+      completion(result)
+      
       return
     }
     
@@ -521,15 +527,30 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       let returnCode = session?.getReturnCode()
       
       if ReturnCode.isSuccess(returnCode) {
-        let result = ["outputPath": outputFile.absoluteString, "startTime": startTime, "endTime": endTime] as [String : Any]
+        let result = [
+          "success": true,
+          "outputPath": outputFile.absoluteString,
+          "startTime": startTime,
+          "endTime": endTime
+        ] as [String : Any]
         
         completion(result)
       } else if ReturnCode.isCancel(returnCode) {
         // CANCEL
-        completion(nil)
+        let result = [
+          "success": false,
+          "message": "FFmpeg command was cancelled with code \(returnCode?.getValue() ?? -1)",
+        ] as [String : Any]
+        
+        completion(result)
       } else {
         // FAILURE
-        completion(nil)
+        let result = [
+          "success": false,
+          "message": "Command failed with rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))",
+        ] as [String : Any]
+        
+        completion(result)
       }
     }, withLogCallback: nil, withStatisticsCallback: nil)
   }
@@ -538,7 +559,13 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   @objc(trim:withConfig:withResolver:withRejecter:)
   func _trim(inputFile: String, config: NSDictionary, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
     _trim(inputFile: inputFile, config: config, completion: { payload in
-      resolve(payload)
+      if let success = payload["success"] as? Bool, success {
+        resolve(payload)
+      } else {
+        let message = payload["message"] as? String ?? "Unknown error"
+        let error = NSError(domain: "", code: 200, userInfo: nil)
+        reject("ERR_TRIM_FAILED", message, error)
+      }
     })
   }
   

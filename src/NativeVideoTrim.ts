@@ -6,14 +6,8 @@ export interface BaseOptions {
   saveToPhoto: boolean;
   type: string;
   outputExt: string;
-  openDocumentsOnFinish: boolean;
-  openShareSheetOnFinish: boolean;
   removeAfterSavedToPhoto: boolean;
   removeAfterFailedToSavePhoto: boolean;
-  removeAfterSavedToDocuments: boolean;
-  removeAfterFailedToSaveDocuments: boolean;
-  removeAfterShared: boolean;
-  removeAfterFailedToShare: boolean;
   enableRotation: boolean;
   rotationAngle: number;
 }
@@ -22,6 +16,12 @@ export interface EditorConfig extends BaseOptions {
   enableHapticFeedback: boolean;
   maxDuration: number;
   minDuration: number;
+  openDocumentsOnFinish: boolean;
+  openShareSheetOnFinish: boolean;
+  removeAfterSavedToDocuments: boolean;
+  removeAfterFailedToSaveDocuments: boolean;
+  removeAfterShared: boolean;
+  removeAfterFailedToShare: boolean;
   cancelButtonText: string;
   saveButtonText: string;
   enableCancelDialog: boolean;

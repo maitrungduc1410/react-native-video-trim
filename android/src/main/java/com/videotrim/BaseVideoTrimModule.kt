@@ -70,7 +70,6 @@ open class BaseVideoTrimModule internal constructor(
   private var outputFile: String? = null
   private var isVideoType = true
   private var editorConfig: ReadableMap? = null
-  private var trimOptions: ReadableMap? = null
   private var originalStatusBarColor: Int = Color.TRANSPARENT
   private val shouldChangeStatusBarColorOnOpen: Boolean
     get() = editorConfig?.hasKey("changeStatusBarColorOnOpen") == true && editorConfig?.getBoolean("changeStatusBarColorOnOpen") == true
@@ -101,8 +100,7 @@ open class BaseVideoTrimModule internal constructor(
             Log.d(TAG, "File saved successfully to $uri")
 
             if (
-              editorConfig?.getBoolean("removeAfterSavedToDocuments") == true ||
-              trimOptions?.getBoolean("removeAfterFailedToSaveDocuments") == true
+              editorConfig?.getBoolean("removeAfterSavedToDocuments") == true
             ) {
               StorageUtil.deleteFile(outputFile)
             }
@@ -114,7 +112,7 @@ open class BaseVideoTrimModule internal constructor(
               "Failed to save edited video to Documents: ${e.localizedMessage}",
               ErrorCode.FAIL_TO_SAVE_TO_DOCUMENTS
             )
-            if (editorConfig?.getBoolean("removeAfterFailedToSaveDocuments") == true || trimOptions?.getBoolean("removeAfterFailedToSaveDocuments") == true) {
+            if (editorConfig?.getBoolean("removeAfterFailedToSaveDocuments") == true) {
               StorageUtil.deleteFile(outputFile)
             }
           } finally {
@@ -574,8 +572,6 @@ open class BaseVideoTrimModule internal constructor(
   }
 
   fun trim(url: String, options: ReadableMap?, promise: Promise) {
-    trimOptions = options
-
     val currentDate = Date()
     val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
 
@@ -593,7 +589,7 @@ open class BaseVideoTrimModule internal constructor(
       cmds += arrayOf("-display_rotation", "${options.getDouble("rotationAngle")}")
     }
 
-    outputFile = StorageUtil.getOutputPath(reactApplicationContext, options?.getString("outputExt") ?: "mp4")
+    val outputFile = StorageUtil.getOutputPath(reactApplicationContext, options?.getString("outputExt") ?: "mp4")
 
     cmds += arrayOf(
       "-i",
@@ -633,27 +629,19 @@ open class BaseVideoTrimModule internal constructor(
                 Exception("Failed to save edited video to Photo Library: " + e.localizedMessage)
               )
             }
-          } else {
-            if (options?.getBoolean("openDocumentsOnFinish") == true) {
-              saveFileToExternalStorage(File(outputFile!!))
-            } else if (options?.getBoolean("openShareSheetOnFinish") == true) {
-              shareFile(reactApplicationContext, File(outputFile!!))
-            }
-
-            promise.resolve(outputFile)
           }
         }
         ReturnCode.isCancel(returnCode) -> {
           // CANCEL
           println("FFmpeg command was cancelled")
           promise.reject(
-            Exception("FFmpeg command was cancelled")
+            Exception("FFmpeg command was cancelled with code $returnCode")
           )
         }
         else -> {
           // FAILURE
           val errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace());
-          println(errorMessage)
+          Log.d(TAG, errorMessage)
           promise.reject(
             Exception(errorMessage)
           )
@@ -669,7 +657,7 @@ open class BaseVideoTrimModule internal constructor(
   private fun saveFileToExternalStorage(file: File) {
     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
     intent.addCategory(Intent.CATEGORY_OPENABLE)
-    intent.setType("*/*") // Change MIME type as needed
+    intent.type = "*/*" // Change MIME type as needed
     intent.putExtra(Intent.EXTRA_TITLE, file.name)
     reactApplicationContext.currentActivity?.startActivityForResult(intent, REQUEST_CODE_SAVE_FILE)
   }
@@ -678,7 +666,7 @@ open class BaseVideoTrimModule internal constructor(
     val fileUri = FileProvider.getUriForFile(context, context.packageName + ".provider", file)
 
     val shareIntent = Intent(Intent.ACTION_SEND)
-    shareIntent.setType("*/*")
+    shareIntent.type = "*/*"
     shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri)
     shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 

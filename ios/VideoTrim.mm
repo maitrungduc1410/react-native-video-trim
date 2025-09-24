@@ -61,24 +61,21 @@ RCT_EXPORT_MODULE()
   dict[@"saveToPhoto"] = @(options.saveToPhoto());
   dict[@"type"] = options.type();
   dict[@"outputExt"] = options.outputExt();
-  dict[@"openDocumentsOnFinish"] = @(options.openDocumentsOnFinish());
-  dict[@"openShareSheetOnFinish"] = @(options.openShareSheetOnFinish());
   dict[@"removeAfterSavedToPhoto"] = @(options.removeAfterSavedToPhoto());
   dict[@"removeAfterFailedToSavePhoto"] = @(options.removeAfterFailedToSavePhoto());
-  dict[@"removeAfterSavedToDocuments"] = @(options.removeAfterSavedToDocuments());
-  dict[@"removeAfterFailedToSaveDocuments"] = @(options.removeAfterFailedToSaveDocuments());
-  dict[@"removeAfterShared"] = @(options.removeAfterShared());
-  dict[@"removeAfterFailedToShare"] = @(options.removeAfterFailedToShare());
   dict[@"enableRotation"] = @(options.enableRotation());
   dict[@"rotationAngle"] = @(options.rotationAngle());
   dict[@"startTime"] = @(options.startTime());
   dict[@"endTime"] = @(options.endTime());
   
-  [self->videoTrim trim:url url:dict config:^(NSDictionary<NSString *,id> * _Nullable result) {
-    if (!result) {
-      reject(@"ERR_TRIM_FAILED", @"Trim failed", nil);
-    } else {
+  [self->videoTrim trim:url url:dict config:^(NSDictionary<NSString *,id> * _Nonnull result) {
+    BOOL success = [result[@"success"] boolValue];
+    if (success) {
       resolve(result);
+    } else {
+      NSString *message = result[@"message"];
+      NSError *error = [NSError errorWithDomain:@"" code:200 userInfo:nil];
+      reject(@"ERR_TRIM_FAILED", message, error);
     }
   }];
 }
