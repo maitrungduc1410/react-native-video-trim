@@ -254,7 +254,7 @@ All configuration options are optional. Here are the most commonly used ones:
 |--------|------|---------|-------------|
 | `type` | `'video' \| 'audio'` | `'video'` | Media type to trim |
 | `outputExt` | `string` | `'mp4'` | Output file extension |
-| `maxDuration` | `number` | <video duration> | Maximum duration in milliseconds |
+| `maxDuration` | `number` | `video duration` | Maximum duration in milliseconds |
 | `minDuration` | `number` | `1000` | Minimum duration in milliseconds |
 | `autoplay` | `boolean` | `false` | Auto-play media on load |
 | `jumpToPositionOnLoad` | `number` | - | Initial position in milliseconds |
@@ -282,9 +282,9 @@ All configuration options are optional. Here are the most commonly used ones:
 | `trimmingText` | `string` | `"Trimming video..."` | Progress dialog text |
 | `headerText` | `string` | - | Header text |
 | `headerTextSize` | `number` | `16` | Header text size |
-| `headerTextColor` | `number` | - | Header text color (number/hex) |
-| `trimmerColor` | `number` | - | Trimmer bar color (number/hex) |
-| `handleIconColor` | `number` | - | Trimmer handle color (number/hex) |
+| `headerTextColor` | `string` | - | Header text color |
+| `trimmerColor` | `string` | - | Trimmer bar color |
+| `handleIconColor` | `string` | - | Trimmer left/right handles color |
 | `fullScreenModalIOS` | `boolean` | `false` | Use fullscreen modal on iOS |
 
 ### Dialog Options
