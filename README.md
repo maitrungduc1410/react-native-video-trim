@@ -254,7 +254,7 @@ All configuration options are optional. Here are the most commonly used ones:
 |--------|------|---------|-------------|
 | `type` | `'video' \| 'audio'` | `'video'` | Media type to trim |
 | `outputExt` | `string` | `'mp4'` | Output file extension |
-| `maxDuration` | `number` | - | Maximum duration in milliseconds |
+| `maxDuration` | `number` | `video duration` | Maximum duration in milliseconds |
 | `minDuration` | `number` | `1000` | Minimum duration in milliseconds |
 | `autoplay` | `boolean` | `false` | Auto-play media on load |
 | `jumpToPositionOnLoad` | `number` | - | Initial position in milliseconds |
@@ -267,7 +267,11 @@ All configuration options are optional. Here are the most commonly used ones:
 | `openDocumentsOnFinish` | `boolean` | `false` | Open document picker when done |
 | `openShareSheetOnFinish` | `boolean` | `false` | Open share sheet when done |
 | `removeAfterSavedToPhoto` | `boolean` | `false` | Delete file after saving to photos |
+| `removeAfterFailedToSavePhoto` | `boolean` | `false` | Delete file if saving to photos fails |
+| `removeAfterSavedToDocuments` | `boolean` | `false` | Delete file after saving to documents |
+| `removeAfterFailedToSaveDocuments` | `boolean` | `false` | Delete file if saving to documents fails |
 | `removeAfterShared` | `boolean` | `false` | Delete file after sharing (iOS only) |
+| `removeAfterFailedToShare` | `boolean` | `false` | Delete file if sharing fails (iOS only) |
 
 ### UI Customization
 
@@ -278,10 +282,61 @@ All configuration options are optional. Here are the most commonly used ones:
 | `trimmingText` | `string` | `"Trimming video..."` | Progress dialog text |
 | `headerText` | `string` | - | Header text |
 | `headerTextSize` | `number` | `16` | Header text size |
-| `headerTextColor` | `string` | `"white"` | Header text color |
+| `headerTextColor` | `string` | - | Header text color |
 | `trimmerColor` | `string` | - | Trimmer bar color |
-| `handleIconColor` | `string` | - | Trimmer handle color |
+| `handleIconColor` | `string` | - | Trimmer left/right handles color |
 | `fullScreenModalIOS` | `boolean` | `false` | Use fullscreen modal on iOS |
+
+### Dialog Options
+
+<details>
+<summary><strong>Cancel Dialog</strong></summary>
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enableCancelDialog` | `boolean` | `true` | Show confirmation dialog on cancel |
+| `cancelDialogTitle` | `string` | `"Warning!"` | Cancel dialog title |
+| `cancelDialogMessage` | `string` | `"Are you sure want to cancel?"` | Cancel dialog message |
+| `cancelDialogCancelText` | `string` | `"Close"` | Cancel dialog cancel button text |
+| `cancelDialogConfirmText` | `string` | `"Proceed"` | Cancel dialog confirm button text |
+</details>
+
+<details>
+<summary><strong>Save Dialog</strong></summary>
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enableSaveDialog` | `boolean` | `true` | Show confirmation dialog on save |
+| `saveDialogTitle` | `string` | `"Confirmation!"` | Save dialog title |
+| `saveDialogMessage` | `string` | `"Are you sure want to save?"` | Save dialog message |
+| `saveDialogCancelText` | `string` | `"Close"` | Save dialog cancel button text |
+| `saveDialogConfirmText` | `string` | `"Proceed"` | Save dialog confirm button text |
+</details>
+
+<details>
+<summary><strong>Trimming Cancel Dialog</strong></summary>
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enableCancelTrimming` | `boolean` | `true` | Enable cancel during trimming |
+| `cancelTrimmingButtonText` | `string` | `"Cancel"` | Cancel trimming button text |
+| `enableCancelTrimmingDialog` | `boolean` | `true` | Show cancel trimming confirmation |
+| `cancelTrimmingDialogTitle` | `string` | `"Warning!"` | Cancel trimming dialog title |
+| `cancelTrimmingDialogMessage` | `string` | `"Are you sure want to cancel trimming?"` | Cancel trimming dialog message |
+| `cancelTrimmingDialogCancelText` | `string` | `"Close"` | Cancel trimming dialog cancel button |
+| `cancelTrimmingDialogConfirmText` | `string` | `"Proceed"` | Cancel trimming dialog confirm button |
+</details>
+
+<details>
+<summary><strong>Error Dialog</strong></summary>
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `alertOnFailToLoad` | `boolean` | `true` | Show alert dialog on load failure |
+| `alertOnFailTitle` | `string` | `"Error"` | Error dialog title |
+| `alertOnFailMessage` | `string` | `"Fail to load media..."` | Error dialog message |
+| `alertOnFailCloseText` | `string` | `"Close"` | Error dialog close button text |
+</details>
 
 ### Advanced Options
 
@@ -291,8 +346,7 @@ All configuration options are optional. Here are the most commonly used ones:
 | `closeWhenFinish` | `boolean` | `true` | Close editor when done |
 | `enableRotation` | `boolean` | `false` | Enable video rotation |
 | `rotationAngle` | `number` | `0` | Rotation angle in degrees |
-| `changeStatusBarColorOnOpen` | `boolean` | `false` | Change status bar color (Android) |
-| `alertOnFailToLoad` | `boolean` | `true` | Show alert on load failure |
+| `changeStatusBarColorOnOpen` | `boolean` | `false` | Change status bar color (Android only) |
 
 ### Example Configuration
 
@@ -567,7 +621,6 @@ export default function VideoTrimmer() {
 - Use `trim()` for batch processing without UI
 - Clean up generated files regularly with `cleanFiles()`
 - Consider file compression for large videos
-- Use appropriate `maxDuration` limits
 
 ## Credits
 
