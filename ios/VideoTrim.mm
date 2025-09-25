@@ -150,6 +150,11 @@ RCT_EXPORT_MODULE()
     dict[@"handleIconColor"] = @(handleIconColorOpt.value());
   }
   
+  auto zoomOnWaitingDurationOpt = config.zoomOnWaitingDuration();
+  if (zoomOnWaitingDurationOpt.has_value()) {
+    dict[@"zoomOnWaitingDuration"] = @(zoomOnWaitingDurationOpt.value());
+  }
+  
   [self->videoTrim showEditor:filePath withConfig:dict];
 }
 

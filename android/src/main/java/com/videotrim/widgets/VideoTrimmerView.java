@@ -91,6 +91,7 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
   private long startTime = 0, endTime = 0;
   private boolean enableRotation = false;
   private double rotationAngle = 0.0;
+  private long zoomOnWaitingDuration = 5000; // Default: 5 seconds (in milliseconds)
 
   private Vibrator vibrator;
   private boolean didClampWhilePanning = false;
@@ -524,6 +525,12 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     alertOnFailCloseText = config.hasKey("alertOnFailCloseText") ? config.getString("alertOnFailCloseText") : "Close";
     enableRotation = config.hasKey("enableRotation") && config.getBoolean("enableRotation");
     rotationAngle = config.hasKey("rotationAngle") ? config.getDouble("rotationAngle") : 0.0;
+    
+    // Configure zoom on waiting duration (in seconds, converted to milliseconds)
+    if (config.hasKey("zoomOnWaitingDuration") && config.getDouble("zoomOnWaitingDuration") > 0) {
+      zoomOnWaitingDuration = (long) (config.getDouble("zoomOnWaitingDuration"));
+      Log.d(TAG, "Configured zoom on waiting duration: " + (zoomOnWaitingDuration / 1000.0) + " seconds");
+    }
 
     trimmerColor = config.hasKey("trimmerColor") ? config.getInt("trimmerColor") : Color.parseColor(getContext().getString(R.string.trim_color));
     handleIconColor = config.hasKey("handleIconColor") ? config.getInt("handleIconColor") : Color.BLACK;
@@ -971,8 +978,15 @@ public class VideoTrimmerView extends FrameLayout implements IVideoTrimmerView {
     float currentLeadingX = leadingHandle.getX();
     float currentTrailingX = trailingHandle.getX();
 
-    // Calculate zoom range similar to iOS implementation
-    long newDuration = mDuration > 4000 ? 2000 : Math.max(1000, mDuration / 2); // At least 1 second, max 2 seconds or half duration
+    // Use configurable zoom duration, but ensure it's reasonable for the video
+    long newDuration = Math.min(zoomOnWaitingDuration, mDuration);
+    
+    // For very short videos, use a smaller zoom range
+    if (mDuration < 2000) {
+      newDuration = Math.max(500, mDuration / 2); // At least 0.5 seconds for very short videos
+    } else if (mDuration < zoomOnWaitingDuration) {
+      newDuration = Math.max(1000, mDuration / 2); // Use half duration for short videos
+    }
 
     // Ensure zoom duration doesn't exceed video duration
     newDuration = Math.min(newDuration, mDuration);

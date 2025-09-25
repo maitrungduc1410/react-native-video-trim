@@ -66,6 +66,12 @@ export interface EditorConfig extends BaseOptions {
    * Color of the trimmer left/right handle icons
    */
   handleIconColor?: number;
+  /**
+   * Duration for zoom-on-waiting feature in milliseconds (default: 5000)
+   * When user pauses while dragging trim handles, the view will zoom to show
+   * this duration around the current trim position for more precise editing
+   */
+  zoomOnWaitingDuration?: number;
 }
 
 export interface TrimOptions extends BaseOptions {

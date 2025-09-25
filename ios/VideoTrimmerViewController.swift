@@ -47,6 +47,7 @@ class VideoTrimmerViewController: UIViewController {
     var cancelBtnClicked: (() -> Void)?
     var saveBtnClicked: ((CMTimeRange) -> Void)?
     private var enableHapticFeedback = true
+    private var zoomOnWaitingDuration: Double = 5.0 // Default: 5 seconds
     
     // New color properties
     private var trimmerColor: UIColor = UIColor.systemYellow
@@ -328,6 +329,7 @@ class VideoTrimmerViewController: UIViewController {
         trimmer.asset = asset
         trimmer.minimumDuration = CMTime(seconds: 1, preferredTimescale: 600)
         trimmer.enableHapticFeedback = enableHapticFeedback
+        trimmer.zoomOnWaitingDuration = zoomOnWaitingDuration
         
         if let maxDuration = maximumDuration {
             trimmer.maximumDuration = CMTime(seconds: max(1, Double(maxDuration)), preferredTimescale: 600)
@@ -477,6 +479,7 @@ class VideoTrimmerViewController: UIViewController {
     saveButtonText = config["saveButtonText"] as? String ?? "Save"
     jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Double ?? 0
     enableHapticFeedback = config["enableHapticFeedback"] as? Bool ?? true
+    zoomOnWaitingDuration = (config["zoomOnWaitingDuration"] as? Double ?? 5.0) / 1000.0 // convert ms to s
     autoplay = config["autoplay"] as? Bool ?? false
     headerText = config["headerText"] as? String
     headerTextSize = config["headerTextSize"] as? Int ?? 16

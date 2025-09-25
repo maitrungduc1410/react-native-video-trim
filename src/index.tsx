@@ -67,6 +67,7 @@ function createEditorConfig(
     headerTextColor: processColor('white') as number,
     trimmerColor: processColor('#f1d247') as number,
     handleIconColor: processColor('black') as number,
+    zoomOnWaitingDuration: 5000,
     alertOnFailToLoad: true,
     alertOnFailTitle: 'Error',
     alertOnFailMessage:

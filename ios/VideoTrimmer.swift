@@ -153,6 +153,7 @@ import AVFoundation
     var minimumDuration: CMTime = CMTime(seconds: 1, preferredTimescale: 600)
     var maximumDuration: CMTime = .positiveInfinity
     var enableHapticFeedback = true
+    var zoomOnWaitingDuration: Double = 5.0 // Default: 5 seconds
     
     // the available range of the asset.
     // Will be set to the full duration of the asset when assigning a new asset
@@ -499,18 +500,32 @@ import AVFoundation
         let size = bounds.size
         let inset = thumbView.chevronWidth + horizontalInset
         let availableWidth = size.width - inset * 2
-        let newDuration = CGFloat(range.duration.seconds > 4 ?  2.0 : range.duration.seconds * 0.5)
         
-        let durationTime = CMTime(seconds: Double(newDuration), preferredTimescale: 600)
+        // Use configurable zoom duration, but ensure it's reasonable for the video
+        var newDuration = zoomOnWaitingDuration
+        
+        // For very short videos, use a smaller zoom range
+        if range.duration.seconds < 2.0 {
+            newDuration = max(0.5, range.duration.seconds * 0.5) // At least 0.5 seconds for very short videos
+        } else if range.duration.seconds < zoomOnWaitingDuration {
+            newDuration = max(1.0, range.duration.seconds * 0.5) // Use half duration for short videos
+        }
+        
+        // Ensure zoom duration doesn't exceed video duration
+        newDuration = min(newDuration, range.duration.seconds)
+        
+        print("Zoom activated - Video duration: \(range.duration.seconds)s, Configured zoom: \(zoomOnWaitingDuration)s, Actual zoom: \(newDuration)s")
+        
+        let durationTime = CMTime(seconds: newDuration, preferredTimescale: 600)
         
         if trimmingState == .leading {
             let position = locationForTime(selectedRange.start) - inset
-            let start = position / availableWidth * newDuration
+            let start = position / availableWidth * CGFloat(newDuration)
             zoomedInRange = CMTimeRange(start: CMTimeSubtract(selectedRange.start, CMTime(seconds: Double(start), preferredTimescale: 600)), duration: durationTime)
         } else {
             let position = locationForTime(selectedRange.end) - inset
             
-            let durationToStart = position / availableWidth * newDuration
+            let durationToStart = position / availableWidth * CGFloat(newDuration)
             let newStart = CMTimeSubtract(selectedRange.end, CMTime(seconds: Double(durationToStart), preferredTimescale: 600))
             zoomedInRange = CMTimeRange(start: newStart, duration: durationTime)
         }

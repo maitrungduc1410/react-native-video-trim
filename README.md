@@ -347,6 +347,7 @@ All configuration options are optional. Here are the most commonly used ones:
 | `enableRotation` | `boolean` | `false` | Enable video rotation |
 | `rotationAngle` | `number` | `0` | Rotation angle in degrees |
 | `changeStatusBarColorOnOpen` | `boolean` | `false` | Change status bar color (Android only) |
+| `zoomOnWaitingDuration` | `number` | `5000` | Duration for zoom-on-waiting feature in milliseconds (default: 5000) |
 
 ### Example Configuration
 
