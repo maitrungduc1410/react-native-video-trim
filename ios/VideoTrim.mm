@@ -4,7 +4,14 @@
 #ifdef RCT_NEW_ARCH_ENABLED
 
 #import <VideoTrimSpec/VideoTrimSpec.h>
-#import <VideoTrim-Swift.h>
+
+#if __has_include(<VideoTrim/VideoTrim-Swift.h>)
+// if use_frameworks! :static
+#import <VideoTrim/VideoTrim-Swift.h>
+#else
+#import "VideoTrim-Swift.h"
+#endif
+
 @interface VideoTrim : NativeVideoTrimSpecBase <NativeVideoTrimSpec, VideoTrimProtocol>
 @end
 
