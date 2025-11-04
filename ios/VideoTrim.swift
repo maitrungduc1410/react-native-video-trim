@@ -527,14 +527,90 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       let returnCode = session?.getReturnCode()
       
       if ReturnCode.isSuccess(returnCode) {
-        let result = [
-          "success": true,
-          "outputPath": outputFile.absoluteString,
-          "startTime": startTime,
-          "endTime": endTime
-        ] as [String : Any]
-        
-        completion(result)
+        // Handle saveToPhoto functionality
+        if let saveToPhoto = config["saveToPhoto"] as? Bool, saveToPhoto {
+          print("iOS trim: saveToPhoto is true, attempting to save to photo library")
+          // Check if it's a video type
+          let isVideoType = (config["type"] as? String ?? "video") == "video"
+          
+          if isVideoType {
+            PHPhotoLibrary.requestAuthorization { status in
+              DispatchQueue.main.async {
+                if status == .authorized {
+                  PHPhotoLibrary.shared().performChanges({
+                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: outputFile)
+                  }) { success, error in
+                    if success {
+                      print("Edited video saved to Photo Library successfully.")
+                      
+                      // Handle removeAfterSavedToPhoto
+                      if let removeAfterSaved = config["removeAfterSavedToPhoto"] as? Bool, removeAfterSaved {
+                        let _ = VideoTrim.deleteFile(url: outputFile.absoluteString)
+                      }
+                      
+                      let result = [
+                        "outputPath": outputFile.absoluteString,
+                        "startTime": startTime,
+                        "endTime": endTime,
+                        "duration": endTime - startTime
+                      ] as [String : Any]
+                      
+                      completion(result)
+                    } else {
+                      print("Failed to save edited video to Photo Library: \(error?.localizedDescription ?? "Unknown error")")
+                      
+                      // Handle removeAfterFailedToSavePhoto
+                      if let removeAfterFailed = config["removeAfterFailedToSavePhoto"] as? Bool, removeAfterFailed {
+                        let _ = VideoTrim.deleteFile(url: outputFile.absoluteString)
+                      }
+                      
+                      let result = [
+                        "success": false,
+                        "message": "Failed to save edited video to Photo Library: \(error?.localizedDescription ?? "Unknown error")",
+                      ] as [String : Any]
+                      
+                      completion(result)
+                    }
+                  }
+                } else {
+                  // Permission denied
+                  print("Photo Library access denied")
+                  
+                  // Handle removeAfterFailedToSavePhoto
+                  if let removeAfterFailed = config["removeAfterFailedToSavePhoto"] as? Bool, removeAfterFailed {
+                    let _ = VideoTrim.deleteFile(url: outputFile.absoluteString)
+                  }
+                  
+                  let result = [
+                    "success": false,
+                    "message": "Photo Library access denied",
+                  ] as [String : Any]
+                  
+                  completion(result)
+                }
+              }
+            }
+          } else {
+            // For audio files, we can't save to photo library, just return success
+            let result = [
+              "outputPath": outputFile.absoluteString,
+              "startTime": startTime,
+              "endTime": endTime,
+              "duration": endTime - startTime
+            ] as [String : Any]
+            
+            completion(result)
+          }
+        } else {
+          let result = [
+            "outputPath": outputFile.absoluteString,
+            "startTime": startTime,
+            "endTime": endTime,
+            "duration": endTime - startTime
+          ] as [String : Any]
+          
+          completion(result)
+        }
       } else if ReturnCode.isCancel(returnCode) {
         // CANCEL
         let result = [

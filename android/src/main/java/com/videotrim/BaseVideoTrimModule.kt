@@ -609,19 +609,32 @@ open class BaseVideoTrimModule internal constructor(
       when {
         ReturnCode.isSuccess(returnCode) -> {
           // SUCCESS
+          val startTime = options?.getDouble("startTime") ?: 0.0
+          val endTime = options?.getDouble("endTime") ?: 1000.0
+          val duration = endTime - startTime
+          
+          val result = Arguments.createMap()
+          result.putString("outputPath", outputFile)
+          result.putDouble("startTime", startTime)
+          result.putDouble("endTime", endTime)
+          result.putDouble("duration", duration)
+          
           if (options?.getBoolean("saveToPhoto") == true && options.getString("type") == "video") {
+            Log.d(TAG, "Android trim: saveToPhoto is true, attempting to save to gallery")
             try {
               StorageUtil.saveVideoToGallery(reactApplicationContext, outputFile)
               Log.d(TAG, "Edited video saved to Photo Library successfully.")
               if (options.getBoolean("removeAfterSavedToPhoto")) {
+                Log.d(TAG, "Removing file after successful save to photo")
                 StorageUtil.deleteFile(outputFile)
               }
 
-              promise.resolve(outputFile)
+              promise.resolve(result)
             } catch (e: IOException) {
               e.printStackTrace()
 
               if (options.getBoolean("removeAfterFailedToSavePhoto")) {
+                Log.d(TAG, "Removing file after failed save to photo")
                 StorageUtil.deleteFile(outputFile)
               }
 
@@ -629,6 +642,10 @@ open class BaseVideoTrimModule internal constructor(
                 Exception("Failed to save edited video to Photo Library: " + e.localizedMessage)
               )
             }
+          } else {
+            Log.d(TAG, "Android trim: saveToPhoto is false or not video type, resolving with structured result")
+            
+            promise.resolve(result)
           }
         }
         ReturnCode.isCancel(returnCode) -> {
