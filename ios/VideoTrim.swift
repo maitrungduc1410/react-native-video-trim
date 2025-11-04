@@ -13,7 +13,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   private var isVideoType = true
   private var outputFile: URL?
   private var editorConfig: NSDictionary?
-  
+
   // MARK: base options
   private var saveToPhoto: Bool {
     get {
@@ -60,7 +60,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       return editorConfig?["rotationAngle"] as! Double
     }
   }
-  
+
   // MARK: trimming with editor options
   private var trimmingText: String {
     get {
@@ -157,7 +157,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       return editorConfig?["enableCancelTrimming"] as! Bool
     }
   }
-  
+
   private var cancelTrimmingButtonText: String {
     get {
       return editorConfig?["cancelTrimmingButtonText"] as! String
@@ -208,33 +208,33 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       return editorConfig?["alertOnFailCloseText"] as! String
     }
   }
-  
+
   @objc public weak var delegate: VideoTrimProtocol?
   @objc public var isNewArch = false
 
-  
-  
+
+
   // MARK: for old arch
   private var hasListeners = false
-  
+
   @objc
   static public override func requiresMainQueueSetup() -> Bool {
     return false
   }
-  
+
   public override func supportedEvents() -> [String]! {
     return ["VideoTrim"]
   }
-  
+
   public override func startObserving() {
     hasListeners = true
   }
-  
+
   public override func stopObserving() {
     hasListeners = false
   }
-  
-  
+
+
   private func emitEventToJS(_ eventName: String, eventData: [String: Any]?) {
     if isNewArch {
       delegate?.emitEventToJS(eventName: eventName, body: eventData)
@@ -246,44 +246,44 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       }
     }
   }
-  
+
   private static func deleteFile(url: URL) -> Int {
     do {
       if FileManager.default.fileExists(atPath: url.path) {
         try FileManager.default.removeItem(at: url)
-        
+
         return 0
       }
-      
+
       return 1
     } catch {
       print("[deleteFile] Error deleting files: \(error)")
-      
+
       return 2
     }
   }
-  
+
   private func trim(viewController: VideoTrimmerViewController, inputFile: URL, videoDuration: Double, startTime: Double, endTime: Double) {
     vc?.pausePlayer()
-    
+
     let timestamp = Int(Date().timeIntervalSince1970)
     let outputName = "\(FILE_PREFIX)_\(timestamp).\(outputExt)"
     let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     outputFile = documentsDirectory.appendingPathComponent(outputName)
-    
+
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ"
     formatter.timeZone = TimeZone(identifier: "UTC")
     let dateTime = formatter.string(from: Date())
-    
+
     emitEventToJS("onStartTrimming", eventData: nil)
-    
+
     var ffmpegSession: FFmpegSession?
     let progressAlert = ProgressAlertController()
     progressAlert.modalPresentationStyle = .overFullScreen
     progressAlert.modalTransitionStyle = .crossDissolve
     progressAlert.setTitle(trimmingText)
-    
+
     if enableCancelTrimming {
       progressAlert.setCancelTitle(cancelTrimmingButtonText)
       progressAlert.showCancelBtn()
@@ -291,26 +291,26 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
         if self.enableCancelTrimmingDialog {
           let dialogMessage = UIAlertController(title: self.cancelTrimmingDialogTitle, message: self.cancelTrimmingDialogMessage, preferredStyle: .alert)
           dialogMessage.overrideUserInterfaceStyle = .dark
-          
+
           // Create OK button with action handler
           let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive, handler: { (action) -> Void in
-            
+
             if let ffmpegSession = ffmpegSession {
               ffmpegSession.cancel()
             } else {
               self.emitEventToJS("onCancelTrimming", eventData: nil)
             }
-            
+
             progressAlert.dismiss(animated: true)
           })
-          
+
           // Create Cancel button with action handlder
           let cancel = UIAlertAction(title: self.cancelDialogCancelText, style: .cancel)
-          
+
           //Add OK and Cancel button to an Alert object
           dialogMessage.addAction(ok)
           dialogMessage.addAction(cancel)
-          
+
           // Present alert message to user
           if let root = RCTPresentedViewController() {
             root.present(dialogMessage, animated: true, completion: nil)
@@ -321,28 +321,28 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
           } else {
             self.emitEventToJS("onCancelTrimming", eventData: nil)
           }
-          
+
           progressAlert.dismiss(animated: true)
         }
-        
+
       }
     }
-    
+
     if let root = RCTPresentedViewController() {
       root.present(progressAlert, animated: true, completion: nil)
     }
-    
+
     var cmds = [
       "-ss",
       "\(startTime * 1000)ms",
       "-to",
       "\(endTime * 1000)ms",
     ]
-    
+
     if enableRotation {
       cmds.append(contentsOf: ["-display_rotation", "\(rotationAngle)"])
     }
-    
+
     cmds.append(contentsOf: [
       "-i",
       "\(inputFile)",
@@ -352,42 +352,42 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       "creation_time=\(dateTime)",
       outputFile!.absoluteString
     ])
-    
+
     print("Command: ", cmds.joined(separator: " "))
-    
+
     let eventPayload: [String: Any] = [
       "message": "Command: \(cmds.joined(separator: " "))"
     ]
     self.emitEventToJS("onLog", eventData: eventPayload)
-    
+
     ffmpegSession = FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
-      
+
       // always hide progressAlert
       DispatchQueue.main.async {
         progressAlert.dismiss(animated: true)
       }
-      
+
       let state = session?.getState()
       let returnCode = session?.getReturnCode()
-      
+
       if ReturnCode.isSuccess(returnCode) {
         let eventPayload: [String: Any] = ["outputPath": self.outputFile!.absoluteString, "startTime": (startTime * 1000).rounded(), "endTime": (endTime * 1000).rounded(), "duration": (videoDuration * 1000).rounded()]
         self.emitEventToJS("onFinishTrimming", eventData: eventPayload)
-        
+
         if (self.saveToPhoto && self.isVideoType) {
           PHPhotoLibrary.requestAuthorization { status in
             guard status == .authorized else {
               self.onError(message: "Permission to access Photo Library is not granted", code: .noPhotoPermission)
               return
             }
-            
+
             PHPhotoLibrary.shared().performChanges({
               let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: self.outputFile!)
               request?.creationDate = Date()
             }) { success, error in
               if success {
                 print("Edited video saved to Photo Library successfully.")
-                
+
                 if self.removeAfterSavedToPhoto {
                   let _ = VideoTrim.deleteFile(url: self.outputFile!)
                 }
@@ -401,20 +401,20 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
           }
         } else if self.openDocumentsOnFinish {
           self.saveFileToFilesApp(fileURL: self.outputFile!)
-          
+
           // must return otherwise editor will close
           return
         } else if self.openShareSheetOnFinish {
           self.shareFile(fileURL: self.outputFile!)
-          
+
           // must return otherwise editor will close
           return
         }
-        
+
         if self.closeWhenFinish {
           self.closeEditor(delay: 500)
         }
-        
+
       } else if ReturnCode.isCancel(returnCode) {
         // CANCEL
         self.emitEventToJS("onCancelTrimming", eventData: nil)
@@ -425,23 +425,23 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
           self.closeEditor(delay: 500)
         }
       }
-      
-      
+
+
     }, withLogCallback: { log in
       guard let log = log else { return }
-      
+
       print("FFmpeg process started with log " + (log.getMessage()));
-      
+
       let eventPayload: [String: Any] = [
         "level": log.getLevel(),
         "message": log.getMessage() ?? "",
         "sessionId": log.getSessionId(),
       ]
       self.emitEventToJS("onLog", eventData: eventPayload)
-      
+
     }, withStatisticsCallback: { statistics in
       guard let statistics = statistics else { return }
-      
+
       let timeInMilliseconds = statistics.getTime()
       if timeInMilliseconds > 0 {
         let completePercentage = timeInMilliseconds / (videoDuration * 1000); // from 0 -> 1
@@ -449,7 +449,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
           progressAlert.setProgress(Float(completePercentage))
         }
       }
-      
+
       let eventPayload: [String: Any] = [
         "sessionId": statistics.getSessionId(),
         "videoFrameNumber": statistics.getVideoFrameNumber(),
@@ -463,40 +463,40 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       self.emitEventToJS("onStatistics", eventData: eventPayload)
     })
   }
-  
+
   // New Arch
   @objc(trim:url:config:)
   public func _trim(inputFile: String, config: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
     var destPath: URL?
-    
+
     if inputFile.hasPrefix("http://") || inputFile.hasPrefix("https://") {
       destPath = URL(string: inputFile)
     } else {
       destPath = renameFile(at: URL(string: inputFile)!, newName: BEFORE_TRIM_PREFIX)
     }
-    
+
     guard let destPath = destPath else {
       let result = [
         "success": false,
         "message": "Invalid input file path",
       ] as [String : Any]
-      
+
       completion(result)
-      
+
       return
     }
-    
+
     let timestamp = Int(Date().timeIntervalSince1970)
     let outputExt = config["outputExt"] as? String ?? "mp4"
     let outputName = "\(FILE_PREFIX)_\(timestamp).\(outputExt)"
     let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     let outputFile = documentsDirectory.appendingPathComponent(outputName)
-    
+
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ"
     formatter.timeZone = TimeZone(identifier: "UTC")
     let dateTime = formatter.string(from: Date())
-    
+
     let startTime = config["startTime"] as? Double ?? 0
     let endTime = config["endTime"] as? Double ?? 0
     var cmds = [
@@ -505,12 +505,12 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       "-to",
       "\(endTime)ms",
     ]
-    
+
     if let enableRotation = config["enableRotation"] as? Bool, enableRotation {
       let rotationAngle = config["rotationAngle"] as? Double ?? 0
       cmds.append(contentsOf: ["-display_rotation", "\(rotationAngle)"])
     }
-    
+
     cmds.append(contentsOf: [
       "-i",
       "\(destPath.absoluteString)",
@@ -520,19 +520,19 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       "creation_time=\(dateTime)",
       outputFile.absoluteString
     ])
-    
+
     print("Command: ", cmds.joined(separator: " "))
-    
+
     FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
       let returnCode = session?.getReturnCode()
-      
+
       if ReturnCode.isSuccess(returnCode) {
         // Handle saveToPhoto functionality
         if let saveToPhoto = config["saveToPhoto"] as? Bool, saveToPhoto {
           print("iOS trim: saveToPhoto is true, attempting to save to photo library")
           // Check if it's a video type
           let isVideoType = (config["type"] as? String ?? "video") == "video"
-          
+
           if isVideoType {
             PHPhotoLibrary.requestAuthorization { status in
               DispatchQueue.main.async {
@@ -542,50 +542,50 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
                   }) { success, error in
                     if success {
                       print("Edited video saved to Photo Library successfully.")
-                      
+
                       // Handle removeAfterSavedToPhoto
                       if let removeAfterSaved = config["removeAfterSavedToPhoto"] as? Bool, removeAfterSaved {
-                        let _ = VideoTrim.deleteFile(url: outputFile.absoluteString)
+                        let _ = VideoTrim.deleteFile(url: outputFile)
                       }
-                      
+
                       let result = [
                         "outputPath": outputFile.absoluteString,
                         "startTime": startTime,
                         "endTime": endTime,
                         "duration": endTime - startTime
                       ] as [String : Any]
-                      
+
                       completion(result)
                     } else {
                       print("Failed to save edited video to Photo Library: \(error?.localizedDescription ?? "Unknown error")")
-                      
+
                       // Handle removeAfterFailedToSavePhoto
                       if let removeAfterFailed = config["removeAfterFailedToSavePhoto"] as? Bool, removeAfterFailed {
-                        let _ = VideoTrim.deleteFile(url: outputFile.absoluteString)
+                        let _ = VideoTrim.deleteFile(url: outputFile)
                       }
-                      
+
                       let result = [
                         "success": false,
                         "message": "Failed to save edited video to Photo Library: \(error?.localizedDescription ?? "Unknown error")",
                       ] as [String : Any]
-                      
+
                       completion(result)
                     }
                   }
                 } else {
                   // Permission denied
                   print("Photo Library access denied")
-                  
+
                   // Handle removeAfterFailedToSavePhoto
                   if let removeAfterFailed = config["removeAfterFailedToSavePhoto"] as? Bool, removeAfterFailed {
-                    let _ = VideoTrim.deleteFile(url: outputFile.absoluteString)
+                    let _ = VideoTrim.deleteFile(url: outputFile)
                   }
-                  
+
                   let result = [
                     "success": false,
                     "message": "Photo Library access denied",
                   ] as [String : Any]
-                  
+
                   completion(result)
                 }
               }
@@ -598,7 +598,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
               "endTime": endTime,
               "duration": endTime - startTime
             ] as [String : Any]
-            
+
             completion(result)
           }
         } else {
@@ -608,7 +608,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
             "endTime": endTime,
             "duration": endTime - startTime
           ] as [String : Any]
-          
+
           completion(result)
         }
       } else if ReturnCode.isCancel(returnCode) {
@@ -617,7 +617,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
           "success": false,
           "message": "FFmpeg command was cancelled with code \(returnCode?.getValue() ?? -1)",
         ] as [String : Any]
-        
+
         completion(result)
       } else {
         // FAILURE
@@ -625,12 +625,12 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
           "success": false,
           "message": "Command failed with rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))",
         ] as [String : Any]
-        
+
         completion(result)
       }
     }, withLogCallback: nil, withStatisticsCallback: nil)
   }
-  
+
   // Old Arch
   @objc(trim:withConfig:withResolver:withRejecter:)
   func _trim(inputFile: String, config: NSDictionary, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
@@ -644,7 +644,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       }
     })
   }
-  
+
   private func saveFileToFilesApp(fileURL: URL) {
     DispatchQueue.main.async {
       let documentPicker = UIDocumentPickerViewController(url: fileURL, in: .exportToService)
@@ -655,25 +655,25 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       }
     }
   }
-  
+
   private func shareFile(fileURL: URL) {
     DispatchQueue.main.async {
       // Create an instance of UIActivityViewController
       let activityViewController = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-      
+
       activityViewController.completionWithItemsHandler = { activityType, completed, returnedItems, error in
-        
+
         if let error = error {
           let message = "Sharing error: \(error.localizedDescription)"
           print(message)
           self.onError(message: message, code: .failToShare)
-          
+
           if self.removeAfterFailedToShare {
             let _ = VideoTrim.deleteFile(url: self.outputFile!)
           }
           return
         }
-        
+
         if completed {
           print("User completed the sharing activity")
           if self.removeAfterShared {
@@ -685,19 +685,19 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
             let _ = VideoTrim.deleteFile(url: self.outputFile!)
           }
         }
-        
+
         self.closeEditor()
-        
+
       }
-      
+
       // Present the share sheet
       if let root = RCTPresentedViewController() {
         root.present(activityViewController, animated: true, completion: nil)
       }
     }
-    
+
   }
-  
+
   private func onError(message: String, code: ErrorCode) {
     let eventPayload: [String: String] = [
       "message": message,
@@ -705,19 +705,19 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     ]
     self.emitEventToJS("onError", eventData: eventPayload)
   }
-  
+
   private func renameFile(at url: URL, newName: String) -> URL? {
     let fileManager = FileManager.default
-    
+
     // Get the directory of the existing file
     let directory = url.deletingLastPathComponent()
-    
+
     // Get the file extension
     let fileExtension = url.pathExtension
-    
+
     // Create the new file URL with the new name and the same extension
     let newFileURL = directory.appendingPathComponent(newName).appendingPathExtension(fileExtension)
-    
+
     // Check if a file with the new name already exists
     if fileManager.fileExists(atPath: newFileURL.path) {
       do {
@@ -728,7 +728,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
         return nil
       }
     }
-    
+
     do {
       // Rename (move) the file
       try fileManager.moveItem(at: url, to: newFileURL)
@@ -750,7 +750,7 @@ extension VideoTrim {
       return
     }
     editorConfig = config
-    
+
     //
     //    saveToPhoto = config["saveToPhoto"] as? Bool ?? false
     //
@@ -799,94 +799,94 @@ extension VideoTrim {
     //    if let saveButtonText = config["saveButtonText"] as? String, !saveButtonText.isEmpty {
     //      self.saveButtonText = saveButtonText
     //    }
-    
+
     var destPath: URL?
-    
+
     if uri.hasPrefix("http://") || uri.hasPrefix("https://") {
       destPath = URL(string: uri)
     } else {
       destPath = renameFile(at: URL(string: uri)!, newName: BEFORE_TRIM_PREFIX)
     }
-    
+
     guard let destPath = destPath else { return }
-    
+
     DispatchQueue.main.async {
       self.vc = VideoTrimmerViewController()
-      
+
       guard let vc = self.vc else { return }
-      
+
       vc.configure(config: config)
-      
+
       vc.cancelBtnClicked = {
         if !self.enableCancelDialog {
           self.emitEventToJS("onCancel", eventData: nil)
-          
+
           self.closeEditor()
           return
         }
-        
+
         // Create Alert
         let dialogMessage = UIAlertController(title: self.cancelDialogTitle, message: self.cancelDialogMessage, preferredStyle: .alert)
         dialogMessage.overrideUserInterfaceStyle = .dark
-        
+
         // Create OK button with action handler
         let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive, handler: { (action) -> Void in
           self.emitEventToJS("onCancel", eventData: nil)
           self.closeEditor()
         })
-        
+
         // Create Cancel button with action handlder
         let cancel = UIAlertAction(title: self.cancelDialogCancelText, style: .cancel)
-        
+
         //Add OK and Cancel button to an Alert object
         dialogMessage.addAction(ok)
         dialogMessage.addAction(cancel)
-        
+
         // Present alert message to user
         if let root = RCTPresentedViewController() {
           root.present(dialogMessage, animated: true, completion: nil)
         }
       }
-      
+
       vc.saveBtnClicked = {(selectedRange: CMTimeRange) in
         if !self.enableSaveDialog {
           self.trim(viewController: vc,inputFile: destPath, videoDuration: self.vc!.asset!.duration.seconds, startTime: selectedRange.start.seconds, endTime: selectedRange.end.seconds)
           return
         }
-        
+
         // Create Alert
         let dialogMessage = UIAlertController(title: self.saveDialogTitle, message: self.saveDialogMessage, preferredStyle: .alert)
         dialogMessage.overrideUserInterfaceStyle = .dark
-        
+
         // Create OK button with action handler
         let ok = UIAlertAction(title: self.saveDialogConfirmText, style: .default, handler: { (action) -> Void in
           self.trim(viewController: vc,inputFile: destPath, videoDuration: vc.asset!.duration.seconds, startTime: selectedRange.start.seconds, endTime: selectedRange.end.seconds)
         })
-        
+
         // Create Cancel button with action handlder
         let cancel = UIAlertAction(title: self.saveDialogCancelText, style: .cancel)
-        
+
         //Add OK and Cancel button to an Alert object
         dialogMessage.addAction(ok)
         dialogMessage.addAction(cancel)
-        
+
         // Present alert message to user
         if let root = RCTPresentedViewController() {
           root.present(dialogMessage, animated: true, completion: nil)
         }
       }
-      
+
       vc.isModalInPresentation = true // prevent modal closed by swipe down
-      
+
       if self.fullScreenModalIOS {
         vc.modalPresentationStyle = .fullScreen
       }
-      
+
       if let root = RCTPresentedViewController() {
         root.present(vc, animated: true, completion: {
           self.emitEventToJS("onShow", eventData: nil)
           self.isShowing = true
-          
+
           // start loading asset after view is finished presenting
           // otherwise it may run too fast for local file and autoplay looks weird
           let assetLoader = AssetLoader()
@@ -896,7 +896,7 @@ extension VideoTrim {
       }
     }
   }
-  
+
   // New Arch
   @objc(closeEditor:)
   public func closeEditor(delay: Int = 0) {
@@ -911,7 +911,7 @@ extension VideoTrim {
       })
     }
   }
-  
+
   // Old Arch
   @objc(closeEditor)
   func _closeEditor() -> Void {
@@ -926,13 +926,13 @@ extension VideoTrim {
   public static func _listFiles() -> [String] {
     return listFiles().map{ $0.absoluteString }
   }
-  
+
   // Old Arch
   @objc(listFiles:withRejecter:)
   func listFiles(resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
     resolve(VideoTrim._listFiles())
   }
-  
+
   // New Arch
   @objc(cleanFiles)
   public static func cleanFiles() -> Int {
@@ -940,42 +940,42 @@ extension VideoTrim {
     var successCount = 0
     for file in files {
       let state = deleteFile(url: file)
-      
+
       if state == 0 {
         successCount += 1
       }
     }
-    
+
     return successCount
   }
-  
+
   // Old Arch
   @objc(cleanFiles:withRejecter:)
   func cleanFiles(resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
     resolve(VideoTrim.cleanFiles())
   }
-  
+
   // New Arch
   @objc(deleteFile:)
   public static func deleteFile(uri: String) -> Bool {
     let state = deleteFile(url: URL(string: uri)!)
     return state == 0
   }
-  
+
   // Old Arch
   @objc(deleteFile:withResolver:withRejecter:)
   func deleteFile(uri: String, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
     resolve(VideoTrim.deleteFile(uri: uri))
   }
-  
+
   private static func listFiles() -> [URL] {
     var files: [URL] = []
-    
+
     let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-    
+
     do {
       let directoryContents = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
-      
+
       for fileURL in directoryContents {
         if fileURL.lastPathComponent.starts(with: FILE_PREFIX) || fileURL.lastPathComponent.starts(with: BEFORE_TRIM_PREFIX) {
           files.append(fileURL)
@@ -984,10 +984,10 @@ extension VideoTrim {
     } catch {
       print("[listFiles] Error when retrieving files: \(error)")
     }
-    
+
     return files
   }
-  
+
   // New Arch
   @objc(isValidFile:url:)
   public static func isValidFile(url: String, completion: @escaping ([String: Any]) -> Void) -> Void {
@@ -998,17 +998,17 @@ extension VideoTrim {
       } else {
         print("Invalid file")
       }
-      
+
       let payload: [String: Any] = [
         "isValid": isValid,
         "fileType": fileType,
         "duration": duration
       ]
-      
+
       completion(payload)
     }
   }
-  
+
   // Old Arch
   @objc(isValidFile:withResolver:withRejecter:)
   func isValidFile(uri: String, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
@@ -1017,18 +1017,18 @@ extension VideoTrim {
       }
     )
   }
-  
+
   private static func checkFileValidity(url: URL, completion: @escaping (Bool, String, Double) -> Void) {
     let asset = AVAsset(url: url)
-    
+
     // Load the duration and tracks asynchronously
     asset.loadValuesAsynchronously(forKeys: ["duration", "tracks"]) {
       var error: NSError? = nil
-      
+
       // Check if the duration and tracks are loaded
       let durationStatus = asset.statusOfValue(forKey: "duration", error: &error)
       let tracksStatus = asset.statusOfValue(forKey: "tracks", error: &error)
-      
+
       // Ensure both properties are loaded successfully
       guard durationStatus == .loaded, tracksStatus == .loaded, error == nil else {
         DispatchQueue.main.async {
@@ -1036,11 +1036,11 @@ extension VideoTrim {
         }
         return
       }
-      
+
       // Check if the asset contains any video or audio tracks
       let videoTracks = asset.tracks(withMediaType: .video)
       let audioTracks = asset.tracks(withMediaType: .audio)
-      
+
       let isValid = !videoTracks.isEmpty || !audioTracks.isEmpty
       let fileType: String
       if !videoTracks.isEmpty {
@@ -1050,9 +1050,9 @@ extension VideoTrim {
       } else {
         fileType = "unknown"
       }
-      
+
       let duration = CMTimeGetSeconds(asset.duration) * 1000
-      
+
       //      DispatchQueue.main.async {
       completion(isValid, fileType, isValid ? duration.rounded() : -1)
       //      }
@@ -1066,32 +1066,32 @@ extension VideoTrim {
   func assetLoader(_ loader: AssetLoader, didFailWithError error: any Error, forKey key: String) {
     let message = "Failed to load \(key): \(error.localizedDescription)"
     print("Failed to load \(key)", message)
-    
+
     self.onError(message: message, code: .failToLoadMedia)
     vc?.onAssetFailToLoad()
-    
+
     if alertOnFailToLoad {
       let dialogMessage = UIAlertController(title: alertOnFailTitle, message: alertOnFailMessage, preferredStyle: .alert)
       dialogMessage.overrideUserInterfaceStyle = .dark
-      
+
       // Create Cancel button with action handlder
       let ok = UIAlertAction(title: alertOnFailCloseText, style: .default)
-      
+
       //Add OK and Cancel button to an Alert object
       dialogMessage.addAction(ok)
-      
+
       // Present alert message to user
       if let root = RCTPresentedViewController() {
         root.present(dialogMessage, animated: true, completion: nil)
       }
     }
   }
-  
+
   func assetLoaderDidSucceed(_ loader: AssetLoader) {
     print("Asset loaded successfully")
-    
+
     vc?.asset = loader.asset
-    
+
     let eventPayload: [String: Any] = [
       "duration": loader.asset!.duration.seconds * 1000,
     ]
@@ -1108,7 +1108,7 @@ extension VideoTrim {
     }
     closeEditor()
   }
-  
+
   public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
     if removeAfterFailedToSaveDocuments {
       let _ = VideoTrim.deleteFile(url: outputFile!)
