@@ -211,8 +211,6 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   
   @objc public weak var delegate: VideoTrimProtocol?
   @objc public var isNewArch = false
-
-  
   
   // MARK: for old arch
   private var hasListeners = false
@@ -545,7 +543,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
                       
                       // Handle removeAfterSavedToPhoto
                       if let removeAfterSaved = config["removeAfterSavedToPhoto"] as? Bool, removeAfterSaved {
-                        let _ = VideoTrim.deleteFile(url: outputFile.absoluteString)
+                        let _ = VideoTrim.deleteFile(url: outputFile)
                       }
                       
                       let result = [
@@ -561,7 +559,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
                       
                       // Handle removeAfterFailedToSavePhoto
                       if let removeAfterFailed = config["removeAfterFailedToSavePhoto"] as? Bool, removeAfterFailed {
-                        let _ = VideoTrim.deleteFile(url: outputFile.absoluteString)
+                        let _ = VideoTrim.deleteFile(url: outputFile)
                       }
                       
                       let result = [
@@ -578,7 +576,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
                   
                   // Handle removeAfterFailedToSavePhoto
                   if let removeAfterFailed = config["removeAfterFailedToSavePhoto"] as? Bool, removeAfterFailed {
-                    let _ = VideoTrim.deleteFile(url: outputFile.absoluteString)
+                    let _ = VideoTrim.deleteFile(url: outputFile)
                   }
                   
                   let result = [
@@ -1013,9 +1011,8 @@ extension VideoTrim {
   @objc(isValidFile:withResolver:withRejecter:)
   func isValidFile(uri: String, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
     VideoTrim.isValidFile(url: uri, completion: { payload in
-        resolve(payload)
-      }
-    )
+      resolve(payload)
+    })
   }
   
   private static func checkFileValidity(url: URL, completion: @escaping (Bool, String, Double) -> Void) {
