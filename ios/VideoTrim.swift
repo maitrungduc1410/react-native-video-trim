@@ -547,6 +547,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
                       }
                       
                       let result = [
+                        "success": true,
                         "outputPath": outputFile.absoluteString,
                         "startTime": startTime,
                         "endTime": endTime,
@@ -591,6 +592,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
           } else {
             // For audio files, we can't save to photo library, just return success
             let result = [
+              "success": true,
               "outputPath": outputFile.absoluteString,
               "startTime": startTime,
               "endTime": endTime,
@@ -601,6 +603,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
           }
         } else {
           let result = [
+            "success": true,
             "outputPath": outputFile.absoluteString,
             "startTime": startTime,
             "endTime": endTime,
