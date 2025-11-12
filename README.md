@@ -207,10 +207,10 @@ showEditor('/path/to/video.mp4', {
 Programmatically trim a video without showing the UI.
 
 ```typescript
-trim(url: string, options: TrimOptions): Promise<string>
+trim(url: string, options: TrimOptions): Promise<TrimResult>
 ```
 
-**Returns:** Promise resolving to the output file path
+**Returns:** Promise resolving to the TrimResult interface
 
 **Example:**
 ```javascript

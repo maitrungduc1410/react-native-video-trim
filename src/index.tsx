@@ -5,6 +5,7 @@ import type {
   EditorConfig,
   FileValidationResult,
   TrimOptions,
+  TrimResult,
 } from './NativeVideoTrim';
 import { processColor } from 'react-native';
 
@@ -174,12 +175,12 @@ export function isValidFile(url: string): Promise<FileValidationResult> {
  *
  * @param {string} url: absolute non-empty file path to edit
  * @param {TrimOptions} options: trim options
- * @returns {Promise<string>} A **Promise** which resolves to the trimmed file path
+ * @returns {Promise<TrimResult>} A **Promise** which resolves to the TrimResult interface
  */
 export function trim(
   url: string,
   options: Partial<TrimOptions>
-): Promise<string> {
+): Promise<TrimResult> {
   return VideoTrim.trim(url, createTrimOptions(options));
 }
 

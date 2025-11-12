@@ -85,6 +85,14 @@ export interface FileValidationResult {
   duration: number;
 }
 
+export interface TrimResult {
+  startTime: number;
+  endTime: number;
+  duration: number;
+  outputPath: string;
+  success: boolean;
+}
+
 export interface Spec extends TurboModule {
   showEditor(filePath: string, config: EditorConfig): void;
   listFiles(): Promise<string[]>;
@@ -92,7 +100,7 @@ export interface Spec extends TurboModule {
   deleteFile(filePath: string): Promise<boolean>;
   closeEditor(): void;
   isValidFile(url: string): Promise<FileValidationResult>;
-  trim(url: string, options: TrimOptions): Promise<string>;
+  trim(url: string, options: TrimOptions): Promise<TrimResult>;
 
   readonly onStartTrimming: EventEmitter<void>;
   readonly onCancelTrimming: EventEmitter<void>;

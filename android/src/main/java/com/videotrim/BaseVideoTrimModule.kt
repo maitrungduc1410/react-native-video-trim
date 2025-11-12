@@ -577,12 +577,14 @@ open class BaseVideoTrimModule internal constructor(
 
     dateFormat.timeZone = TimeZone.getTimeZone("UTC")
     val formattedDateTime = dateFormat.format(currentDate)
+    val startTime = options?.getDouble("startTime") ?: 0.0
+    val endTime = options?.getDouble("endTime") ?: 1000.0
 
     var cmds = arrayOf(
       "-ss",
-      "${options?.getDouble("startTime") ?: 0 }ms",
+      "${startTime}ms",
       "-to",
-      "${options?.getDouble("endTime") ?: 1000}ms",
+      "${endTime}ms",
     )
 
     if (options?.getBoolean("enableRotation") == true) {
@@ -609,16 +611,15 @@ open class BaseVideoTrimModule internal constructor(
       when {
         ReturnCode.isSuccess(returnCode) -> {
           // SUCCESS
-          val startTime = options?.getDouble("startTime") ?: 0.0
-          val endTime = options?.getDouble("endTime") ?: 1000.0
           val duration = endTime - startTime
-          
           val result = Arguments.createMap()
+          
           result.putString("outputPath", outputFile)
           result.putDouble("startTime", startTime)
           result.putDouble("endTime", endTime)
           result.putDouble("duration", duration)
-          
+          result.putBoolean("success", true)
+
           if (options?.getBoolean("saveToPhoto") == true && options.getString("type") == "video") {
             Log.d(TAG, "Android trim: saveToPhoto is true, attempting to save to gallery")
             try {
@@ -644,7 +645,7 @@ open class BaseVideoTrimModule internal constructor(
             }
           } else {
             Log.d(TAG, "Android trim: saveToPhoto is false or not video type, resolving with structured result")
-            
+
             promise.resolve(result)
           }
         }
