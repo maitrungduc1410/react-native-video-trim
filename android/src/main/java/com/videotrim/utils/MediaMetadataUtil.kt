@@ -3,6 +3,7 @@ package com.videotrim.utils
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
+import com.facebook.react.bridge.UiThreadUtil
 import java.io.IOException
 
 object MediaMetadataUtil {
@@ -47,7 +48,7 @@ object MediaMetadataUtil {
     Thread {
       val retriever = getMediaMetadataRetriever(urlString)
       if (retriever == null) {
-        callback.onResult(false, "unknown", -1L)
+        UiThreadUtil.runOnUiThread { callback.onResult(false, "unknown", -1L) }
         return@Thread
       }
 
@@ -74,7 +75,10 @@ object MediaMetadataUtil {
       } catch (e: IOException) {
         Log.e(TAG, "Error releasing retriever", e)
       }
-      callback.onResult(isValid, fileType, if (isValid) duration else -1L)
+      val resultIsValid = isValid
+      val resultFileType = fileType
+      val resultDuration = if (isValid) duration else -1L
+      UiThreadUtil.runOnUiThread { callback.onResult(resultIsValid, resultFileType, resultDuration) }
     }.start()
   }
 

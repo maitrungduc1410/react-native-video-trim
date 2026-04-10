@@ -8,6 +8,7 @@ import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.FFmpegSession
 import com.arthenica.ffmpegkit.ReturnCode
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.UiThreadUtil
 import com.videotrim.enums.ErrorCode
 import com.videotrim.interfaces.VideoTrimListener
 import iknow.android.utils.DeviceUtil
@@ -82,16 +83,18 @@ object VideoTrimmerUtil {
     return FFmpegKit.executeWithArgumentsAsync(command, { session ->
       val state = session.state
       val returnCode = session.returnCode
-      when {
-        ReturnCode.isSuccess(session.returnCode) -> {
-          callback.onFinishTrim(outputFile, startMs, endMs, videoDuration)
-        }
-        ReturnCode.isCancel(session.returnCode) -> {
-          callback.onCancelTrim()
-        }
-        else -> {
-          val errorMessage = "Command failed with state $state and rc $returnCode.${session.failStackTrace}"
-          callback.onError(errorMessage, ErrorCode.TRIMMING_FAILED)
+      UiThreadUtil.runOnUiThread {
+        when {
+          ReturnCode.isSuccess(returnCode) -> {
+            callback.onFinishTrim(outputFile, startMs, endMs, videoDuration)
+          }
+          ReturnCode.isCancel(returnCode) -> {
+            callback.onCancelTrim()
+          }
+          else -> {
+            val errorMessage = "Command failed with state $state and rc $returnCode.${session.failStackTrace}"
+            callback.onError(errorMessage, ErrorCode.TRIMMING_FAILED)
+          }
         }
       }
     }, { log ->
@@ -102,12 +105,16 @@ object VideoTrimmerUtil {
       map.putString("message", log.message)
       map.putDouble("sessionId", log.sessionId.toDouble())
       map.putString("logStr", log.toString())
-      callback.onLog(map)
+      UiThreadUtil.runOnUiThread {
+        callback.onLog(map)
+      }
     }, { statistics ->
       val timeInMilliseconds = statistics.time.toInt()
       if (timeInMilliseconds > 0) {
         val completePercentage = (timeInMilliseconds * 100) / videoDuration
-        callback.onTrimmingProgress(completePercentage.coerceIn(0, 100))
+        UiThreadUtil.runOnUiThread {
+          callback.onTrimmingProgress(completePercentage.coerceIn(0, 100))
+        }
       }
 
       val map = Arguments.createMap()
@@ -120,7 +127,9 @@ object VideoTrimmerUtil {
       map.putDouble("bitrate", statistics.bitrate.toDouble())
       map.putDouble("speed", statistics.speed.toDouble())
       map.putString("statisticsStr", statistics.toString())
-      callback.onStatistics(map)
+      UiThreadUtil.runOnUiThread {
+        callback.onStatistics(map)
+      }
     })
   }
 

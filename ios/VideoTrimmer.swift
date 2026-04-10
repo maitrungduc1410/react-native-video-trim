@@ -446,17 +446,15 @@ import AVFoundation
             self.thumbnails.removeAll(where: {uuidsToRemove.contains($0.uuid)})
         })
         
-        var seenIndex = 0
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
         generator.generateCGImagesAsynchronously(forTimes: times) { requestedTime, cgImage, actualTime, result, error in
             DispatchQueue.main.async {
-                seenIndex += 1
-                
                 guard let cgImage = cgImage else {return}
+                guard let index = newThumbnails.firstIndex(where: { CMTimeCompare($0.time, requestedTime) == 0 }) else {return}
                 let image = UIImage(cgImage: cgImage)
                 
-                let imageView = newThumbnails[seenIndex - 1].imageView
+                let imageView = newThumbnails[index].imageView
                 UIView.transition(with: imageView, duration: 0.25, options: [.transitionCrossDissolve], animations: {
                     imageView.image = image
                 })

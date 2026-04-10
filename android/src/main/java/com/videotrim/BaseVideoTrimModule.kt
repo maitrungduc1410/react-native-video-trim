@@ -75,6 +75,8 @@ open class BaseVideoTrimModule internal constructor(
     get() = editorConfig?.hasKey("changeStatusBarColorOnOpen") == true && editorConfig?.getBoolean("changeStatusBarColorOnOpen") == true
 
   init {
+    reactApplicationContext.addLifecycleEventListener(this)
+
     val mActivityEventListener = object : BaseActivityEventListener() {
       override fun onActivityResult(
         activity: Activity,
@@ -137,7 +139,10 @@ open class BaseVideoTrimModule internal constructor(
 
     this.isVideoType = config.hasKey("type") && config.getString("type") == "video"
 
-    val activity = reactApplicationContext.currentActivity
+    val activity = reactApplicationContext.currentActivity ?: run {
+      onError("Activity is not available", ErrorCode.UNKNOWN)
+      return
+    }
     if (!isInit) {
       init()
       isInit = true
@@ -150,7 +155,7 @@ open class BaseVideoTrimModule internal constructor(
       trimmerView?.initByURI(filePath.toUri())
 
       val builder = AlertDialog.Builder(
-        activity!!, Theme_Black_NoTitleBar_Fullscreen
+        activity, Theme_Black_NoTitleBar_Fullscreen
       )
       builder.setCancelable(false)
       alertDialog = builder.create()
@@ -158,18 +163,17 @@ open class BaseVideoTrimModule internal constructor(
 
       // Apply safe area handling after the dialog is shown
       alertDialog?.setOnShowListener {
-        applySafeAreaToDialog(alertDialog!!, trimmerView!!)
+        val dialog = alertDialog ?: return@setOnShowListener
+        val view = trimmerView ?: return@setOnShowListener
+        applySafeAreaToDialog(dialog, view)
 
         sendEvent("onShow", null)
       }
 
       // this is to ensure to release resource if dialog is dismissed in unexpected way (Eg. open control/notification center by dragging from top of screen)
-      alertDialog!!.setOnDismissListener {
-        // This is called in same thread as the trimmer view -> UI thread
-        if (trimmerView != null) {
-          trimmerView!!.onDestroy()
-          trimmerView = null
-        }
+      alertDialog?.setOnDismissListener {
+        trimmerView?.onDestroy()
+        trimmerView = null
         hideDialog(true)
         sendEvent("onHide", null)
       }
@@ -195,7 +199,7 @@ open class BaseVideoTrimModule internal constructor(
       it.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
 
       // finally change the color
-      it.statusBarColor = ContextCompat.getColor(reactApplicationContext.currentActivity!!,R.color.black)
+      it.statusBarColor = ContextCompat.getColor(reactApplicationContext, R.color.black)
     }
   }
 
@@ -251,9 +255,7 @@ open class BaseVideoTrimModule internal constructor(
 
   override fun onHostPause() {
     Log.d(TAG, "onHostPause: ")
-    if (trimmerView != null) {
-      trimmerView!!.onMediaPause()
-    }
+    trimmerView?.onMediaPause()
   }
 
   override fun onHostDestroy() {
@@ -277,7 +279,7 @@ open class BaseVideoTrimModule internal constructor(
       return
     }
 
-    mProgressBar!!.setProgress(percentage, true)
+    mProgressBar?.setProgress(percentage, true)
   }
 
 
@@ -312,10 +314,11 @@ open class BaseVideoTrimModule internal constructor(
         hideDialog(editorConfig?.getBoolean("closeWhenFinish") ?: true)
       }
     } else if (editorConfig?.getBoolean("openDocumentsOnFinish") == true) {
-      saveFileToExternalStorage(File(outputFile!!))
+      val output = outputFile ?: return
+      saveFileToExternalStorage(File(output))
     } else if (editorConfig?.getBoolean("openShareSheetOnFinish") == true) {
       hideDialog(editorConfig?.getBoolean("closeWhenFinish") ?: true)
-      shareFile(reactApplicationContext, File(outputFile!!))
+      outputFile?.let { shareFile(reactApplicationContext, File(it)) }
     } else {
       hideDialog(editorConfig?.getBoolean("closeWhenFinish") ?: true)
     }
@@ -333,13 +336,14 @@ open class BaseVideoTrimModule internal constructor(
   }
 
   override fun onCancel() {
-    if (!editorConfig?.getBoolean("enableCancelDialog")!!) {
+    if (editorConfig?.getBoolean("enableCancelDialog") != true) {
       sendEvent("onCancel", null)
       hideDialog(true)
       return
     }
 
-    val builder = AlertDialog.Builder(reactApplicationContext.currentActivity!!)
+    val activity = reactApplicationContext.currentActivity ?: return
+    val builder = AlertDialog.Builder(activity)
     builder.setMessage(editorConfig?.getString("cancelDialogMessage"))
     builder.setTitle(editorConfig?.getString("cancelDialogTitle"))
     builder.setCancelable(false)
@@ -358,12 +362,13 @@ open class BaseVideoTrimModule internal constructor(
   }
 
   override fun onSave() {
-    if (!editorConfig?.getBoolean("enableSaveDialog")!!) {
+    if (editorConfig?.getBoolean("enableSaveDialog") != true) {
       startTrim()
       return
     }
 
-    val builder = AlertDialog.Builder(reactApplicationContext.currentActivity!!)
+    val activity = reactApplicationContext.currentActivity ?: return
+    val builder = AlertDialog.Builder(activity)
     builder.setMessage(editorConfig?.getString("saveDialogMessage"))
     builder.setTitle(editorConfig?.getString("saveDialogTitle"))
     builder.setCancelable(false)
@@ -389,7 +394,7 @@ open class BaseVideoTrimModule internal constructor(
   }
 
   private fun startTrim() {
-    val activity = reactApplicationContext.currentActivity
+    val activity = reactApplicationContext.currentActivity ?: return
     // Create the parent layout for the dialog
     val layout = LinearLayout(activity)
     layout.layoutParams = ViewGroup.LayoutParams(
@@ -413,12 +418,13 @@ open class BaseVideoTrimModule internal constructor(
     layout.addView(textView)
 
     // Create and add the ProgressBar
-    mProgressBar = ProgressBar(activity, null, progressBarStyleHorizontal)
-    mProgressBar!!.layoutParams = ViewGroup.LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT
-    )
-    mProgressBar!!.progressTintList = ColorStateList.valueOf("#2196F3".toColorInt())
+    mProgressBar = ProgressBar(activity, null, progressBarStyleHorizontal).also {
+      it.layoutParams = ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT
+      )
+      it.progressTintList = ColorStateList.valueOf("#2196F3".toColorInt())
+    }
     layout.addView(mProgressBar)
 
     // Create button
@@ -433,10 +439,10 @@ open class BaseVideoTrimModule internal constructor(
         ?: "Cancel Trimming"
       button.setTextColor(
         ContextCompat.getColor(
-          activity!!,
+          activity,
           holo_red_light
         )
-      ) // or use your custom color
+      )
 
       // Apply ripple effect while keeping the button background transparent
       val outValue = TypedValue()
@@ -451,11 +457,9 @@ open class BaseVideoTrimModule internal constructor(
           builder.setTitle(editorConfig?.getString("cancelTrimmingDialogTitle"))
           builder.setCancelable(false)
           builder.setPositiveButton(editorConfig?.getString("cancelTrimmingDialogConfirmText")) { _: DialogInterface?, _: Int ->
-            if (trimmerView != null) {
-              trimmerView!!.onCancelTrimClicked()
-            }
-            if (mProgressDialog != null && mProgressDialog!!.isShowing) {
-              mProgressDialog!!.dismiss()
+            trimmerView?.onCancelTrimClicked()
+            if (mProgressDialog?.isShowing == true) {
+              mProgressDialog?.dismiss()
             }
           }
           builder.setNegativeButton(
@@ -464,14 +468,12 @@ open class BaseVideoTrimModule internal constructor(
             dialog.cancel()
           }
           cancelTrimmingConfirmDialog = builder.create()
-          cancelTrimmingConfirmDialog!!.show()
+          cancelTrimmingConfirmDialog?.show()
         } else {
-          if (trimmerView != null) {
-            trimmerView!!.onCancelTrimClicked()
-          }
+          trimmerView?.onCancelTrimClicked()
 
-          if (mProgressDialog != null && mProgressDialog!!.isShowing) {
-            mProgressDialog!!.dismiss()
+          if (mProgressDialog?.isShowing == true) {
+            mProgressDialog?.dismiss()
           }
         }
       }
@@ -480,7 +482,7 @@ open class BaseVideoTrimModule internal constructor(
 
     // Create the AlertDialog
     val builder = AlertDialog.Builder(
-      activity!!
+      activity
     )
     builder.setCancelable(false)
     builder.setView(layout)
@@ -488,36 +490,29 @@ open class BaseVideoTrimModule internal constructor(
     // Show the dialog
     mProgressDialog = builder.create()
 
-    mProgressDialog!!.setOnShowListener {
+    mProgressDialog?.setOnShowListener {
       sendEvent("onStartTrimming", null)
-      if (trimmerView != null) {
-        trimmerView!!.onSaveClicked()
-      }
+      trimmerView?.onSaveClicked()
     }
 
-    mProgressDialog!!.show()
+    mProgressDialog?.show()
   }
 
   private fun hideDialog(shouldCloseEditor: Boolean) {
-    // handle the case when the cancel dialog is still showing but the trimming is finished
-    if (cancelTrimmingConfirmDialog != null) {
-      if (cancelTrimmingConfirmDialog!!.isShowing) {
-        cancelTrimmingConfirmDialog!!.dismiss()
-      }
+    cancelTrimmingConfirmDialog?.let {
+      if (it.isShowing) it.dismiss()
       cancelTrimmingConfirmDialog = null
     }
 
-    if (mProgressDialog != null) {
-      if (mProgressDialog!!.isShowing) mProgressDialog!!.dismiss()
+    mProgressDialog?.let {
+      if (it.isShowing) it.dismiss()
       mProgressBar = null
       mProgressDialog = null
     }
 
     if (shouldCloseEditor) {
-      if (alertDialog != null) {
-        if (alertDialog!!.isShowing) {
-          alertDialog!!.dismiss()
-        }
+      alertDialog?.let {
+        if (it.isShowing) it.dismiss()
         alertDialog = null
       }
     }
@@ -550,7 +545,6 @@ open class BaseVideoTrimModule internal constructor(
 
   fun closeEditor() {
     hideDialog(true)
-    sendEvent("onHide", null)
   }
 
   fun isValidFile(url: String, promise: Promise) {
@@ -593,6 +587,11 @@ open class BaseVideoTrimModule internal constructor(
 
     val outputFile = StorageUtil.getOutputPath(reactApplicationContext, options?.getString("outputExt") ?: "mp4")
 
+    val resolvedOutputFile = outputFile ?: run {
+      promise.reject(Exception("Failed to create output file path"))
+      return
+    }
+
     cmds += arrayOf(
       "-i",
       url,
@@ -600,7 +599,7 @@ open class BaseVideoTrimModule internal constructor(
       "copy",
       "-metadata",
       "creation_time=$formattedDateTime",
-      outputFile!!
+      resolvedOutputFile
     )
 
     Log.d(TAG, "Command: ${cmds.joinToString(",")}")
@@ -608,61 +607,60 @@ open class BaseVideoTrimModule internal constructor(
     FFmpegKit.executeWithArgumentsAsync(cmds, { session ->
       val state = session.state
       val returnCode = session.returnCode
-      when {
-        ReturnCode.isSuccess(returnCode) -> {
-          // SUCCESS
-          val duration = endTime - startTime
-          val result = Arguments.createMap()
-          
-          result.putString("outputPath", outputFile)
-          result.putDouble("startTime", startTime)
-          result.putDouble("endTime", endTime)
-          result.putDouble("duration", duration)
-          result.putBoolean("success", true)
+      UiThreadUtil.runOnUiThread {
+        when {
+          ReturnCode.isSuccess(returnCode) -> {
+            val duration = endTime - startTime
+            val result = Arguments.createMap()
 
-          if (options?.getBoolean("saveToPhoto") == true && options.getString("type") == "video") {
-            Log.d(TAG, "Android trim: saveToPhoto is true, attempting to save to gallery")
-            try {
-              StorageUtil.saveVideoToGallery(reactApplicationContext, outputFile)
-              Log.d(TAG, "Edited video saved to Photo Library successfully.")
-              if (options.getBoolean("removeAfterSavedToPhoto")) {
-                Log.d(TAG, "Removing file after successful save to photo")
-                StorageUtil.deleteFile(outputFile)
+            result.putString("outputPath", resolvedOutputFile)
+            result.putDouble("startTime", startTime)
+            result.putDouble("endTime", endTime)
+            result.putDouble("duration", duration)
+            result.putBoolean("success", true)
+
+            if (options?.getBoolean("saveToPhoto") == true && options.getString("type") == "video") {
+              Log.d(TAG, "Android trim: saveToPhoto is true, attempting to save to gallery")
+              try {
+                StorageUtil.saveVideoToGallery(reactApplicationContext, resolvedOutputFile)
+                Log.d(TAG, "Edited video saved to Photo Library successfully.")
+                if (options.getBoolean("removeAfterSavedToPhoto")) {
+                  Log.d(TAG, "Removing file after successful save to photo")
+                  StorageUtil.deleteFile(resolvedOutputFile)
+                }
+
+                promise.resolve(result)
+              } catch (e: IOException) {
+                e.printStackTrace()
+
+                if (options.getBoolean("removeAfterFailedToSavePhoto")) {
+                  Log.d(TAG, "Removing file after failed save to photo")
+                  StorageUtil.deleteFile(resolvedOutputFile)
+                }
+
+                promise.reject(
+                  Exception("Failed to save edited video to Photo Library: " + e.localizedMessage)
+                )
               }
+            } else {
+              Log.d(TAG, "Android trim: saveToPhoto is false or not video type, resolving with structured result")
 
               promise.resolve(result)
-            } catch (e: IOException) {
-              e.printStackTrace()
-
-              if (options.getBoolean("removeAfterFailedToSavePhoto")) {
-                Log.d(TAG, "Removing file after failed save to photo")
-                StorageUtil.deleteFile(outputFile)
-              }
-
-              promise.reject(
-                Exception("Failed to save edited video to Photo Library: " + e.localizedMessage)
-              )
             }
-          } else {
-            Log.d(TAG, "Android trim: saveToPhoto is false or not video type, resolving with structured result")
-
-            promise.resolve(result)
           }
-        }
-        ReturnCode.isCancel(returnCode) -> {
-          // CANCEL
-          println("FFmpeg command was cancelled")
-          promise.reject(
-            Exception("FFmpeg command was cancelled with code $returnCode")
-          )
-        }
-        else -> {
-          // FAILURE
-          val errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace());
-          Log.d(TAG, errorMessage)
-          promise.reject(
-            Exception(errorMessage)
-          )
+          ReturnCode.isCancel(returnCode) -> {
+            println("FFmpeg command was cancelled")
+            promise.reject(
+              Exception("FFmpeg command was cancelled with code $returnCode")
+            )
+          }
+          else -> {
+            val errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace())
+            Log.d(TAG, errorMessage)
+            promise.reject(
+              Exception(errorMessage)
+            )
+          }
         }
       }
     }, { log ->
@@ -699,6 +697,10 @@ open class BaseVideoTrimModule internal constructor(
 
     // directly use context.startActivity(shareIntent) will cause crash
     reactApplicationContext.currentActivity?.startActivity(Intent.createChooser(shareIntent, "Share file"))
+  }
+
+  fun cleanup() {
+    reactApplicationContext.removeLifecycleEventListener(this)
   }
 
   companion object {

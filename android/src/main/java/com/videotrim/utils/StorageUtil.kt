@@ -9,6 +9,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.text.TextUtils
 import com.facebook.react.bridge.ReactApplicationContext
+import iknow.android.utils.BaseUtils
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -38,7 +39,10 @@ object StorageUtil {
 
   fun deleteFile(path: String?): Boolean {
     if (TextUtils.isEmpty(path)) return true
-    return deleteFile(File(path!!))
+    val file = File(path!!).canonicalFile
+    val allowedDir = BaseUtils.getContext().filesDir.canonicalFile
+    if (!file.path.startsWith(allowedDir.path)) return false
+    return deleteFile(file)
   }
 
   fun deleteFile(file: File?): Boolean {

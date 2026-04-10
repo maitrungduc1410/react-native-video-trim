@@ -124,6 +124,8 @@ class VideoTrimmerView(
   private var isGeneratingThumbnails = false
 
   private var mediaMetadataRetriever: MediaMetadataRetriever? = null
+  private val retrieverLock = Object()
+  @Volatile private var retrieverReleased = false
   private lateinit var loadingIndicator: ProgressBar
   private lateinit var saveBtn: TextView
   private lateinit var cancelBtn: TextView
@@ -158,7 +160,7 @@ class VideoTrimmerView(
   private fun init(context: ReactApplicationContext, config: ReadableMap?) {
     mContext = context
 
-    context.currentActivity!!.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    context.currentActivity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     LayoutInflater.from(context).inflate(R.layout.video_trimmer_view, this, true)
     vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
 
@@ -256,7 +258,8 @@ class VideoTrimmerView(
     mediaFailed()
     mOnTrimVideoListener.onError("Error loading media file. Please try again.", ErrorCode.FAIL_TO_LOAD_MEDIA)
     if (alertOnFailToLoad) {
-      val builder = AlertDialog.Builder(mContext.currentActivity!!)
+      val activity = mContext.currentActivity ?: return true
+      val builder = AlertDialog.Builder(activity)
       builder.setMessage(alertOnFailMessage)
       builder.setTitle(alertOnFailTitle)
       builder.setCancelable(false)
@@ -462,6 +465,7 @@ class VideoTrimmerView(
   override fun onDestroy() {
     isGeneratingThumbnails = false
     BackgroundExecutor.cancelAll("", true)
+    BackgroundExecutor.cancelAll("progressive_thumbs", true)
     UiThreadExecutor.cancelAll("")
     mContext.currentActivity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     mTimingRunnable?.let { mTimingHandler.removeCallbacks(it) }
@@ -469,10 +473,13 @@ class VideoTrimmerView(
 
     cachedFullViewThumbnails.clear()
 
-    try {
-      mediaMetadataRetriever?.release()
-    } catch (e: Exception) {
-      e.printStackTrace()
+    synchronized(retrieverLock) {
+      retrieverReleased = true
+      try {
+        mediaMetadataRetriever?.release()
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
     }
 
     try {
@@ -1069,7 +1076,9 @@ class VideoTrimmerView(
             val clampedTimeUs = maxOf(0L, minOf(timeUs, mDuration * 1000L))
 
             try {
-              val bitmap = mediaMetadataRetriever?.getFrameAtTime(clampedTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+              val bitmap = synchronized(retrieverLock) {
+                if (retrieverReleased) null else mediaMetadataRetriever?.getFrameAtTime(clampedTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+              }
               if (bitmap != null && isGeneratingThumbnails && isZoomedIn) {
                 UiThreadExecutor.runTask("", {
                   if (isZoomedIn && index < mThumbnailContainer.childCount) {

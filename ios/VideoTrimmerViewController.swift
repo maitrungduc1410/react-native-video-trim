@@ -69,6 +69,7 @@ class VideoTrimmerViewController: UIViewController {
     private let audioBannerView = UIImage(systemName: "airpodsmax")
     private var player: AVPlayer! { playerController.player }
     private var timeObserverToken: Any?
+    private var statusObservation: NSKeyValueObservation?
     private var autoplay = false
     private var jumpToPositionOnLoad: Double = 0;
     private var headerText: String?
@@ -197,8 +198,8 @@ class VideoTrimmerViewController: UIViewController {
         guard let _ = asset else { return }
         player.pause()
         
-        // Clean up the observer
-        player.removeObserver(self, forKeyPath: "status")
+        statusObservation?.invalidate()
+        statusObservation = nil
         
         if let token = timeObserverToken {
             player.removeTimeObserver(token)
@@ -391,15 +392,19 @@ class VideoTrimmerViewController: UIViewController {
     }
     
     private func setupPlayerController() {
+        guard let asset = asset else { return }
         playerController.showsPlaybackControls = false
         if #available(iOS 16.0, *) {
             playerController.allowsVideoFrameAnalysis = false
         }
         playerController.player = AVPlayer()
-        player.replaceCurrentItem(with: AVPlayerItem(asset: asset!))
+        player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
         
-        // Add observer for player status
-        player.addObserver(self, forKeyPath: "status", options: [.new, .initial], context: nil)
+        statusObservation = player.observe(\.status, options: [.new, .initial]) { [weak self] player, _ in
+            DispatchQueue.main.async {
+                self?.onPlayerReady()
+            }
+        }
         
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
         addChild(playerController)
@@ -512,35 +517,33 @@ class VideoTrimmerViewController: UIViewController {
     }
   }
     
-    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
-        if keyPath == "status" {
-            if player.status == .readyToPlay {
-                loadingIndicator.stopAnimating()
-                btnStackView.removeArrangedSubview(loadingIndicator)
-                loadingIndicator.removeFromSuperview()
-                btnStackView.insertArrangedSubview(playBtn, at: 1)
-                
-                UIView.animate(withDuration: 0.25, animations: {
-                    self.playBtn.alpha = 1
-                    self.playBtn.isEnabled = true
-                    self.saveBtn.alpha = 1
-                    self.saveBtn.isEnabled = true
-                })
-                
-                if jumpToPositionOnLoad > 0 {
-                    let duration = (asset?.duration.seconds ?? 0) * 1000
-                    let time = jumpToPositionOnLoad > duration ? duration : jumpToPositionOnLoad
-                    let cmtime = CMTime(value: CMTimeValue(time), timescale: 1000)
-                    
-                    self.seek(to: cmtime)
-                    self.trimmer.progress = cmtime
-                    self.currentTimeLabel.text = self.trimmer.progress.displayString
-                }
-                
-                if autoplay {
-                    togglePlay(sender: playBtn)
-                }
-            }
+    private func onPlayerReady() {
+        guard player.status == .readyToPlay else { return }
+        
+        loadingIndicator.stopAnimating()
+        btnStackView.removeArrangedSubview(loadingIndicator)
+        loadingIndicator.removeFromSuperview()
+        btnStackView.insertArrangedSubview(playBtn, at: 1)
+        
+        UIView.animate(withDuration: 0.25, animations: {
+            self.playBtn.alpha = 1
+            self.playBtn.isEnabled = true
+            self.saveBtn.alpha = 1
+            self.saveBtn.isEnabled = true
+        })
+        
+        if jumpToPositionOnLoad > 0 {
+            let duration = (asset?.duration.seconds ?? 0) * 1000
+            let time = jumpToPositionOnLoad > duration ? duration : jumpToPositionOnLoad
+            let cmtime = CMTime(value: CMTimeValue(time), timescale: 1000)
+            
+            self.seek(to: cmtime)
+            self.trimmer.progress = cmtime
+            self.currentTimeLabel.text = self.trimmer.progress.displayString
+        }
+        
+        if autoplay {
+            togglePlay(sender: playBtn)
         }
     }
 }
