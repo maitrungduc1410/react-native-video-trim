@@ -1,6 +1,6 @@
-package com.videotrim.enums;
+package com.videotrim.enums
 
-public enum ErrorCode {
+enum class ErrorCode {
   TRIMMING_FAILED,
   FAIL_TO_GET_VIDEO_INFO,
   FAIL_TO_INITIALIZE_AUDIO_PLAYER,
