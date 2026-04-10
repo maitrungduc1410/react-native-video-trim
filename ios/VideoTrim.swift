@@ -8,6 +8,7 @@ let FILE_PREFIX = "trimmedVideo"
 public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate {
   // MARK: instance private props
   private var isShowing = false
+  private var isTrimming = false
   private var vc: VideoTrimmerViewController?
   private var outputFile: URL?
   private var editorConfig: NSDictionary?
@@ -260,6 +261,9 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   }
   
   private func trim(viewController: VideoTrimmerViewController, inputFile: URL, videoDuration: Double, startTime: Double, endTime: Double, isVideoType: Bool) {
+    guard !isTrimming else { return }
+    isTrimming = true
+
     vc?.pausePlayer()
     
     let timestamp = Int(Date().timeIntervalSince1970)
@@ -297,7 +301,9 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
               self.emitEventToJS("onCancelTrimming", eventData: nil)
             }
             
-            progressAlert.dismiss(animated: true)
+            progressAlert.dismiss(animated: true) {
+              self.isTrimming = false
+            }
           })
           
           // Create Cancel button with action handlder
@@ -318,7 +324,9 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
             self.emitEventToJS("onCancelTrimming", eventData: nil)
           }
           
-          progressAlert.dismiss(animated: true)
+          progressAlert.dismiss(animated: true) {
+            self.isTrimming = false
+          }
         }
         
       }
@@ -358,13 +366,10 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     
     ffmpegSession = FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
       
-      // always hide progressAlert
-      DispatchQueue.main.async {
-        progressAlert.dismiss(animated: true)
-      }
-      
       let state = session?.getState()
       let returnCode = session?.getReturnCode()
+      
+      var shouldCloseEditor = false
       
       if ReturnCode.isSuccess(returnCode) {
         let eventPayload: [String: Any] = ["outputPath": self.outputFile!.absoluteString, "startTime": (startTime * 1000).rounded(), "endTime": (endTime * 1000).rounded(), "duration": (videoDuration * 1000).rounded()]
@@ -396,20 +401,24 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
             }
           }
         } else if self.openDocumentsOnFinish {
-          self.saveFileToFilesApp(fileURL: self.outputFile!)
-          
-          // must return otherwise editor will close
+          DispatchQueue.main.async {
+            progressAlert.dismiss(animated: true) {
+              self.isTrimming = false
+              self.saveFileToFilesApp(fileURL: self.outputFile!)
+            }
+          }
           return
         } else if self.openShareSheetOnFinish {
-          self.shareFile(fileURL: self.outputFile!)
-          
-          // must return otherwise editor will close
+          DispatchQueue.main.async {
+            progressAlert.dismiss(animated: true) {
+              self.isTrimming = false
+              self.shareFile(fileURL: self.outputFile!)
+            }
+          }
           return
         }
         
-        if self.closeWhenFinish {
-          self.closeEditor(delay: 500)
-        }
+        shouldCloseEditor = self.closeWhenFinish
         
       } else if ReturnCode.isCancel(returnCode) {
         // CANCEL
@@ -417,8 +426,15 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       } else {
         // FAILURE
         self.onError(message: "Command failed with state \(String(describing: FFmpegKitConfig.sessionState(toString: state ?? .failed))) and rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))", code: .trimmingFailed)
-        if self.closeWhenFinish {
-          self.closeEditor(delay: 500)
+        shouldCloseEditor = self.closeWhenFinish
+      }
+      
+      DispatchQueue.main.async {
+        progressAlert.dismiss(animated: true) {
+          self.isTrimming = false
+          if shouldCloseEditor {
+            self.closeEditor()
+          }
         }
       }
       
@@ -809,14 +825,17 @@ extension VideoTrim {
   @objc(closeEditor:)
   public func closeEditor(delay: Int = 0) {
     guard let vc = vc else { return }
-    // some how in case we trim a very short video the view controller is still visible after first .dismiss call
-    // even the file is successfully saved
-    // that's why we need a small delay here to ensure vc will be dismissed
-    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delay)) {
+    let dismissBlock = {
       vc.dismiss(animated: true, completion: {
         self.emitEventToJS("onHide", eventData: nil)
         self.isShowing = false
       })
+    }
+
+    if delay > 0 {
+      DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delay), execute: dismissBlock)
+    } else {
+      DispatchQueue.main.async(execute: dismissBlock)
     }
   }
   
