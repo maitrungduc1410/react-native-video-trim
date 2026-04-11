@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.RectF
+import android.graphics.SurfaceTexture
 import android.graphics.drawable.GradientDrawable
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -17,15 +20,18 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.LayoutInflater
+import android.view.Gravity
 import android.view.MotionEvent
+import android.view.Surface
+import android.view.TextureView
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.RelativeLayout
 import android.widget.TextView
-import android.widget.VideoView
 
 import androidx.appcompat.app.AlertDialog
 
@@ -64,11 +70,9 @@ class VideoTrimmerView(
   }
 
   private var mContext: ReactApplicationContext = context
-  private lateinit var mVideoView: VideoView
+  private lateinit var mVideoView: TextureView
+  private var videoSurface: Surface? = null
 
-  // mediaPlayer is used for both video/audio
-  // the reason we use mediaPlayer for Video: https://stackoverflow.com/a/73361868/7569705
-  // the videoPlayer is to solve the issue after manually seek -> hit play -> it starts from a position slightly before with the one we just sought to
   private var mediaPlayer: MediaPlayer? = null
   private lateinit var mPlayView: ImageView
   private lateinit var mThumbnailContainer: LinearLayout
@@ -96,8 +100,6 @@ class VideoTrimmerView(
 
   private var startTime = 0L
   private var endTime = 0L
-  private var enableRotation = false
-  private var rotationAngle = 0.0
   private var zoomOnWaitingDuration = 5000L
 
   private var vibrator: Vibrator? = null
@@ -135,6 +137,7 @@ class VideoTrimmerView(
 
   private var mOutputExt = "mp4"
   private var enableHapticFeedback = true
+  private var enablePreciseTrimming = false
   private var autoplay = false
   private var jumpToPositionOnLoad = 0L
   private lateinit var headerView: FrameLayout
@@ -145,6 +148,34 @@ class VideoTrimmerView(
   private var alertOnFailMessage = "Fail to load media. Possibly invalid file or no network connection"
   private var alertOnFailCloseText = "Close"
   private var currentSelectedhandle: View? = null
+
+  // Transform state
+  var rotationCount = 0
+    private set
+  var isFlipped = false
+    private set
+  private var isCropActive = false
+  private var cumulativeRotationDeg = 0f
+
+  private data class TransformSnapshot(
+    val rotationCount: Int,
+    val isFlipped: Boolean,
+    val isCropActive: Boolean,
+    val cropNormalized: RectF?,
+    val cumulativeRotationDeg: Float
+  )
+  private val undoStack = mutableListOf<TransformSnapshot>()
+  private val redoStack = mutableListOf<TransformSnapshot>()
+  private var preCropSnapshot: TransformSnapshot? = null
+
+  private lateinit var transformRow: LinearLayout
+  private lateinit var flipBtn: ImageView
+  private lateinit var rotateBtn: ImageView
+  private lateinit var cropBtn: ImageView
+  private lateinit var undoBtn: ImageView
+  private lateinit var redoBtn: ImageView
+  private lateinit var videoContainer: FrameLayout
+  private var cropOverlay: CropOverlayView? = null
 
   private lateinit var trimmerView: RelativeLayout
 
@@ -216,23 +247,31 @@ class VideoTrimmerView(
 
     leadingChevron = findViewById(R.id.leadingChevron)
     trailingChevron = findViewById(R.id.trailingChevron)
+
+    transformRow = findViewById(R.id.transformRow)
+    flipBtn = findViewById(R.id.flipBtn)
+    rotateBtn = findViewById(R.id.rotateBtn)
+    cropBtn = findViewById(R.id.cropBtn)
+    undoBtn = findViewById(R.id.undoBtn)
+    redoBtn = findViewById(R.id.redoBtn)
+    videoContainer = findViewById(R.id.videoContainer)
   }
 
   fun initByURI(videoURI: Uri) {
     mSourceUri = videoURI
 
     if (isVideoType) {
-      mVideoView.setVideoURI(videoURI)
-      mVideoView.requestFocus()
-
-      mVideoView.setOnPreparedListener { mp ->
-        mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT)
-        mediaPlayer = mp
-        mediaPrepared()
+      if (mVideoView.isAvailable) {
+        setupVideoPlayer(mVideoView.surfaceTexture!!, videoURI)
       }
-
-      mVideoView.setOnErrorListener { mp, what, extra -> onFailToLoadMedia(mp, what, extra) }
-      mVideoView.setOnCompletionListener { mediaCompleted() }
+      mVideoView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+        override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
+          setupVideoPlayer(st, videoURI)
+        }
+        override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
+        override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean = true
+        override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
+      }
     } else {
       mVideoView.visibility = View.GONE
       audioBannerView.alpha = 0f
@@ -251,6 +290,52 @@ class VideoTrimmerView(
         mediaFailed()
         mOnTrimVideoListener.onError("Error initializing audio player. Please try again.", ErrorCode.FAIL_TO_INITIALIZE_AUDIO_PLAYER)
       }
+    }
+  }
+
+  private fun setupVideoPlayer(surfaceTexture: SurfaceTexture, videoURI: Uri) {
+    if (mediaPlayer != null) return
+    val mp = MediaPlayer()
+    try {
+      videoSurface = Surface(surfaceTexture)
+      mp.setSurface(videoSurface)
+      mp.setDataSource(mContext, videoURI)
+      mp.setOnPreparedListener {
+        mediaPlayer = mp
+        mediaPrepared()
+      }
+      mp.setOnErrorListener { mpCb, what, extra -> onFailToLoadMedia(mpCb, what, extra) }
+      mp.setOnCompletionListener { mediaCompleted() }
+      mp.prepareAsync()
+    } catch (e: Exception) {
+      e.printStackTrace()
+      mediaFailed()
+      mOnTrimVideoListener.onError("Error initializing video player.", ErrorCode.FAIL_TO_LOAD_MEDIA)
+    }
+  }
+
+  private fun updateVideoViewSize() {
+    val vw = mediaPlayer?.videoWidth ?: return
+    val vh = mediaPlayer?.videoHeight ?: return
+    if (vw <= 0 || vh <= 0) return
+
+    videoContainer.post {
+      val containerW = videoContainer.width
+      val containerH = videoContainer.height
+      if (containerW <= 0 || containerH <= 0) return@post
+
+      val videoAR = vw.toFloat() / vh
+      val containerAR = containerW.toFloat() / containerH
+      val newW: Int
+      val newH: Int
+      if (videoAR > containerAR) {
+        newW = containerW
+        newH = (containerW / videoAR).toInt()
+      } else {
+        newH = containerH
+        newW = (containerH * videoAR).toInt()
+      }
+      mVideoView.layoutParams = FrameLayout.LayoutParams(newW, newH, Gravity.CENTER)
     }
   }
 
@@ -308,6 +393,8 @@ class VideoTrimmerView(
     mMaxDuration = mMaxDuration.coerceAtMost(mDuration.toLong())
 
     if (isVideoType) {
+      updateVideoViewSize()
+
       mediaMetadataRetriever = MediaMetadataUtil.getMediaMetadataRetriever(mSourceUri.toString())
       if (mediaMetadataRetriever == null) {
         mOnTrimVideoListener.onError("Error when retrieving video info. Please try again.", ErrorCode.FAIL_TO_GET_VIDEO_INFO)
@@ -345,6 +432,13 @@ class VideoTrimmerView(
 
     if (autoplay) {
       playOrPause()
+    }
+
+    if (isVideoType) {
+      transformRow.alpha = 0f
+      transformRow.visibility = View.VISIBLE
+      transformRow.animate().alpha(1f).setDuration(250).start()
+      updateUndoRedoButtons()
     }
 
     mOnTrimVideoListener.onLoad(mDuration)
@@ -419,18 +513,37 @@ class VideoTrimmerView(
     mPlayView.setOnClickListener { playOrPause() }
     setHandleTouchListener(leadingHandle, true)
     setHandleTouchListener(trailingHandle, false)
+
+    flipBtn.setOnClickListener { onFlipTapped() }
+    rotateBtn.setOnClickListener { onRotateTapped() }
+    cropBtn.setOnClickListener { onCropTapped() }
+    undoBtn.setOnClickListener { onUndoTapped() }
+    redoBtn.setOnClickListener { onRedoTapped() }
   }
 
   fun onSaveClicked() {
     onMediaPause()
+    val vw = mediaPlayer?.videoWidth ?: 0
+    val vh = mediaPlayer?.videoHeight ?: 0
+    val bitrate = synchronized(retrieverLock) {
+      if (retrieverReleased) 0L
+      else mediaMetadataRetriever
+        ?.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+        ?.toLongOrNull() ?: 0L
+    }
     ffmpegSession = VideoTrimmerUtil.trim(
       mSourceUri.toString(),
       StorageUtil.getOutputPath(mContext, mOutputExt),
       mDuration,
       startTime,
       endTime,
-      enableRotation,
-      rotationAngle,
+      rotationCount,
+      isFlipped,
+      getCropNormalizedRect(),
+      vw,
+      vh,
+      bitrate,
+      enablePreciseTrimming,
       mOnTrimVideoListener
     )
   }
@@ -473,6 +586,14 @@ class VideoTrimmerView(
 
     cachedFullViewThumbnails.clear()
 
+    cropOverlay?.onCropBegan = null
+    cropOverlay?.onCropEnded = null
+    cropOverlay?.onCropChanged = null
+    cropOverlay = null
+    undoStack.clear()
+    redoStack.clear()
+    cumulativeRotationDeg = 0f
+
     synchronized(retrieverLock) {
       retrieverReleased = true
       try {
@@ -489,6 +610,11 @@ class VideoTrimmerView(
       e.printStackTrace()
       Log.d(TAG, "onDestroy mediaPlayer is already released")
     }
+
+    try {
+      videoSurface?.release()
+    } catch (_: Exception) {}
+    videoSurface = null
   }
 
   private fun getScreenWidthInPortraitMode(): Int {
@@ -517,6 +643,7 @@ class VideoTrimmerView(
       mOutputExt = "wav"
     }
     enableHapticFeedback = config.hasKey("enableHapticFeedback") && config.getBoolean("enableHapticFeedback")
+    enablePreciseTrimming = config.hasKey("enablePreciseTrimming") && config.getBoolean("enablePreciseTrimming")
     autoplay = config.hasKey("autoplay") && config.getBoolean("autoplay")
 
     if (config.hasKey("jumpToPositionOnLoad") && config.getDouble("jumpToPositionOnLoad") > 0) {
@@ -537,8 +664,6 @@ class VideoTrimmerView(
     alertOnFailTitle = if (config.hasKey("alertOnFailTitle")) config.getString("alertOnFailTitle") ?: "Error" else "Error"
     alertOnFailMessage = if (config.hasKey("alertOnFailMessage")) config.getString("alertOnFailMessage") ?: "Fail to load media. Possibly invalid file or no network connection" else "Fail to load media. Possibly invalid file or no network connection"
     alertOnFailCloseText = if (config.hasKey("alertOnFailCloseText")) config.getString("alertOnFailCloseText") ?: "Close" else "Close"
-    enableRotation = config.hasKey("enableRotation") && config.getBoolean("enableRotation")
-    rotationAngle = if (config.hasKey("rotationAngle")) config.getDouble("rotationAngle") else 0.0
 
     if (config.hasKey("zoomOnWaitingDuration") && config.getDouble("zoomOnWaitingDuration") > 0) {
       zoomOnWaitingDuration = config.getDouble("zoomOnWaitingDuration").toLong()
@@ -1176,4 +1301,398 @@ class VideoTrimmerView(
       mThumbnailContainer.addView(restoredView)
     }
   }
+
+  // region Transform
+
+  private fun onFlipTapped() {
+    pushUndo()
+    isFlipped = !isFlipped
+    val newCumDeg = -cumulativeRotationDeg
+    val fitScale = if (rotationCount % 2 != 0) {
+      val cw = videoContainer.width.toFloat()
+      val ch = videoContainer.height.toFloat()
+      if (cw > 0 && ch > 0) minOf(cw / ch, ch / cw) else 1f
+    } else {
+      1f
+    }
+    val targetSx = (if (isFlipped) -1f else 1f) * fitScale
+    val oddRotation = rotationCount % 2 != 0
+
+    mVideoView.animate().cancel()
+    if (oddRotation) {
+      mVideoView.animate()
+        .scaleY(0f)
+        .setDuration(125)
+        .setInterpolator(DecelerateInterpolator())
+        .withEndAction {
+          cumulativeRotationDeg = newCumDeg
+          mVideoView.rotation = newCumDeg
+          mVideoView.scaleX = targetSx
+          mVideoView.animate()
+            .scaleY(fitScale)
+            .setDuration(125)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+              if (isCropActive) {
+                updateCropAllowedRect()
+                cropOverlay?.resetCrop()
+              }
+            }
+            .start()
+        }
+        .start()
+    } else {
+      mVideoView.animate()
+        .scaleX(0f)
+        .setDuration(125)
+        .setInterpolator(DecelerateInterpolator())
+        .withEndAction {
+          cumulativeRotationDeg = newCumDeg
+          mVideoView.rotation = newCumDeg
+          mVideoView.animate()
+            .scaleX(targetSx)
+            .setDuration(125)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+              if (isCropActive) {
+                updateCropAllowedRect()
+                cropOverlay?.resetCrop()
+              }
+            }
+            .start()
+        }
+        .start()
+    }
+    playHapticFeedback(true)
+  }
+
+  private fun onRotateTapped() {
+    pushUndo()
+    if (isFlipped) {
+      rotationCount = (rotationCount - 1 + 4) % 4
+    } else {
+      rotationCount = (rotationCount + 1) % 4
+    }
+    cumulativeRotationDeg -= 90f
+    updateVideoTransform(resetCrop = true)
+    playHapticFeedback(true)
+  }
+
+  private fun updateVideoTransform(resetCrop: Boolean = false) {
+    val containerW = videoContainer.width.toFloat()
+    val containerH = videoContainer.height.toFloat()
+    if (containerW <= 0 || containerH <= 0) return
+
+    val fitScale = if (rotationCount % 2 != 0) {
+      minOf(containerW / containerH, containerH / containerW)
+    } else {
+      1f
+    }
+    val flipMul = if (isFlipped) -1f else 1f
+
+    mVideoView.animate()
+      .scaleX(flipMul * fitScale)
+      .scaleY(fitScale)
+      .rotation(cumulativeRotationDeg)
+      .setDuration(250)
+      .setInterpolator(DecelerateInterpolator())
+      .withEndAction {
+        if (resetCrop && isCropActive) {
+          updateCropAllowedRect()
+          cropOverlay?.resetCrop()
+        }
+      }
+      .start()
+  }
+
+  // endregion
+
+  // region Crop
+
+  private fun onCropTapped() {
+    isCropActive = !isCropActive
+    cropBtn.setColorFilter(
+      if (isCropActive) Color.WHITE else Color.argb(128, 255, 255, 255),
+      android.graphics.PorterDuff.Mode.SRC_IN
+    )
+    playHapticFeedback(true)
+    if (isCropActive) showCropOverlay() else hideCropOverlay()
+  }
+
+  private fun showCropOverlay() {
+    hideCropOverlayImmediate()
+    val overlay = CropOverlayView(mContext)
+    overlay.layoutParams = FrameLayout.LayoutParams(
+      FrameLayout.LayoutParams.MATCH_PARENT,
+      FrameLayout.LayoutParams.MATCH_PARENT
+    )
+    overlay.alpha = 0f
+    overlay.onCropBegan = { preCropSnapshot = currentSnapshot() }
+    overlay.onCropEnded = {
+      val before = preCropSnapshot
+      preCropSnapshot = null
+      if (before != null && before != currentSnapshot()) {
+        undoStack.add(before)
+        redoStack.clear()
+        updateUndoRedoButtons()
+      }
+    }
+    videoContainer.addView(overlay)
+    cropOverlay = overlay
+    videoContainer.post {
+      updateCropAllowedRect()
+      overlay.resetCrop()
+      overlay.animate().alpha(1f).setDuration(200).start()
+    }
+  }
+
+  private fun hideCropOverlay() {
+    val overlay = cropOverlay ?: return
+    overlay.animate().alpha(0f).setDuration(200).withEndAction {
+      videoContainer.removeView(overlay)
+    }.start()
+    cropOverlay = null
+  }
+
+  private fun showCropOverlayImmediate() {
+    hideCropOverlayImmediate()
+    val overlay = CropOverlayView(mContext)
+    overlay.layoutParams = FrameLayout.LayoutParams(
+      FrameLayout.LayoutParams.MATCH_PARENT,
+      FrameLayout.LayoutParams.MATCH_PARENT
+    )
+    overlay.onCropBegan = { preCropSnapshot = currentSnapshot() }
+    overlay.onCropEnded = {
+      val before = preCropSnapshot
+      preCropSnapshot = null
+      if (before != null && before != currentSnapshot()) {
+        undoStack.add(before)
+        redoStack.clear()
+        updateUndoRedoButtons()
+      }
+    }
+    videoContainer.addView(overlay)
+    cropOverlay = overlay
+    updateCropAllowedRect()
+  }
+
+  private fun hideCropOverlayImmediate() {
+    val overlay = cropOverlay ?: return
+    videoContainer.removeView(overlay)
+    cropOverlay = null
+  }
+
+  private fun updateCropAllowedRect() {
+    cropOverlay?.allowedRect = getVideoDisplayRectInContainer()
+  }
+
+  private fun getVideoDisplayRectInContainer(): RectF {
+    val containerW = videoContainer.width.toFloat()
+    val containerH = videoContainer.height.toFloat()
+    if (containerW <= 0 || containerH <= 0) return RectF()
+
+    val tvW = mVideoView.width.toFloat()
+    val tvH = mVideoView.height.toFloat()
+    if (tvW <= 0 || tvH <= 0) return RectF()
+
+    val tvX = (containerW - tvW) / 2f
+    val tvY = (containerH - tvH) / 2f
+    val videoRect = RectF(tvX, tvY, tvX + tvW, tvY + tvH)
+
+    val pivotX = containerW / 2f
+    val pivotY = containerH / 2f
+    val fitScale = if (rotationCount % 2 != 0) {
+      minOf(containerW / containerH, containerH / containerW)
+    } else {
+      1f
+    }
+    val flipMul = if (isFlipped) -1f else 1f
+    val geoRotation = if (isFlipped) rotationCount * 90f else -rotationCount * 90f
+    val matrix = Matrix()
+    matrix.setScale(flipMul * fitScale, fitScale, pivotX, pivotY)
+    matrix.postRotate(geoRotation, pivotX, pivotY)
+
+    val pts = floatArrayOf(
+      videoRect.left, videoRect.top,
+      videoRect.right, videoRect.top,
+      videoRect.right, videoRect.bottom,
+      videoRect.left, videoRect.bottom
+    )
+    matrix.mapPoints(pts)
+
+    var minX = pts[0]; var minY = pts[1]
+    var maxX = pts[0]; var maxY = pts[1]
+    for (i in 1 until 4) {
+      minX = minOf(minX, pts[i * 2])
+      minY = minOf(minY, pts[i * 2 + 1])
+      maxX = maxOf(maxX, pts[i * 2])
+      maxY = maxOf(maxY, pts[i * 2 + 1])
+    }
+    return RectF(minX, minY, maxX, maxY)
+  }
+
+  fun getCropNormalizedRect(): RectF? {
+    if (!isCropActive) return null
+    val overlay = cropOverlay ?: return null
+    val cr = overlay.cropRect
+    val allowed = overlay.allowedRect
+    if (cr.isEmpty || allowed.isEmpty) return null
+    if (allowed.width() <= 0 || allowed.height() <= 0) return null
+
+    val normX = (cr.left - allowed.left) / allowed.width()
+    val normY = (cr.top - allowed.top) / allowed.height()
+    val normW = cr.width() / allowed.width()
+    val normH = cr.height() / allowed.height()
+
+    if (normX < 0.01f && normY < 0.01f && normW > 0.98f && normH > 0.98f) return null
+    return RectF(normX, normY, normX + normW, normY + normH)
+  }
+
+  private fun setCropFromNormalized(norm: RectF) {
+    val overlay = cropOverlay ?: return
+    val allowed = overlay.allowedRect
+    if (allowed.isEmpty) return
+    val x = allowed.left + norm.left * allowed.width()
+    val y = allowed.top + norm.top * allowed.height()
+    val w = norm.width() * allowed.width()
+    val h = norm.height() * allowed.height()
+    overlay.cropRect = RectF(x, y, x + w, y + h)
+  }
+
+  // endregion
+
+  // region Undo / Redo
+
+  private fun currentSnapshot(): TransformSnapshot {
+    return TransformSnapshot(
+      rotationCount = rotationCount,
+      isFlipped = isFlipped,
+      isCropActive = isCropActive,
+      cropNormalized = getCropNormalizedRect(),
+      cumulativeRotationDeg = cumulativeRotationDeg
+    )
+  }
+
+  private fun pushUndo() {
+    undoStack.add(currentSnapshot())
+    redoStack.clear()
+    updateUndoRedoButtons()
+  }
+
+  private fun onUndoTapped() {
+    if (undoStack.isEmpty()) return
+    redoStack.add(currentSnapshot())
+    val snap = undoStack.removeLast()
+    applySnapshot(snap)
+    updateUndoRedoButtons()
+  }
+
+  private fun onRedoTapped() {
+    if (redoStack.isEmpty()) return
+    undoStack.add(currentSnapshot())
+    val snap = redoStack.removeLast()
+    applySnapshot(snap)
+    updateUndoRedoButtons()
+  }
+
+  private fun applySnapshot(snap: TransformSnapshot) {
+    val flipChanging = isFlipped != snap.isFlipped
+    val prevRotationCount = rotationCount
+
+    rotationCount = snap.rotationCount
+    isFlipped = snap.isFlipped
+    cumulativeRotationDeg = snap.cumulativeRotationDeg
+
+    val containerW = videoContainer.width.toFloat()
+    val containerH = videoContainer.height.toFloat()
+    val fitScale = if (rotationCount % 2 != 0 && containerW > 0 && containerH > 0) {
+      minOf(containerW / containerH, containerH / containerW)
+    } else {
+      1f
+    }
+    val flipMul = if (isFlipped) -1f else 1f
+    val targetSx = flipMul * fitScale
+
+    val onComplete = Runnable {
+      if (snap.isCropActive) {
+        isCropActive = true
+        cropBtn.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)
+        showCropOverlayImmediate()
+        updateCropAllowedRect()
+        val norm = snap.cropNormalized
+        if (norm != null) setCropFromNormalized(norm) else cropOverlay?.resetCrop()
+      } else {
+        isCropActive = false
+        cropBtn.setColorFilter(
+          Color.argb(128, 255, 255, 255),
+          android.graphics.PorterDuff.Mode.SRC_IN
+        )
+        hideCropOverlayImmediate()
+      }
+    }
+
+    mVideoView.animate().cancel()
+
+    if (flipChanging) {
+      val oddRotation = prevRotationCount % 2 != 0
+      if (oddRotation) {
+        mVideoView.animate()
+          .scaleY(0f)
+          .setDuration(125)
+          .setInterpolator(DecelerateInterpolator())
+          .withEndAction {
+            mVideoView.rotation = cumulativeRotationDeg
+            mVideoView.scaleX = targetSx
+            mVideoView.animate()
+              .scaleY(fitScale)
+              .setDuration(125)
+              .setInterpolator(DecelerateInterpolator())
+              .withEndAction { onComplete.run() }
+              .start()
+          }
+          .start()
+      } else {
+        mVideoView.animate()
+          .scaleX(0f)
+          .setDuration(125)
+          .setInterpolator(DecelerateInterpolator())
+          .withEndAction {
+            mVideoView.rotation = cumulativeRotationDeg
+            mVideoView.animate()
+              .scaleX(targetSx)
+              .setDuration(125)
+              .setInterpolator(DecelerateInterpolator())
+              .withEndAction { onComplete.run() }
+              .start()
+          }
+          .start()
+      }
+    } else {
+      mVideoView.animate()
+        .scaleX(targetSx)
+        .scaleY(fitScale)
+        .rotation(cumulativeRotationDeg)
+        .setDuration(250)
+        .setInterpolator(DecelerateInterpolator())
+        .withEndAction { onComplete.run() }
+        .start()
+    }
+  }
+
+  private fun updateUndoRedoButtons() {
+    val dimmed = Color.argb(128, 255, 255, 255)
+    val active = Color.WHITE
+    undoBtn.isEnabled = undoStack.isNotEmpty()
+    undoBtn.setColorFilter(
+      if (undoStack.isNotEmpty()) active else dimmed,
+      android.graphics.PorterDuff.Mode.SRC_IN
+    )
+    redoBtn.isEnabled = redoStack.isNotEmpty()
+    redoBtn.setColorFilter(
+      if (redoStack.isNotEmpty()) active else dimmed,
+      android.graphics.PorterDuff.Mode.SRC_IN
+    )
+  }
+
+  // endregion
 }

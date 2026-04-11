@@ -11,6 +11,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.util.TypedValue
@@ -581,10 +583,6 @@ open class BaseVideoTrimModule internal constructor(
       "${endTime}ms",
     )
 
-    if (options?.getBoolean("enableRotation") == true) {
-      cmds += arrayOf("-display_rotation", "${options.getDouble("rotationAngle")}")
-    }
-
     val outputFile = StorageUtil.getOutputPath(reactApplicationContext, options?.getString("outputExt") ?: "mp4")
 
     val resolvedOutputFile = outputFile ?: run {
@@ -592,15 +590,42 @@ open class BaseVideoTrimModule internal constructor(
       return
     }
 
-    cmds += arrayOf(
-      "-i",
-      url,
-      "-c",
-      "copy",
-      "-metadata",
-      "creation_time=$formattedDateTime",
-      resolvedOutputFile
-    )
+    // Headless trim: no editor UI, so no transforms (flip/rotate/crop) are possible.
+    // The only reason to re-encode here is enablePreciseTrimming for frame-accurate cuts.
+    val enablePrecise = options?.hasKey("enablePreciseTrimming") == true &&
+      options.getBoolean("enablePreciseTrimming")
+
+    if (enablePrecise) {
+      // Match source bitrate to preserve quality; fall back to 10 Mbps.
+      var bitrateStr = "10M"
+      try {
+        val retriever = MediaMetadataRetriever()
+        retriever.setDataSource(reactApplicationContext, Uri.parse(url))
+        val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+          ?.toLongOrNull() ?: 0L
+        if (bitrate > 0) bitrateStr = "$bitrate"
+        retriever.release()
+      } catch (_: Exception) {}
+
+      // h264_mediacodec: Android's hardware H.264 encoder.
+      // No -noautorotate needed — FFmpegKit on Android auto-rotates correctly.
+      cmds += arrayOf(
+        "-i", url,
+        "-c:v", "h264_mediacodec",
+        "-b:v", bitrateStr,
+        "-c:a", "copy",
+        "-metadata", "creation_time=$formattedDateTime",
+        resolvedOutputFile
+      )
+    } else {
+      // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
+      cmds += arrayOf(
+        "-i", url,
+        "-c", "copy",
+        "-metadata", "creation_time=$formattedDateTime",
+        resolvedOutputFile
+      )
+    }
 
     Log.d(TAG, "Command: ${cmds.joinToString(",")}")
 

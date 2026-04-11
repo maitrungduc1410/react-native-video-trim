@@ -1,5 +1,6 @@
 import React
 import Photos
+import AVFoundation
 import ffmpegkit
 
 let FILE_PREFIX = "trimmedVideo"
@@ -49,14 +50,12 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       return editorConfig?["removeAfterFailedToShare"] as! Bool
     }
   }
-  private var enableRotation: Bool {
+  
+  /// When true, forces re-encoding even when no transforms are applied,
+  /// giving frame-accurate trim points instead of keyframe-aligned cuts.
+  private var enablePreciseTrimming: Bool {
     get {
-      return editorConfig?["enableRotation"] as! Bool
-    }
-  }
-  private var rotationAngle: Double {
-    get {
-      return editorConfig?["rotationAngle"] as! Double
+      return editorConfig?["enablePreciseTrimming"] as? Bool ?? false
     }
   }
   
@@ -343,8 +342,74 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       "\(endTime * 1000)ms",
     ]
     
-    if enableRotation {
-      cmds.append(contentsOf: ["-display_rotation", "\(rotationAngle)"])
+    var videoFilters: [String] = []
+    let hasUserTransform = vc != nil && (vc!.rotationCount != 0 || vc!.isFlipped)
+    let cropNorm = vc?.cropNormalizedRect
+    // Re-encode is required when: (1) user applied flip/rotate, (2) user cropped, or
+    // (3) enablePreciseTrimming is on. In all three cases, -c copy won't work because
+    // either we need video filters or we need frame-accurate cut points.
+    let needsReEncode = hasUserTransform || cropNorm != nil || enablePreciseTrimming
+    
+    if needsReEncode, let vc = vc {
+      // -noautorotate disables FFmpeg's automatic rotation, so we must manually
+      // compensate for the source video's rotation metadata via transpose filters.
+      if let asset = vc.asset,
+         let videoTrack = asset.tracks(withMediaType: .video).first {
+        let t = videoTrack.preferredTransform
+        let sourceAngle = atan2(t.b, t.a)
+        if abs(sourceAngle - .pi / 2) < 0.1 {
+          videoFilters.append("transpose=1")
+        } else if abs(sourceAngle + .pi / 2) < 0.1 {
+          videoFilters.append("transpose=2")
+        } else if abs(abs(sourceAngle) - .pi) < 0.1 {
+          videoFilters.append("transpose=1")
+          videoFilters.append("transpose=1")
+        }
+      }
+      
+      switch vc.rotationCount {
+      case 1: videoFilters.append("transpose=2")
+      case 2:
+        videoFilters.append("transpose=2")
+        videoFilters.append("transpose=2")
+      case 3: videoFilters.append("transpose=1")
+      default: break
+      }
+      if vc.isFlipped {
+        videoFilters.append("hflip")
+      }
+      
+      if let cn = cropNorm, let asset = vc.asset,
+         let track = asset.tracks(withMediaType: .video).first {
+        let raw = track.naturalSize
+        let pt = track.preferredTransform
+        let angle = atan2(pt.b, pt.a)
+        let isSrcRotated = abs(angle - .pi / 2) < 0.1 || abs(angle + .pi / 2) < 0.1
+        let corrected = isSrcRotated
+            ? CGSize(width: raw.height, height: raw.width)
+            : raw
+        
+        let postW: CGFloat
+        let postH: CGFloat
+        if vc.rotationCount % 2 != 0 {
+          postW = corrected.height
+          postH = corrected.width
+        } else {
+          postW = corrected.width
+          postH = corrected.height
+        }
+        
+        let cx = Int(round(cn.origin.x * postW))
+        let cy = Int(round(cn.origin.y * postH))
+        var cw = Int(round(cn.size.width * postW))
+        var ch = Int(round(cn.size.height * postH))
+        // H.264 requires even dimensions; round down to nearest even number.
+        cw = cw & ~1
+        ch = ch & ~1
+        if cw > 0 && ch > 0 {
+          videoFilters.append("crop=\(cw):\(ch):\(cx):\(cy)")
+        }
+      }
     }
     
     guard let outputFile = outputFile else {
@@ -352,15 +417,51 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       return
     }
 
-    cmds.append(contentsOf: [
-      "-i",
-      inputFile.path,
-      "-c",
-      "copy",
-      "-metadata",
-      "creation_time=\(dateTime)",
-      outputFile.path
-    ])
+    if needsReEncode {
+      // Preserve source quality by matching the original bitrate. Falls back to 10 Mbps
+      // if the track's estimated data rate is unavailable.
+      var bitrateStr = "10M"
+      if let asset = vc?.asset,
+         let videoTrack = asset.tracks(withMediaType: .video).first {
+        let bitrate = Int(videoTrack.estimatedDataRate)
+        if bitrate > 0 {
+          bitrateStr = "\(bitrate)"
+        }
+      }
+      
+      // -noautorotate: we handle rotation via explicit transpose filters above,
+      // so FFmpeg must not auto-rotate or the output will be double-rotated.
+      cmds.append("-noautorotate")
+      cmds.append(contentsOf: ["-i", inputFile.path])
+      // When enablePreciseTrimming is the only reason for re-encode (no transforms),
+      // videoFilters is empty — skip -vf entirely to avoid FFmpeg error on empty filter.
+      if !videoFilters.isEmpty {
+        cmds.append(contentsOf: ["-vf", videoFilters.joined(separator: ",")])
+      }
+      // h264_videotoolbox: Apple's hardware H.264 encoder — fast and energy-efficient.
+      cmds.append(contentsOf: [
+        "-c:v",
+        "h264_videotoolbox",
+        "-b:v",
+        bitrateStr,
+        "-c:a",
+        "copy",
+        "-metadata",
+        "creation_time=\(dateTime)",
+        outputFile.path
+      ])
+    } else {
+      // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
+      cmds.append(contentsOf: [
+        "-i",
+        inputFile.path,
+        "-c",
+        "copy",
+        "-metadata",
+        "creation_time=\(dateTime)",
+        outputFile.path
+      ])
+    }
     
     print("Command: ", cmds.joined(separator: " "))
     
@@ -515,20 +616,48 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       "\(endTime)ms",
     ]
     
-    if let enableRotation = config["enableRotation"] as? Bool, enableRotation {
-      let rotationAngle = config["rotationAngle"] as? Double ?? 0
-      cmds.append(contentsOf: ["-display_rotation", "\(rotationAngle)"])
-    }
+    // Headless trim: no editor UI, so no transforms (flip/rotate/crop) are possible.
+    // The only reason to re-encode here is enablePreciseTrimming for frame-accurate cuts.
+    let enablePrecise = config["enablePreciseTrimming"] as? Bool ?? false
     
-    cmds.append(contentsOf: [
-      "-i",
-      destPath.path,
-      "-c",
-      "copy",
-      "-metadata",
-      "creation_time=\(dateTime)",
-      outputFile.path
-    ])
+    if enablePrecise {
+      // Match source bitrate to preserve quality; fall back to 10 Mbps.
+      var bitrateStr = "10M"
+      let asset = AVURLAsset(url: destPath)
+      if let videoTrack = asset.tracks(withMediaType: .video).first {
+        let bitrate = Int(videoTrack.estimatedDataRate)
+        if bitrate > 0 {
+          bitrateStr = "\(bitrate)"
+        }
+      }
+      
+      // No -noautorotate here: headless trim has no manual rotation filters,
+      // so FFmpeg's auto-rotation produces the correct output orientation.
+      cmds.append(contentsOf: [
+        "-i",
+        destPath.path,
+        "-c:v",
+        "h264_videotoolbox",
+        "-b:v",
+        bitrateStr,
+        "-c:a",
+        "copy",
+        "-metadata",
+        "creation_time=\(dateTime)",
+        outputFile.path
+      ])
+    } else {
+      // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
+      cmds.append(contentsOf: [
+        "-i",
+        destPath.path,
+        "-c",
+        "copy",
+        "-metadata",
+        "creation_time=\(dateTime)",
+        outputFile.path
+      ])
+    }
     
     print("Command: ", cmds.joined(separator: " "))
     

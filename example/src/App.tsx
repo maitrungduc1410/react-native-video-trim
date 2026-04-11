@@ -147,7 +147,7 @@ export default function App() {
               // enableHapticFeedback: false,
               autoplay: true,
               jumpToPositionOnLoad: 30000,
-              // headerText: 'Bunny.wav',
+              headerText: 'Bunny.wav',
               headerTextSize: 20,
               headerTextColor: '#FF0000',
               // trimmerColor: 'red',
@@ -170,8 +170,6 @@ export default function App() {
               // saveDialogCancelText: '77777',
               // saveDialogConfirmText: '888888',
               trimmingText: 'Trimming Video...',
-              // enableRotation: true,
-              // rotationAngle: 90,
               // changeStatusBarColorOnOpen: true
             });
           } catch (error) {
@@ -259,8 +257,6 @@ export default function App() {
             startTime: 0,
             endTime: 15000,
             saveToPhoto: true,
-            enableRotation: true,
-            rotationAngle: 90,
           })
             .then((res) => {
               console.log('Trimmed file:', res);

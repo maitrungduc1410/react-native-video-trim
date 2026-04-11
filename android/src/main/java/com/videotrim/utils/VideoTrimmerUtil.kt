@@ -2,6 +2,7 @@ package com.videotrim.utils
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.graphics.RectF
 import android.media.MediaMetadataRetriever
 import android.util.Log
 import com.arthenica.ffmpegkit.FFmpegKit
@@ -18,6 +19,7 @@ import iknow.android.utils.thread.BackgroundExecutor
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.TimeZone
+import kotlin.math.roundToInt
 
 object VideoTrimmerUtil {
 
@@ -42,8 +44,13 @@ object VideoTrimmerUtil {
     videoDuration: Int,
     startMs: Long,
     endMs: Long,
-    enableRotation: Boolean,
-    rotationAngle: Double,
+    userRotationCount: Int,
+    userIsFlipped: Boolean,
+    cropNormalized: RectF?,
+    videoWidth: Int,
+    videoHeight: Int,
+    videoBitrate: Long,
+    enablePreciseTrimming: Boolean,
     callback: VideoTrimListener
   ): FFmpegSession {
     val currentDate = Date()
@@ -58,18 +65,75 @@ object VideoTrimmerUtil {
     cmds.add("-to")
     cmds.add("${endMs}ms")
 
-    if (enableRotation) {
-      cmds.add("-display_rotation")
-      cmds.add(rotationAngle.toString())
-    }
+    val hasUserTransform = userRotationCount != 0 || userIsFlipped
+    // Re-encode is required when: (1) user applied flip/rotate, (2) user cropped, or
+    // (3) enablePreciseTrimming is on. In all three cases, -c copy won't work because
+    // either we need video filters or we need frame-accurate cut points.
+    val needsReEncode = hasUserTransform || cropNormalized != null || enablePreciseTrimming
 
-    cmds.add("-i")
-    cmds.add(inputFile)
-    cmds.add("-c")
-    cmds.add("copy")
-    cmds.add("-metadata")
-    cmds.add("creation_time=$formattedDateTime")
-    cmds.add(outputFile)
+    if (needsReEncode) {
+      val videoFilters = mutableListOf<String>()
+
+      when (userRotationCount) {
+        1 -> videoFilters.add("transpose=2")
+        2 -> { videoFilters.add("transpose=2"); videoFilters.add("transpose=2") }
+        3 -> videoFilters.add("transpose=1")
+      }
+      if (userIsFlipped) {
+        videoFilters.add("hflip")
+      }
+
+      // Convert normalized crop rect [0..1] to pixel coordinates in the post-rotation frame.
+      if (cropNormalized != null && videoWidth > 0 && videoHeight > 0) {
+        val postW: Int
+        val postH: Int
+        // After 90°/270° rotation the width and height are swapped.
+        if (userRotationCount % 2 != 0) {
+          postW = videoHeight; postH = videoWidth
+        } else {
+          postW = videoWidth; postH = videoHeight
+        }
+        val cx = (cropNormalized.left * postW).roundToInt()
+        val cy = (cropNormalized.top * postH).roundToInt()
+        var cw = (cropNormalized.width() * postW).roundToInt()
+        var ch = (cropNormalized.height() * postH).roundToInt()
+        // H.264 requires even dimensions; round down to nearest even number.
+        cw = cw and 1.inv()
+        ch = ch and 1.inv()
+        if (cw > 0 && ch > 0) {
+          videoFilters.add("crop=$cw:$ch:$cx:$cy")
+        }
+      }
+
+      val filterString = videoFilters.joinToString(",")
+      // Preserve source quality by matching the original bitrate. Falls back to 10 Mbps.
+      val bitrateStr = if (videoBitrate > 0) "$videoBitrate" else "10M"
+
+      cmds.addAll(listOf("-i", inputFile))
+      // When enablePreciseTrimming is the only reason for re-encode (no transforms),
+      // videoFilters is empty — skip -vf entirely to avoid FFmpeg error on empty filter.
+      if (filterString.isNotEmpty()) {
+        cmds.addAll(listOf("-vf", filterString))
+      }
+      // h264_mediacodec: Android's hardware H.264 encoder — fast and energy-efficient.
+      // Note: Android FFmpegKit auto-rotates by default, so no -noautorotate is needed.
+      // The transpose filters above only handle user-initiated rotation, not source metadata.
+      cmds.addAll(listOf(
+        "-c:v", "h264_mediacodec",
+        "-b:v", bitrateStr,
+        "-c:a", "copy",
+        "-metadata", "creation_time=$formattedDateTime",
+        outputFile
+      ))
+    } else {
+      // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
+      cmds.addAll(listOf(
+        "-i", inputFile,
+        "-c", "copy",
+        "-metadata", "creation_time=$formattedDateTime",
+        outputFile
+      ))
+    }
 
     val command = cmds.toTypedArray()
     val cmdStr = "Command: ${command.joinToString(" ")}"

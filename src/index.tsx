@@ -20,8 +20,7 @@ function createBaseOptions(overrides: Partial<BaseOptions> = {}): BaseOptions {
     outputExt: 'mp4',
     removeAfterSavedToPhoto: false,
     removeAfterFailedToSavePhoto: false,
-    enableRotation: false,
-    rotationAngle: 0,
+    enablePreciseTrimming: false,
     ...overrides,
   };
 }

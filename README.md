@@ -14,7 +14,8 @@
 - [Advanced Features](#advanced-features)
   * [Audio Trimming](#audio-trimming)
   * [Remote Files (HTTPS)](#remote-files-https)
-  * [Video Rotation](#video-rotation)
+  * [Video Transforms (Flip, Rotate, Crop)](#video-transforms-flip-rotate-crop)
+  * [Precise Frame Trimming](#precise-frame-trimming)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
 
@@ -40,6 +41,8 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 ### ✨ Key Features
 
 - **📹 Video & Audio Support** - Trim both video and audio files
+- **🔄 Flip, Rotate & Crop** - Built-in video transforms with undo/redo support
+- **🎯 Precise Trimming** - Optional frame-accurate cuts via hardware-accelerated re-encoding
 - **🌐 Local & Remote Files** - Support for local storage and HTTPS URLs
 - **💾 Multiple Save Options** - Photos, Documents, or Share to other apps
 - **✅ File Validation** - Built-in validation for media files
@@ -50,7 +53,9 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 
 | Feature | Description |
 |---------|-------------|
-| **Trimming** | Precise video/audio trimming with visual controls |
+| **Trimming** | Video/audio trimming with visual timeline controls |
+| **Transforms** | Horizontal flip, 90° rotation, and freeform crop with undo/redo |
+| **Precise Trimming** | Frame-accurate cuts using hardware re-encoding (opt-in) |
 | **Validation** | Check if files are valid video/audio before processing |
 | **Save Options** | Photos, Documents, Share sheet integration |
 | **File Management** | Complete file lifecycle management |
@@ -344,8 +349,7 @@ All configuration options are optional. Here are the most commonly used ones:
 |--------|------|---------|-------------|
 | `enableHapticFeedback` | `boolean` | `true` | Enable haptic feedback |
 | `closeWhenFinish` | `boolean` | `true` | Close editor when done |
-| `enableRotation` | `boolean` | `false` | Enable video rotation |
-| `rotationAngle` | `number` | `0` | Rotation angle in degrees |
+| `enablePreciseTrimming` | `boolean` | `false` | Re-encode for frame-accurate cuts (slower, see [Precise Frame Trimming](#precise-frame-trimming)) |
 | `changeStatusBarColorOnOpen` | `boolean` | `false` | Change status bar color (Android only) |
 | `zoomOnWaitingDuration` | `number` | `5000` | Duration for zoom-on-waiting feature in milliseconds (default: 5000) |
 
@@ -438,18 +442,39 @@ showEditor('https://example.com/video.mp4', {
 });
 ```
 
-### Video Rotation
+### Video Transforms (Flip, Rotate, Crop)
 
-Rotate videos during trimming using metadata (doesn't re-encode):
+The editor includes built-in transform controls — horizontal flip, 90° left rotation, and freeform crop — with full undo/redo support. These appear as toolbar buttons in the editor UI on both iOS and Android.
+
+When any transform is applied, FFmpeg automatically re-encodes the video using the platform's hardware encoder (`h264_videotoolbox` on iOS, `h264_mediacodec` on Android) at the source bitrate to preserve quality. No additional configuration is needed.
+
+### Precise Frame Trimming
+
+By default, trimming uses FFmpeg's stream copy (`-c copy`), which is very fast but can only cut at keyframes. The actual start/end points may drift by several seconds from what the user selected.
+
+Enable `enablePreciseTrimming` for frame-accurate cuts:
 
 ```javascript
+// Editor mode
 showEditor(videoUrl, {
-  enableRotation: true,
-  rotationAngle: 90,    // 90, 180, 270 degrees
+  enablePreciseTrimming: true,
+});
+
+// Headless mode
+const result = await trim(videoUrl, {
+  startTime: 5000,
+  endTime: 15000,
+  enablePreciseTrimming: true,
 });
 ```
 
-**Note:** Uses `display_rotation` metadata - playback may vary by platform/player.
+| | `enablePreciseTrimming: false` (default) | `enablePreciseTrimming: true` |
+|---|---|---|
+| **Speed** | Very fast (stream copy) | Slower (hardware re-encode) |
+| **Accuracy** | Keyframe-aligned (may drift 1-5s) | Frame-accurate |
+| **Quality** | Lossless (original bitstream) | Near-lossless (matched bitrate) |
+
+**Note:** When transforms (flip/rotate/crop) are applied, re-encoding already happens regardless of this flag, so precise trimming comes for free in that case.
 
 ### Trimming Progress & Cancellation
 

@@ -70,10 +70,9 @@ RCT_EXPORT_MODULE()
   dict[@"outputExt"] = options.outputExt();
   dict[@"removeAfterSavedToPhoto"] = @(options.removeAfterSavedToPhoto());
   dict[@"removeAfterFailedToSavePhoto"] = @(options.removeAfterFailedToSavePhoto());
-  dict[@"enableRotation"] = @(options.enableRotation());
-  dict[@"rotationAngle"] = @(options.rotationAngle());
   dict[@"startTime"] = @(options.startTime());
   dict[@"endTime"] = @(options.endTime());
+  dict[@"enablePreciseTrimming"] = @(options.enablePreciseTrimming());
   
   [self->videoTrim trim:url url:dict config:^(NSDictionary<NSString *,id> * _Nonnull result) {
     BOOL success = [result[@"success"] boolValue];
@@ -109,8 +108,6 @@ RCT_EXPORT_MODULE()
   dict[@"removeAfterFailedToSaveDocuments"] = @(config.removeAfterFailedToSaveDocuments());
   dict[@"removeAfterShared"] = @(config.removeAfterShared());
   dict[@"removeAfterFailedToShare"] = @(config.removeAfterFailedToShare());
-  dict[@"enableRotation"] = @(config.enableRotation());
-  dict[@"rotationAngle"] = @(config.rotationAngle());
   dict[@"enableHapticFeedback"] = @(config.enableHapticFeedback());
   dict[@"maxDuration"] = @(config.maxDuration());
   dict[@"minDuration"] = @(config.minDuration());
@@ -145,6 +142,7 @@ RCT_EXPORT_MODULE()
   dict[@"alertOnFailTitle"] = config.alertOnFailTitle();
   dict[@"alertOnFailMessage"] = config.alertOnFailMessage();
   dict[@"alertOnFailCloseText"] = config.alertOnFailCloseText();
+  dict[@"enablePreciseTrimming"] = @(config.enablePreciseTrimming());
   
   // Handle optional color values
   auto trimmerColorOpt = config.trimmerColor();

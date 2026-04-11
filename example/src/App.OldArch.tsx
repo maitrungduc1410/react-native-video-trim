@@ -157,8 +157,6 @@ export default function App() {
               // saveDialogCancelText: '77777',
               // saveDialogConfirmText: '888888',
               trimmingText: 'Trimming Video...',
-              // enableRotation: true,
-              // rotationAngle: 90,
               // changeStatusBarColorOnOpen: true
             });
           } catch (error) {
@@ -246,8 +244,6 @@ export default function App() {
             startTime: 0,
             endTime: 15000,
             saveToPhoto: true,
-            enableRotation: true,
-            rotationAngle: 90,
           })
             .then((res) => {
               console.log('Trimmed file:', res);

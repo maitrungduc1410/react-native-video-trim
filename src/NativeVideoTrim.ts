@@ -16,10 +16,16 @@ export interface BaseOptions {
   removeAfterSavedToPhoto: boolean;
   /** Whether to remove the output file if saving to the photo library fails. */
   removeAfterFailedToSavePhoto: boolean;
-  /** Whether to enable video rotation during trimming. */
-  enableRotation: boolean;
-  /** Rotation angle in degrees (e.g. `90`, `180`, `270`). Only used when `enableRotation` is `true`. */
-  rotationAngle: number;
+  /**
+   * When `true`, FFmpeg re-encodes the video using the platform's hardware encoder
+   * (h264_videotoolbox on iOS, h264_mediacodec on Android) for frame-accurate trimming.
+   * When `false` (default), uses stream copy (`-c copy`) which is much faster but can
+   * only cut at keyframes — the actual start/end may drift by several seconds.
+   *
+   * Note: if the user applies any transform (flip/rotate/crop), re-encoding already
+   * happens regardless of this flag, so precise trimming comes for free in that case.
+   */
+  enablePreciseTrimming: boolean;
 }
 
 /**

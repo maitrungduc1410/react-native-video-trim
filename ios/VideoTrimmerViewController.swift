@@ -77,6 +77,29 @@ class VideoTrimmerViewController: UIViewController {
     private var headerTextColor: Double?
     private var headerView: UIView?
     
+    private(set) var rotationCount = 0
+    private(set) var isFlipped = false
+    private var isVideoType = true
+    private var playerContainerView: UIView!
+    private var transformStackView: UIStackView?
+    
+    private var cropBtn: UIButton?
+    private var cropOverlayView: CropOverlayView?
+    private(set) var isCropActive = false
+    
+    private struct TransformSnapshot: Equatable {
+        let rotationCount: Int
+        let isFlipped: Bool
+        let isCropActive: Bool
+        let cropNormalized: CGRect?
+    }
+    private var undoStack: [TransformSnapshot] = []
+    private var redoStack: [TransformSnapshot] = []
+    private var undoBtn: UIButton?
+    private var redoBtn: UIButton?
+    private var preCropSnapshot: TransformSnapshot?
+    
+    
     var isSeekInProgress: Bool = false  // Marker
     private var chaseTime = CMTime.zero
     private var preferredFrameRate: Float = 23.98
@@ -260,30 +283,43 @@ class VideoTrimmerViewController: UIViewController {
             headerView = UIView()
             headerView!.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(headerView!)
-            let headerTextView = UITextView()
-            headerTextView.text = headerText
-            headerTextView.textAlignment = .center
-          
-          headerTextView.textColor = RCTConvert.uiColor(headerTextColor)
-//          UIColor.color(fromHexNumber: headerTextColor as NSNumber?, defaultColor: .white)
-          
-            headerTextView.font = UIFont.systemFont(ofSize: CGFloat(headerTextSize))  // Set font size here
-            headerTextView.translatesAutoresizingMaskIntoConstraints = false
-            headerView!.addSubview(headerTextView)
+            let scrollView = UIScrollView()
+            scrollView.showsHorizontalScrollIndicator = false
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.translatesAutoresizingMaskIntoConstraints = false
+            headerView!.addSubview(scrollView)
+            
+            let headerLabel = UILabel()
+            headerLabel.text = headerText
+            headerLabel.textAlignment = .center
+            headerLabel.textColor = RCTConvert.uiColor(headerTextColor)
+            headerLabel.font = UIFont.systemFont(ofSize: CGFloat(headerTextSize))
+            headerLabel.numberOfLines = 1
+            headerLabel.translatesAutoresizingMaskIntoConstraints = false
+            scrollView.addSubview(headerLabel)
             
             NSLayoutConstraint.activate([
-                // HeaderView constraints
                 headerView!.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
                 headerView!.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 headerView!.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                headerView!.heightAnchor.constraint(greaterThanOrEqualToConstant: 50),
                 
-                // HeaderText constraints
-                headerTextView.topAnchor.constraint(equalTo: headerView!.topAnchor),
-                headerTextView.bottomAnchor.constraint(equalTo: headerView!.bottomAnchor),
-                headerTextView.leadingAnchor.constraint(equalTo: headerView!.leadingAnchor),
-                headerTextView.trailingAnchor.constraint(equalTo: headerView!.trailingAnchor),
+                scrollView.topAnchor.constraint(equalTo: headerView!.topAnchor, constant: 6),
+                scrollView.bottomAnchor.constraint(equalTo: headerView!.bottomAnchor, constant: -2),
+                scrollView.leadingAnchor.constraint(equalTo: headerView!.leadingAnchor),
+                scrollView.trailingAnchor.constraint(equalTo: headerView!.trailingAnchor),
+                scrollView.heightAnchor.constraint(equalTo: headerLabel.heightAnchor),
+                
+                headerLabel.topAnchor.constraint(equalTo: scrollView.topAnchor),
+                headerLabel.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+                headerLabel.leadingAnchor.constraint(greaterThanOrEqualTo: scrollView.leadingAnchor, constant: 16),
+                headerLabel.trailingAnchor.constraint(lessThanOrEqualTo: scrollView.trailingAnchor, constant: -16),
             ])
+            
+            let centerX = headerLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor)
+            centerX.priority = .defaultHigh
+            let minWidth = headerLabel.widthAnchor.constraint(greaterThanOrEqualTo: scrollView.widthAnchor, constant: -32)
+            minWidth.priority = .defaultLow
+            NSLayoutConstraint.activate([centerX, minWidth])
             
             view.layoutIfNeeded() // layout after activate constraints, otherwise headerView height = screen height, which leads to playerViewController is missing at runtime
         }
@@ -407,14 +443,37 @@ class VideoTrimmerViewController: UIViewController {
         }
         
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
+        
+        setupTransformButtons()
+        
+        let topAnchor: NSLayoutYAxisAnchor
+        if let transformStack = transformStackView {
+            topAnchor = transformStack.bottomAnchor
+        } else if let headerView = headerView {
+            topAnchor = headerView.bottomAnchor
+        } else {
+            topAnchor = view.safeAreaLayoutGuide.topAnchor
+        }
+        
+        playerContainerView = UIView()
+        playerContainerView.clipsToBounds = true
+        view.addSubview(playerContainerView)
+        playerContainerView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            playerContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            playerContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            playerContainerView.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            playerContainerView.bottomAnchor.constraint(equalTo: trimmer.topAnchor, constant: -16)
+        ])
+        
         addChild(playerController)
-        view.addSubview(playerController.view)
+        playerContainerView.addSubview(playerController.view)
         playerController.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            playerController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            playerController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            playerController.view.topAnchor.constraint(equalTo: headerView != nil ? headerView!.bottomAnchor : view.safeAreaLayoutGuide.topAnchor),
-            playerController.view.bottomAnchor.constraint(equalTo: trimmer.topAnchor, constant: -16)
+            playerController.view.leadingAnchor.constraint(equalTo: playerContainerView.leadingAnchor),
+            playerController.view.trailingAnchor.constraint(equalTo: playerContainerView.trailingAnchor),
+            playerController.view.topAnchor.constraint(equalTo: playerContainerView.topAnchor),
+            playerController.view.bottomAnchor.constraint(equalTo: playerContainerView.bottomAnchor)
         ])
         
         // Add observer for the end of playback
@@ -425,6 +484,364 @@ class VideoTrimmerViewController: UIViewController {
         // Directly set the play icon
         // the reason in at this time player.timeControlStatus == .playing still returns true
         playBtn.setImage(self.playIcon, for: .normal)
+    }
+    
+    // MARK: - Transform (Rotation/Flip/Crop) + Undo/Redo
+    private func setupTransformButtons() {
+        guard isVideoType else { return }
+        
+        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        let dimmed = UIColor.white.withAlphaComponent(0.5)
+        
+        let flipBtn = UIButton(type: .system)
+        flipBtn.setImage(UIImage(systemName: "arrow.trianglehead.left.and.right.righttriangle.left.righttriangle.right", withConfiguration: symbolConfig), for: .normal)
+        flipBtn.tintColor = .white
+        flipBtn.addTarget(self, action: #selector(onFlipTapped), for: .touchUpInside)
+        
+        let rotateBtn = UIButton(type: .system)
+        rotateBtn.setImage(UIImage(systemName: "rotate.left", withConfiguration: symbolConfig), for: .normal)
+        rotateBtn.tintColor = .white
+        rotateBtn.addTarget(self, action: #selector(onRotateTapped), for: .touchUpInside)
+        
+        let cropButton = UIButton(type: .system)
+        cropButton.setImage(UIImage(systemName: "crop", withConfiguration: symbolConfig), for: .normal)
+        cropButton.tintColor = UIColor.white.withAlphaComponent(0.5)
+        cropButton.addTarget(self, action: #selector(onCropTapped), for: .touchUpInside)
+        self.cropBtn = cropButton
+        
+        let undoButton = UIButton(type: .system)
+        undoButton.setImage(UIImage(systemName: "arrow.uturn.backward", withConfiguration: symbolConfig), for: .normal)
+        undoButton.tintColor = dimmed
+        undoButton.isEnabled = false
+        undoButton.addTarget(self, action: #selector(onUndoTapped), for: .touchUpInside)
+        self.undoBtn = undoButton
+        
+        let redoButton = UIButton(type: .system)
+        redoButton.setImage(UIImage(systemName: "arrow.uturn.forward", withConfiguration: symbolConfig), for: .normal)
+        redoButton.tintColor = dimmed
+        redoButton.isEnabled = false
+        redoButton.addTarget(self, action: #selector(onRedoTapped), for: .touchUpInside)
+        self.redoBtn = redoButton
+        
+        let leftStack = UIStackView(arrangedSubviews: [flipBtn, rotateBtn, cropButton])
+        leftStack.axis = .horizontal
+        leftStack.spacing = 12
+        
+        let rightStack = UIStackView(arrangedSubviews: [undoButton, redoButton])
+        rightStack.axis = .horizontal
+        rightStack.spacing = 12
+        
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        
+        let fullRow = UIStackView(arrangedSubviews: [leftStack, spacer, rightStack])
+        fullRow.axis = .horizontal
+        fullRow.translatesAutoresizingMaskIntoConstraints = false
+        fullRow.alpha = 0
+        
+        view.addSubview(fullRow)
+        let btnSize: CGFloat = 28
+        NSLayoutConstraint.activate([
+            flipBtn.widthAnchor.constraint(equalToConstant: btnSize),
+            flipBtn.heightAnchor.constraint(equalToConstant: btnSize),
+            rotateBtn.widthAnchor.constraint(equalToConstant: btnSize),
+            rotateBtn.heightAnchor.constraint(equalToConstant: btnSize),
+            cropButton.widthAnchor.constraint(equalToConstant: btnSize),
+            cropButton.heightAnchor.constraint(equalToConstant: btnSize),
+            undoButton.widthAnchor.constraint(equalToConstant: btnSize),
+            undoButton.heightAnchor.constraint(equalToConstant: btnSize),
+            redoButton.widthAnchor.constraint(equalToConstant: btnSize),
+            redoButton.heightAnchor.constraint(equalToConstant: btnSize),
+            fullRow.topAnchor.constraint(equalTo: headerView != nil ? headerView!.bottomAnchor : view.safeAreaLayoutGuide.topAnchor, constant: 4),
+            fullRow.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            fullRow.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+        ])
+        
+        self.transformStackView = fullRow
+    }
+    
+    @objc private func onFlipTapped() {
+        pushUndo()
+        isFlipped.toggle()
+        if enableHapticFeedback {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+        updateVideoTransform(resetCrop: true)
+    }
+    
+    @objc private func onRotateTapped() {
+        pushUndo()
+        if isFlipped {
+            rotationCount = (rotationCount - 1 + 4) % 4
+        } else {
+            rotationCount = (rotationCount + 1) % 4
+        }
+        if enableHapticFeedback {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+        updateVideoTransform(resetCrop: true)
+    }
+    
+    private func updateVideoTransform(resetCrop: Bool = false) {
+        let angle = -CGFloat(rotationCount) * (.pi / 2)
+        var transform = CGAffineTransform.identity
+        
+        if isFlipped {
+            transform = transform.scaledBy(x: -1, y: 1)
+        }
+        transform = transform.rotated(by: angle)
+        
+        if rotationCount % 2 != 0 {
+            let bounds = playerContainerView.bounds
+            if bounds.width > 0 && bounds.height > 0 {
+                let fitScale = min(bounds.width / bounds.height, bounds.height / bounds.width)
+                transform = transform.scaledBy(x: fitScale, y: fitScale)
+            }
+        }
+        
+        UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut]) {
+            self.playerController.view.transform = transform
+        } completion: { _ in
+            if resetCrop && self.isCropActive {
+                self.updateCropAllowedRect()
+                self.cropOverlayView?.resetCrop()
+            }
+        }
+    }
+    
+    // MARK: - Undo / Redo
+    
+    private func currentSnapshot() -> TransformSnapshot {
+        TransformSnapshot(
+            rotationCount: rotationCount,
+            isFlipped: isFlipped,
+            isCropActive: isCropActive,
+            cropNormalized: cropNormalizedRect
+        )
+    }
+    
+    private func pushUndo() {
+        undoStack.append(currentSnapshot())
+        redoStack.removeAll()
+        updateUndoRedoButtons()
+    }
+    
+    @objc private func onUndoTapped() {
+        guard let prev = undoStack.popLast() else { return }
+        redoStack.append(currentSnapshot())
+        applySnapshot(prev)
+        updateUndoRedoButtons()
+    }
+    
+    @objc private func onRedoTapped() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(currentSnapshot())
+        applySnapshot(next)
+        updateUndoRedoButtons()
+    }
+    
+    private func applySnapshot(_ snap: TransformSnapshot) {
+        rotationCount = snap.rotationCount
+        isFlipped = snap.isFlipped
+        
+        let angle = -CGFloat(rotationCount) * (.pi / 2)
+        var transform = CGAffineTransform.identity
+        if isFlipped { transform = transform.scaledBy(x: -1, y: 1) }
+        transform = transform.rotated(by: angle)
+        if rotationCount % 2 != 0 {
+            let bounds = playerContainerView.bounds
+            if bounds.width > 0 && bounds.height > 0 {
+                let fitScale = min(bounds.width / bounds.height, bounds.height / bounds.width)
+                transform = transform.scaledBy(x: fitScale, y: fitScale)
+            }
+        }
+        
+        let wasActive = isCropActive
+        isCropActive = snap.isCropActive
+        cropBtn?.tintColor = isCropActive ? .white : UIColor.white.withAlphaComponent(0.5)
+        
+        UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut]) {
+            self.playerController.view.transform = transform
+        } completion: { _ in
+            if self.isCropActive {
+                self.showCropOverlayImmediate()
+                self.updateCropAllowedRect()
+                if let norm = snap.cropNormalized {
+                    self.setCropFromNormalized(norm)
+                } else {
+                    self.cropOverlayView?.resetCrop()
+                }
+            } else if wasActive {
+                self.cropOverlayView?.isHidden = true
+                self.cropOverlayView?.alpha = 0
+            }
+        }
+    }
+    
+    private func setCropFromNormalized(_ norm: CGRect) {
+        let vr = getVideoDisplayRectInContainer()
+        guard vr.width > 1, vr.height > 1 else { return }
+        cropOverlayView?.cropRect = CGRect(
+            x: vr.minX + norm.origin.x * vr.width,
+            y: vr.minY + norm.origin.y * vr.height,
+            width: norm.size.width * vr.width,
+            height: norm.size.height * vr.height
+        )
+    }
+    
+    private func updateUndoRedoButtons() {
+        let dimmed = UIColor.white.withAlphaComponent(0.5)
+        undoBtn?.tintColor = undoStack.isEmpty ? dimmed : .white
+        undoBtn?.isEnabled = !undoStack.isEmpty
+        redoBtn?.tintColor = redoStack.isEmpty ? dimmed : .white
+        redoBtn?.isEnabled = !redoStack.isEmpty
+    }
+    
+    // MARK: - Crop
+    
+    @objc private func onCropTapped() {
+        isCropActive.toggle()
+        cropBtn?.tintColor = isCropActive ? .white : UIColor.white.withAlphaComponent(0.5)
+        
+        if enableHapticFeedback {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+        
+        if isCropActive {
+            showCropOverlay()
+        } else {
+            hideCropOverlay()
+        }
+    }
+    
+    private func showCropOverlay() {
+        if let existing = cropOverlayView {
+            existing.isHidden = false
+            existing.alpha = 0
+            playerContainerView.layoutIfNeeded()
+            updateCropAllowedRect()
+            UIView.animate(withDuration: 0.2) { existing.alpha = 1 }
+            return
+        }
+        
+        createCropOverlay()
+        playerContainerView.layoutIfNeeded()
+        updateCropAllowedRect()
+        UIView.animate(withDuration: 0.2) { self.cropOverlayView?.alpha = 1 }
+    }
+    
+    private func showCropOverlayImmediate() {
+        if let existing = cropOverlayView {
+            existing.isHidden = false
+            existing.alpha = 1
+            return
+        }
+        createCropOverlay()
+        cropOverlayView?.alpha = 1
+    }
+    
+    private func createCropOverlay() {
+        let overlay = CropOverlayView()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.alpha = 0
+        playerContainerView.addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: playerContainerView.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: playerContainerView.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: playerContainerView.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: playerContainerView.bottomAnchor),
+        ])
+        cropOverlayView = overlay
+        
+        overlay.onCropBegan = { [weak self] in
+            self?.preCropSnapshot = self?.currentSnapshot()
+        }
+        overlay.onCropEnded = { [weak self] in
+            guard let self = self, let snap = self.preCropSnapshot else { return }
+            if self.currentSnapshot() != snap {
+                self.undoStack.append(snap)
+                self.redoStack.removeAll()
+                self.updateUndoRedoButtons()
+            }
+            self.preCropSnapshot = nil
+        }
+    }
+    
+    private func hideCropOverlay() {
+        guard let overlay = cropOverlayView else { return }
+        UIView.animate(withDuration: 0.2, animations: {
+            overlay.alpha = 0
+        }) { _ in
+            overlay.isHidden = true
+        }
+    }
+    
+    private func updateCropAllowedRect() {
+        guard let overlay = cropOverlayView else { return }
+        overlay.allowedRect = getVideoDisplayRectInContainer()
+    }
+    
+    func getVideoDisplayRectInContainer() -> CGRect {
+        guard let containerView = playerContainerView,
+              let asset = asset,
+              let track = asset.tracks(withMediaType: .video).first else {
+            return playerContainerView?.bounds ?? .zero
+        }
+        
+        let raw = track.naturalSize
+        let pt = track.preferredTransform
+        let angle = atan2(pt.b, pt.a)
+        let isSourceRotated = abs(angle - .pi / 2) < 0.1 || abs(angle + .pi / 2) < 0.1
+        let displayedSize = isSourceRotated
+            ? CGSize(width: raw.height, height: raw.width)
+            : raw
+        
+        let pvBounds = playerController.view.bounds
+        guard pvBounds.width > 0, pvBounds.height > 0,
+              displayedSize.width > 0, displayedSize.height > 0 else {
+            return containerView.bounds
+        }
+        
+        let videoAR = displayedSize.width / displayedSize.height
+        let viewAR = pvBounds.width / pvBounds.height
+        
+        var videoRect: CGRect
+        if videoAR > viewAR {
+            let h = pvBounds.width / videoAR
+            videoRect = CGRect(x: 0, y: (pvBounds.height - h) / 2,
+                               width: pvBounds.width, height: h)
+        } else {
+            let w = pvBounds.height * videoAR
+            videoRect = CGRect(x: (pvBounds.width - w) / 2, y: 0,
+                               width: w, height: pvBounds.height)
+        }
+        
+        return playerController.view.convert(videoRect, to: containerView)
+    }
+    
+    var cropNormalizedRect: CGRect? {
+        guard isCropActive,
+              let overlay = cropOverlayView, !overlay.isHidden else { return nil }
+        
+        let videoRect = getVideoDisplayRectInContainer()
+        guard videoRect.width > 1, videoRect.height > 1 else { return nil }
+        
+        let cr = overlay.cropRect
+        let nx = (cr.minX - videoRect.minX) / videoRect.width
+        let ny = (cr.minY - videoRect.minY) / videoRect.height
+        let nw = cr.width / videoRect.width
+        let nh = cr.height / videoRect.height
+        
+        if nx < 0.01 && ny < 0.01 && nw > 0.99 && nh > 0.99 {
+            return nil
+        }
+        
+        return CGRect(
+            x: max(0, min(1, nx)),
+            y: max(0, min(1, ny)),
+            width: max(0, min(1, nw)),
+            height: max(0, min(1, nh))
+        )
     }
     
     private func setupTimeObserver() {
@@ -504,6 +921,7 @@ class VideoTrimmerViewController: UIViewController {
     enableHapticFeedback = config["enableHapticFeedback"] as? Bool ?? true
     zoomOnWaitingDuration = (config["zoomOnWaitingDuration"] as? Double ?? 5.0) / 1000.0 // convert ms to s
     autoplay = config["autoplay"] as? Bool ?? false
+    isVideoType = (config["type"] as? String ?? "video") == "video"
     headerText = config["headerText"] as? String
     headerTextSize = config["headerTextSize"] as? Int ?? 16
     headerTextColor = config["headerTextColor"] as? Double
@@ -530,6 +948,7 @@ class VideoTrimmerViewController: UIViewController {
             self.playBtn.isEnabled = true
             self.saveBtn.alpha = 1
             self.saveBtn.isEnabled = true
+            self.transformStackView?.alpha = 1
         })
         
         if jumpToPositionOnLoad > 0 {

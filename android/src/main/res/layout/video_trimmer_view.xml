@@ -3,39 +3,130 @@
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:orientation="vertical">
+
   <FrameLayout
     android:id="@+id/headerView"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:minHeight="50dp"
     android:background="@android:color/black"
-    android:visibility="gone"
-    >
-    <TextView
-      android:id="@+id/headerText"
-      android:layout_width="wrap_content"
-      android:layout_height="match_parent"
+    android:visibility="gone">
+
+    <HorizontalScrollView
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
       android:layout_gravity="center"
-      android:clickable="true"
-      android:focusable="true"
-      android:text="Header text"
-      android:textColor="@android:color/white"
-      android:textSize="16dp" />
+      android:scrollbars="none"
+      android:fillViewport="true"
+      android:paddingTop="6dp"
+      android:paddingBottom="2dp">
+
+      <TextView
+        android:id="@+id/headerText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:singleLine="true"
+        android:text=""
+        android:textColor="@android:color/white"
+        android:textSize="16dp"
+        android:paddingHorizontal="16dp" />
+    </HorizontalScrollView>
   </FrameLayout>
 
-  <RelativeLayout
+  <LinearLayout
+    android:id="@+id/transformRow"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_below="@+id/headerView"
+    android:orientation="horizontal"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="4dp"
+    android:background="@android:color/black"
+    android:gravity="center_vertical"
+    android:visibility="gone">
+
+    <LinearLayout
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal"
+      android:gravity="center_vertical">
+
+      <ImageView
+        android:id="@+id/flipBtn"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:src="@drawable/arrow_trianglehead_left_and_right_righttriangle_left_righttriangle_right"
+        android:tint="@android:color/white"
+        android:scaleType="fitCenter"
+        android:layout_marginEnd="12dp"
+        android:contentDescription="Flip" />
+
+      <ImageView
+        android:id="@+id/rotateBtn"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:src="@drawable/rotate_left"
+        android:tint="@android:color/white"
+        android:scaleType="fitCenter"
+        android:layout_marginEnd="12dp"
+        android:contentDescription="Rotate" />
+
+      <ImageView
+        android:id="@+id/cropBtn"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:src="@drawable/crop"
+        android:tint="#80FFFFFF"
+        android:scaleType="fitCenter"
+        android:contentDescription="Crop" />
+    </LinearLayout>
+
+    <View
+      android:layout_width="0dp"
+      android:layout_height="0dp"
+      android:layout_weight="1" />
+
+    <LinearLayout
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal"
+      android:gravity="center_vertical">
+
+      <ImageView
+        android:id="@+id/undoBtn"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:src="@drawable/arrow_uturn_backward"
+        android:tint="#80FFFFFF"
+        android:scaleType="fitCenter"
+        android:layout_marginEnd="12dp"
+        android:contentDescription="Undo" />
+
+      <ImageView
+        android:id="@+id/redoBtn"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:src="@drawable/arrow_uturn_forward"
+        android:tint="#80FFFFFF"
+        android:scaleType="fitCenter"
+        android:contentDescription="Redo" />
+    </LinearLayout>
+  </LinearLayout>
+
+  <FrameLayout
+    android:id="@+id/videoContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:layout_above="@+id/layout"
-    android:layout_below="@+id/headerView"
+    android:layout_below="@+id/transformRow"
     android:background="@android:color/black"
-    android:gravity="center">
+    android:clipChildren="true">
 
-    <VideoView
+    <TextureView
       android:id="@+id/video_loader"
       android:layout_width="match_parent"
       android:layout_height="match_parent"
-      />
+      android:layout_gravity="center" />
 
     <FrameLayout
       android:id="@+id/audioBannerView"
@@ -53,11 +144,9 @@
         android:layout_height="match_parent"
         android:layout_gravity="center"
         android:contentDescription="Airpods Max"
-        android:src="@drawable/airpodsmax"
-        />
+        android:src="@drawable/airpodsmax" />
     </FrameLayout>
-
-  </RelativeLayout>
+  </FrameLayout>
 
   <RelativeLayout
     android:id="@+id/layout"
@@ -65,7 +154,6 @@
     android:layout_height="wrap_content"
     android:layout_alignParentBottom="true"
     android:background="@android:color/black">
-
 
     <RelativeLayout
       android:id="@+id/trimmerView"
@@ -79,8 +167,7 @@
         android:layout_height="match_parent"
         android:layout_marginHorizontal="20dp"
         android:orientation="horizontal"
-        android:padding="4dp"
-        />
+        android:padding="4dp" />
 
       <RelativeLayout
         android:id="@+id/trimmerContainerWrapper"
@@ -161,9 +248,7 @@
             android:contentDescription="TrailingHandle"
             android:src="@drawable/chevron_compact_right" />
         </FrameLayout>
-
       </RelativeLayout>
-
     </RelativeLayout>
 
     <FrameLayout
@@ -213,7 +298,6 @@
         android:text="00:00.00"
         android:textColor="@android:color/white"
         android:textSize="16sp" />
-
     </FrameLayout>
 
     <FrameLayout
@@ -244,8 +328,7 @@
         android:padding="12dp"
         android:src="@drawable/play_fill"
         android:tint="@color/white"
-        android:visibility="gone"
-        />
+        android:visibility="gone" />
 
       <ImageView
         android:id="@+id/failToLoadBtn"
@@ -255,8 +338,7 @@
         android:padding="12dp"
         android:src="@drawable/exclamationmark_triangle_fill"
         android:tint="@color/trim_color"
-        android:visibility="gone"
-        />
+        android:visibility="gone" />
 
       <ProgressBar
         android:id="@+id/loadingIndicator"
@@ -265,8 +347,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:padding="10dp"
-        android:indeterminateTint="@color/white"
-        />
+        android:indeterminateTint="@color/white" />
 
       <TextView
         android:id="@+id/saveBtn"
@@ -278,10 +359,7 @@
         android:text="@string/save"
         android:textColor="#2196F3"
         android:textSize="16dp"
-        android:visibility="gone"
-        />
-
+        android:visibility="gone" />
     </FrameLayout>
-
   </RelativeLayout>
 </RelativeLayout>
