@@ -320,20 +320,25 @@ class VideoTrimmerView(
     if (vw <= 0 || vh <= 0) return
 
     videoContainer.post {
-      val containerW = videoContainer.width
-      val containerH = videoContainer.height
-      if (containerW <= 0 || containerH <= 0) return@post
+      val cw = containerContentWidth().toInt()
+      val ch = containerContentHeight().toInt()
+      if (cw <= 0 || ch <= 0) return@post
+
+      val margin = bracketOverflow()
+      val availW = cw - 2 * margin
+      val availH = ch - 2 * margin
+      if (availW <= 0 || availH <= 0) return@post
 
       val videoAR = vw.toFloat() / vh
-      val containerAR = containerW.toFloat() / containerH
+      val containerAR = availW.toFloat() / availH
       val newW: Int
       val newH: Int
       if (videoAR > containerAR) {
-        newW = containerW
-        newH = (containerW / videoAR).toInt()
+        newW = availW
+        newH = (availW / videoAR).toInt()
       } else {
-        newH = containerH
-        newW = (containerH * videoAR).toInt()
+        newH = availH
+        newW = (availH * videoAR).toInt()
       }
       mVideoView.layoutParams = FrameLayout.LayoutParams(newW, newH, Gravity.CENTER)
     }
@@ -519,6 +524,10 @@ class VideoTrimmerView(
     cropBtn.setOnClickListener { onCropTapped() }
     undoBtn.setOnClickListener { onUndoTapped() }
     redoBtn.setOnClickListener { onRedoTapped() }
+
+    cropBtn.setColorFilter(Color.argb(128, 255, 255, 255), android.graphics.PorterDuff.Mode.SRC_IN)
+    undoBtn.setColorFilter(Color.argb(128, 255, 255, 255), android.graphics.PorterDuff.Mode.SRC_IN)
+    redoBtn.setColorFilter(Color.argb(128, 255, 255, 255), android.graphics.PorterDuff.Mode.SRC_IN)
   }
 
   fun onSaveClicked() {
@@ -1304,13 +1313,22 @@ class VideoTrimmerView(
 
   // region Transform
 
+  private fun containerContentWidth(): Float =
+    (videoContainer.width - videoContainer.paddingLeft - videoContainer.paddingRight).toFloat()
+
+  private fun containerContentHeight(): Float =
+    (videoContainer.height - videoContainer.paddingTop - videoContainer.paddingBottom).toFloat()
+
+  private fun bracketOverflow(): Int =
+    TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics).toInt()
+
   private fun onFlipTapped() {
     pushUndo()
     isFlipped = !isFlipped
     val newCumDeg = -cumulativeRotationDeg
     val fitScale = if (rotationCount % 2 != 0) {
-      val cw = videoContainer.width.toFloat()
-      val ch = videoContainer.height.toFloat()
+      val cw = containerContentWidth()
+      val ch = containerContentHeight()
       if (cw > 0 && ch > 0) minOf(cw / ch, ch / cw) else 1f
     } else {
       1f
@@ -1379,12 +1397,12 @@ class VideoTrimmerView(
   }
 
   private fun updateVideoTransform(resetCrop: Boolean = false) {
-    val containerW = videoContainer.width.toFloat()
-    val containerH = videoContainer.height.toFloat()
-    if (containerW <= 0 || containerH <= 0) return
+    val cw = containerContentWidth()
+    val ch = containerContentHeight()
+    if (cw <= 0 || ch <= 0) return
 
     val fitScale = if (rotationCount % 2 != 0) {
-      minOf(containerW / containerH, containerH / containerW)
+      minOf(cw / ch, ch / cw)
     } else {
       1f
     }
@@ -1487,22 +1505,22 @@ class VideoTrimmerView(
   }
 
   private fun getVideoDisplayRectInContainer(): RectF {
-    val containerW = videoContainer.width.toFloat()
-    val containerH = videoContainer.height.toFloat()
-    if (containerW <= 0 || containerH <= 0) return RectF()
+    val cw = containerContentWidth()
+    val ch = containerContentHeight()
+    if (cw <= 0 || ch <= 0) return RectF()
 
     val tvW = mVideoView.width.toFloat()
     val tvH = mVideoView.height.toFloat()
     if (tvW <= 0 || tvH <= 0) return RectF()
 
-    val tvX = (containerW - tvW) / 2f
-    val tvY = (containerH - tvH) / 2f
+    val tvX = (cw - tvW) / 2f
+    val tvY = (ch - tvH) / 2f
     val videoRect = RectF(tvX, tvY, tvX + tvW, tvY + tvH)
 
-    val pivotX = containerW / 2f
-    val pivotY = containerH / 2f
+    val pivotX = cw / 2f
+    val pivotY = ch / 2f
     val fitScale = if (rotationCount % 2 != 0) {
-      minOf(containerW / containerH, containerH / containerW)
+      minOf(cw / ch, ch / cw)
     } else {
       1f
     }
@@ -1603,10 +1621,10 @@ class VideoTrimmerView(
     isFlipped = snap.isFlipped
     cumulativeRotationDeg = snap.cumulativeRotationDeg
 
-    val containerW = videoContainer.width.toFloat()
-    val containerH = videoContainer.height.toFloat()
-    val fitScale = if (rotationCount % 2 != 0 && containerW > 0 && containerH > 0) {
-      minOf(containerW / containerH, containerH / containerW)
+    val cw = containerContentWidth()
+    val ch = containerContentHeight()
+    val fitScale = if (rotationCount % 2 != 0 && cw > 0 && ch > 0) {
+      minOf(cw / ch, ch / cw)
     } else {
       1f
     }

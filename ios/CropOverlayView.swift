@@ -6,7 +6,6 @@ class CropOverlayView: UIView {
     var cropRect: CGRect = .zero {
         didSet {
             setNeedsDisplay()
-            updateDimmingMask()
         }
     }
 
@@ -31,14 +30,13 @@ class CropOverlayView: UIView {
     private let borderWidth: CGFloat = 1.0
     private let cornerLength: CGFloat = 20
     private let cornerWidth: CGFloat = 4.0
+    private let edgeHandleLength: CGFloat = 20
     private let gridLineWidth: CGFloat = CGFloat(1.0 / UIScreen.main.scale)
     private let edgeHitZone: CGFloat = 30
 
     private var activeEdge: DragEdge?
     private var dragStart: CGPoint = .zero
     private var dragStartRect: CGRect = .zero
-
-    private let dimmingLayer = CAShapeLayer()
 
     private enum DragEdge {
         case top, bottom, left, right
@@ -59,12 +57,8 @@ class CropOverlayView: UIView {
     private func commonInit() {
         backgroundColor = .clear
         isUserInteractionEnabled = true
-        clipsToBounds = true
+        clipsToBounds = false
         isOpaque = false
-
-        dimmingLayer.fillRule = .evenOdd
-        dimmingLayer.fillColor = UIColor.black.withAlphaComponent(0.55).cgColor
-        layer.addSublayer(dimmingLayer)
 
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         addGestureRecognizer(pan)
@@ -73,32 +67,26 @@ class CropOverlayView: UIView {
         addGestureRecognizer(pinch)
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        updateDimmingMask()
-    }
-
-    private func updateDimmingMask() {
-        let full = UIBezierPath(rect: bounds)
-        if !cropRect.isEmpty {
-            full.append(UIBezierPath(rect: cropRect))
-        }
-        dimmingLayer.path = full.cgPath
-        dimmingLayer.frame = bounds
-    }
-
     // MARK: - Drawing
 
     override func draw(_ rect: CGRect) {
         guard !cropRect.isEmpty, let ctx = UIGraphicsGetCurrentContext() else { return }
         let cr = cropRect
 
-        ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.6).cgColor)
+        ctx.saveGState()
+        let fullPath = UIBezierPath(rect: bounds)
+        fullPath.append(UIBezierPath(rect: cr))
+        fullPath.usesEvenOddFillRule = true
+        ctx.addPath(fullPath.cgPath)
+        ctx.setFillColor(UIColor.black.withAlphaComponent(0.55).cgColor)
+        ctx.fillPath(using: .evenOdd)
+        ctx.restoreGState()
+
+        ctx.setStrokeColor(UIColor.white.cgColor)
         ctx.setLineWidth(borderWidth)
         ctx.stroke(cr)
 
         ctx.setLineWidth(gridLineWidth)
-        ctx.setStrokeColor(UIColor.white.cgColor)
         for i in 1...2 {
             let x = cr.minX + cr.width * CGFloat(i) / 3
             ctx.move(to: CGPoint(x: x, y: cr.minY))
@@ -114,27 +102,41 @@ class CropOverlayView: UIView {
         ctx.setStrokeColor(UIColor.white.cgColor)
         ctx.setLineWidth(cornerWidth)
         ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
 
         let cl = cornerLength
+        let hw = cornerWidth / 2
         let corners: [(CGPoint, CGPoint, CGPoint)] = [
-            (CGPoint(x: cr.minX, y: cr.minY + cl),
-             CGPoint(x: cr.minX, y: cr.minY),
-             CGPoint(x: cr.minX + cl, y: cr.minY)),
-            (CGPoint(x: cr.maxX - cl, y: cr.minY),
-             CGPoint(x: cr.maxX, y: cr.minY),
-             CGPoint(x: cr.maxX, y: cr.minY + cl)),
-            (CGPoint(x: cr.minX, y: cr.maxY - cl),
-             CGPoint(x: cr.minX, y: cr.maxY),
-             CGPoint(x: cr.minX + cl, y: cr.maxY)),
-            (CGPoint(x: cr.maxX - cl, y: cr.maxY),
-             CGPoint(x: cr.maxX, y: cr.maxY),
-             CGPoint(x: cr.maxX, y: cr.maxY - cl)),
+            (CGPoint(x: cr.minX - hw, y: cr.minY + cl),
+             CGPoint(x: cr.minX - hw, y: cr.minY - hw),
+             CGPoint(x: cr.minX + cl, y: cr.minY - hw)),
+            (CGPoint(x: cr.maxX - cl, y: cr.minY - hw),
+             CGPoint(x: cr.maxX + hw, y: cr.minY - hw),
+             CGPoint(x: cr.maxX + hw, y: cr.minY + cl)),
+            (CGPoint(x: cr.minX - hw, y: cr.maxY - cl),
+             CGPoint(x: cr.minX - hw, y: cr.maxY + hw),
+             CGPoint(x: cr.minX + cl, y: cr.maxY + hw)),
+            (CGPoint(x: cr.maxX - cl, y: cr.maxY + hw),
+             CGPoint(x: cr.maxX + hw, y: cr.maxY + hw),
+             CGPoint(x: cr.maxX + hw, y: cr.maxY - cl)),
         ]
         for (start, corner, end) in corners {
             ctx.move(to: start)
             ctx.addLine(to: corner)
             ctx.addLine(to: end)
         }
+
+        let ehl = edgeHandleLength / 2
+        let cx = cr.midX, cy = cr.midY
+        ctx.move(to: CGPoint(x: cx - ehl, y: cr.minY - hw))
+        ctx.addLine(to: CGPoint(x: cx + ehl, y: cr.minY - hw))
+        ctx.move(to: CGPoint(x: cx - ehl, y: cr.maxY + hw))
+        ctx.addLine(to: CGPoint(x: cx + ehl, y: cr.maxY + hw))
+        ctx.move(to: CGPoint(x: cr.minX - hw, y: cy - ehl))
+        ctx.addLine(to: CGPoint(x: cr.minX - hw, y: cy + ehl))
+        ctx.move(to: CGPoint(x: cr.maxX + hw, y: cy - ehl))
+        ctx.addLine(to: CGPoint(x: cr.maxX + hw, y: cy + ehl))
+
         ctx.strokePath()
     }
 

@@ -469,11 +469,12 @@ class VideoTrimmerViewController: UIViewController {
         addChild(playerController)
         playerContainerView.addSubview(playerController.view)
         playerController.view.translatesAutoresizingMaskIntoConstraints = false
+        let bracketInset: CGFloat = 4
         NSLayoutConstraint.activate([
-            playerController.view.leadingAnchor.constraint(equalTo: playerContainerView.leadingAnchor),
-            playerController.view.trailingAnchor.constraint(equalTo: playerContainerView.trailingAnchor),
-            playerController.view.topAnchor.constraint(equalTo: playerContainerView.topAnchor),
-            playerController.view.bottomAnchor.constraint(equalTo: playerContainerView.bottomAnchor)
+            playerController.view.leadingAnchor.constraint(equalTo: playerContainerView.leadingAnchor, constant: bracketInset),
+            playerController.view.trailingAnchor.constraint(equalTo: playerContainerView.trailingAnchor, constant: -bracketInset),
+            playerController.view.topAnchor.constraint(equalTo: playerContainerView.topAnchor, constant: bracketInset),
+            playerController.view.bottomAnchor.constraint(equalTo: playerContainerView.bottomAnchor, constant: -bracketInset)
         ])
         
         // Add observer for the end of playback

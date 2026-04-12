@@ -50,12 +50,13 @@ class CropOverlayView @JvmOverloads constructor(
   private val borderWidth = dpToPx(1f)
   private val cornerLength = dpToPx(20f)
   private val cornerWidth = dpToPx(4f)
+  private val edgeHandleLength = dpToPx(20f)
   private val gridLineWidth = 1f / resources.displayMetrics.density
   private val edgeHitZone = dpToPx(30f)
 
   private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     style = Paint.Style.STROKE
-    color = Color.argb(153, 255, 255, 255)
+    color = Color.WHITE
     strokeWidth = borderWidth
   }
   private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -68,6 +69,7 @@ class CropOverlayView @JvmOverloads constructor(
     color = Color.WHITE
     strokeWidth = cornerWidth
     strokeCap = Paint.Cap.ROUND
+    strokeJoin = Paint.Join.ROUND
   }
   private val dimmingPaint = Paint().apply {
     color = Color.argb(140, 0, 0, 0)
@@ -140,14 +142,24 @@ class CropOverlayView @JvmOverloads constructor(
     }
 
     val cl = cornerLength
+    val hw = cornerWidth / 2f
     val path = Path()
     fun addCorner(sx: Float, sy: Float, cx: Float, cy: Float, ex: Float, ey: Float) {
       path.moveTo(sx, sy); path.lineTo(cx, cy); path.lineTo(ex, ey)
     }
-    addCorner(cr.left, cr.top + cl, cr.left, cr.top, cr.left + cl, cr.top)
-    addCorner(cr.right - cl, cr.top, cr.right, cr.top, cr.right, cr.top + cl)
-    addCorner(cr.left, cr.bottom - cl, cr.left, cr.bottom, cr.left + cl, cr.bottom)
-    addCorner(cr.right - cl, cr.bottom, cr.right, cr.bottom, cr.right, cr.bottom - cl)
+    addCorner(cr.left - hw, cr.top + cl, cr.left - hw, cr.top - hw, cr.left + cl, cr.top - hw)
+    addCorner(cr.right - cl, cr.top - hw, cr.right + hw, cr.top - hw, cr.right + hw, cr.top + cl)
+    addCorner(cr.left - hw, cr.bottom - cl, cr.left - hw, cr.bottom + hw, cr.left + cl, cr.bottom + hw)
+    addCorner(cr.right - cl, cr.bottom + hw, cr.right + hw, cr.bottom + hw, cr.right + hw, cr.bottom - cl)
+
+    val ehl = edgeHandleLength / 2f
+    val cx = cr.centerX()
+    val cy = cr.centerY()
+    path.moveTo(cx - ehl, cr.top - hw); path.lineTo(cx + ehl, cr.top - hw)
+    path.moveTo(cx - ehl, cr.bottom + hw); path.lineTo(cx + ehl, cr.bottom + hw)
+    path.moveTo(cr.left - hw, cy - ehl); path.lineTo(cr.left - hw, cy + ehl)
+    path.moveTo(cr.right + hw, cy - ehl); path.lineTo(cr.right + hw, cy + ehl)
+
     canvas.drawPath(path, cornerPaint)
   }
 

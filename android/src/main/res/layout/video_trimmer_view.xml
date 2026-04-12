@@ -94,8 +94,8 @@
 
       <ImageView
         android:id="@+id/undoBtn"
-        android:layout_width="22dp"
-        android:layout_height="22dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
         android:src="@drawable/arrow_uturn_backward"
         android:tint="#80FFFFFF"
         android:scaleType="fitCenter"
@@ -104,8 +104,8 @@
 
       <ImageView
         android:id="@+id/redoBtn"
-        android:layout_width="22dp"
-        android:layout_height="22dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
         android:src="@drawable/arrow_uturn_forward"
         android:tint="#80FFFFFF"
         android:scaleType="fitCenter"
@@ -120,7 +120,9 @@
     android:layout_above="@+id/layout"
     android:layout_below="@+id/transformRow"
     android:background="@android:color/black"
-    android:clipChildren="true">
+    android:clipChildren="true"
+    android:clipToPadding="false"
+    android:paddingVertical="4dp">
 
     <TextureView
       android:id="@+id/video_loader"
