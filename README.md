@@ -24,8 +24,7 @@
 <div align="center">
   <h2>📱 Professional video trimmer for React Native apps</h2>
   
-  <img src="images/android.gif" width="300" />
-  <img src="images/ios.gif" width="300" />
+  <img src="images/ios.png" width="300" />
   
   <p>
     <strong>✅ iOS & Android</strong> • 
