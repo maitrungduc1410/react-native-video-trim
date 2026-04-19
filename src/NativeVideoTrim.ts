@@ -124,6 +124,11 @@ export interface EditorConfig extends BaseOptions {
    * this duration around the current trim position for more precise editing.
    */
   zoomOnWaitingDuration?: number;
+  /**
+   * Editor theme. `"dark"` (default) uses a black background with white UI elements.
+   * `"light"` uses a white background with black icons/text and white trimmer-handle chevrons.
+   */
+  theme?: string;
 }
 
 /**

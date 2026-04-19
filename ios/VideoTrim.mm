@@ -160,6 +160,11 @@ RCT_EXPORT_MODULE()
     dict[@"zoomOnWaitingDuration"] = @(zoomOnWaitingDurationOpt.value());
   }
   
+  NSString *theme = config.theme();
+  if (theme != nil) {
+    dict[@"theme"] = theme;
+  }
+  
   [self->videoTrim showEditor:filePath withConfig:dict];
 }
 

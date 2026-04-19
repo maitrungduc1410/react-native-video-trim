@@ -21,9 +21,10 @@ ios/                          # Flat directory — all Swift/Obj-C++ native code
   VideoTrim.mm                # Dual-arch RN bridge (New Arch: NativeVideoTrimSpecBase, Old Arch: RCT_EXTERN)
   VideoTrim.swift             # Core implementation: RCTEventEmitter, FFmpeg trim, editor, file helpers
   VideoTrimProtocol.swift     # Delegate protocol for New Arch event forwarding
-  VideoTrimmerViewController.swift  # Full-screen editor UI
+  VideoTrimmerViewController.swift  # Full-screen editor UI (theme, transforms, crop, player lifecycle)
   VideoTrimmer.swift          # Custom UIControl trimmer (thumbnails, handles, scrub, zoom)
   VideoTrimmerThumb.swift     # Trimmer handle visuals
+  CropOverlayView.swift       # Freeform crop overlay (brackets, grid, drag/pinch, theme-aware colors)
   AssetLoader.swift           # Async AVURLAsset loading
   ErrorCode.swift             # Error code enum
   ProgressAlertController.swift  # Modal progress UI during FFmpeg trim
@@ -39,7 +40,8 @@ android/
       enums/ErrorCode.java
       interfaces/             # VideoTrimListener, IVideoTrimmerView
       utils/                  # MediaMetadataUtil, StorageUtil, VideoTrimmerUtil
-      widgets/VideoTrimmerView.java  # Full-screen trimmer UI
+      widgets/VideoTrimmerView.kt    # Full-screen trimmer UI (theme, transforms, crop, player lifecycle)
+      widgets/CropOverlayView.kt     # Freeform crop overlay (brackets, grid, drag/pinch, theme-aware colors)
     java/iknow/android/utils/ # Screen, dp/px, background/UI thread helpers
     res/                      # Drawables, layout, colors, strings, file_paths.xml
   src/oldarch/                # Old Architecture module (ReactModule, DeviceEventEmitter)
@@ -173,6 +175,9 @@ Caching: Yarn deps, Gradle, CocoaPods, Turborepo outputs.
 - **Bridge pattern**: `VideoTrim.mm` is Obj-C++ — under New Arch it subclasses `NativeVideoTrimSpecBase` and holds a `VideoTrimSwift` instance; under Old Arch it uses `RCT_EXTERN_REMAP_MODULE`. Swift class `VideoTrim` (exposed as `VideoTrimSwift` to Obj-C) is the real implementation.
 - **Event forwarding (New Arch)**: Swift calls `delegate?.emitEventToJS(eventName:body:)` → Obj-C `VideoTrim` dispatches to codegen `emitOn*` methods.
 - **Frameworks**: `AVFoundation`, `AVKit`, `UIKit`, `Photos`.
+- **Theming**: `VideoTrimmerViewController` reads the `theme` prop from config and propagates `isLightTheme` to `VideoTrimmer`, `CropOverlayView`, and all alert dialogs. Light theme uses white background, black icons/text, and black crop overlay brackets/grid.
+- **Background handling**: Player pauses automatically when the app resigns active (`UIApplication.willResignActiveNotification`).
+- **Crop overlay animation**: Rotation triggers a cross-fade (fade out → rotate video → update crop rect → fade in) rather than rotating the overlay directly.
 
 ### Android
 
@@ -183,6 +188,10 @@ Caching: Yarn deps, Gradle, CocoaPods, Turborepo outputs.
 - **FFmpeg dependency**: `io.github.maitrungduc1410:ffmpeg-kit-<package>:<version>` configurable via `gradle.properties` or consumer's root `ext`/properties.
 - **FileProvider**: Declared in `AndroidManifest.xml` for file sharing/saving.
 - **Min SDK**: 24, Target: 34, Compile: 35.
+- **Theming**: `VideoTrimmerView` reads the `theme` prop and calls `applyThemeColors()` to set background/text/icon colors and crop overlay bracket/grid colors. Light theme uses white background, black icons/text, and black crop brackets/grid.
+- **Background handling**: `BaseVideoTrimModule` implements `LifecycleEventListener`; `onHostPause` pauses the media player. `onSurfaceTextureDestroyed` returns `false` to keep the SurfaceTexture alive, preserving the video frame across backgrounding.
+- **Haptic feedback**: Uses lighter amplitudes (30 for light feedback, 80 for heavy) and triggers haptic when trimmer handles hit absolute video boundaries (start/end of timeline).
+- **Crop overlay animation**: Same cross-fade pattern as iOS during rotation.
 
 ## Testing
 
@@ -203,7 +212,12 @@ Uses `release-it` with `@release-it/conventional-changelog` (Angular preset). Bu
 | `src/OldArch.ts` | Old Architecture NativeModules bridge |
 | `ios/VideoTrim.mm` | iOS dual-arch native bridge |
 | `ios/VideoTrim.swift` | iOS core implementation |
+| `ios/VideoTrimmerViewController.swift` | iOS editor UI — theme, transforms, crop, player lifecycle |
+| `ios/VideoTrimmer.swift` | iOS trimmer control — timeline, thumbnails, handles |
+| `ios/CropOverlayView.swift` | iOS crop overlay — brackets, grid, theme-aware colors |
 | `android/.../BaseVideoTrimModule.kt` | Android core implementation |
+| `android/.../widgets/VideoTrimmerView.kt` | Android editor UI — theme, transforms, crop, player lifecycle |
+| `android/.../widgets/CropOverlayView.kt` | Android crop overlay — brackets, grid, theme-aware colors |
 | `android/src/oldarch/VideoTrimModule.kt` | Android Old Arch module |
 | `android/src/newarch/VideoTrimModule.kt` | Android New Arch module |
 | `VideoTrim.podspec` | CocoaPods spec for iOS |

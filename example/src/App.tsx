@@ -135,6 +135,7 @@ export default function App() {
             // const url3 =
             //   'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
             showEditor(result.assets![0]?.uri || '', {
+              // theme: 'light',
               // showEditor(url3, {
               //   type: 'audio',
               // outputExt: 'wav',

@@ -181,6 +181,9 @@ class VideoTrimmerView(
 
   private var trimmerColor = context.getString(R.string.trim_color).toColorInt()
   private var handleIconColor = Color.BLACK
+  private var isLightTheme = false
+  private val iconColor: Int get() = if (isLightTheme) Color.BLACK else Color.WHITE
+  private val dimmedIconColor: Int get() = if (isLightTheme) Color.argb(128, 0, 0, 0) else Color.argb(128, 255, 255, 255)
   private lateinit var leadingChevron: ImageView
   private lateinit var trailingChevron: ImageView
 
@@ -266,10 +269,19 @@ class VideoTrimmerView(
       }
       mVideoView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-          setupVideoPlayer(st, videoURI)
+          val mp = mediaPlayer
+          if (mp != null) {
+            videoSurface?.release()
+            videoSurface = Surface(st)
+            mp.setSurface(videoSurface)
+          } else {
+            setupVideoPlayer(st, videoURI)
+          }
         }
         override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
-        override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean = true
+        override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+          return false
+        }
         override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
       }
     } else {
@@ -525,9 +537,9 @@ class VideoTrimmerView(
     undoBtn.setOnClickListener { onUndoTapped() }
     redoBtn.setOnClickListener { onRedoTapped() }
 
-    cropBtn.setColorFilter(Color.argb(128, 255, 255, 255), android.graphics.PorterDuff.Mode.SRC_IN)
-    undoBtn.setColorFilter(Color.argb(128, 255, 255, 255), android.graphics.PorterDuff.Mode.SRC_IN)
-    redoBtn.setColorFilter(Color.argb(128, 255, 255, 255), android.graphics.PorterDuff.Mode.SRC_IN)
+    cropBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+    undoBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+    redoBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
   }
 
   fun onSaveClicked() {
@@ -642,6 +654,8 @@ class VideoTrimmerView(
       mMinDuration = maxOf(1000L, config.getDouble("minDuration").toLong())
     }
 
+    isLightTheme = config.hasKey("theme") && config.getString("theme") == "light"
+
     cancelBtn.text = config.getString("cancelButtonText")
     saveBtn.text = config.getString("saveButtonText")
     isVideoType = config.hasKey("type") && config.getString("type") == "video"
@@ -682,9 +696,10 @@ class VideoTrimmerView(
     trimmerColor = if (config.hasKey("trimmerColor")) config.getInt("trimmerColor") else context.getString(
       R.string.trim_color
     ).toColorInt()
-    handleIconColor = if (config.hasKey("handleIconColor")) config.getInt("handleIconColor") else Color.BLACK
+    handleIconColor = if (config.hasKey("handleIconColor")) config.getInt("handleIconColor") else (if (isLightTheme) Color.WHITE else Color.BLACK)
 
     applyTrimmerColor()
+    applyThemeColors()
   }
 
   private fun applyTrimmerColor() {
@@ -711,6 +726,39 @@ class VideoTrimmerView(
 
     leadingChevron.setColorFilter(handleIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
     trailingChevron.setColorFilter(handleIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+  }
+
+  private fun applyThemeColors() {
+    val bgColor = if (isLightTheme) Color.WHITE else Color.BLACK
+    val textColor = if (isLightTheme) Color.BLACK else Color.WHITE
+    val overlayColor = if (isLightTheme) Color.argb(153, 255, 255, 255) else Color.argb(191, 0, 0, 0)
+
+    // Backgrounds
+    (findViewById<View>(R.id.layout) as? RelativeLayout)?.setBackgroundColor(bgColor)
+    headerView.setBackgroundColor(bgColor)
+    transformRow.setBackgroundColor(bgColor)
+    videoContainer.setBackgroundColor(bgColor)
+
+    // Text colors
+    cancelBtn.setTextColor(iconColor)
+    startTimeText.setTextColor(textColor)
+    currentTimeText.setTextColor(textColor)
+    endTimeText.setTextColor(textColor)
+
+    // Play icon
+    mPlayView.setColorFilter(iconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+
+    // Transform toolbar icons
+    flipBtn.setColorFilter(iconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+    rotateBtn.setColorFilter(iconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+    cropBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+    undoBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+    redoBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+
+    // Overlays
+    leadingOverlay.setBackgroundColor(overlayColor)
+    trailingOverlay.setBackgroundColor(overlayColor)
+
   }
 
   private fun dpToPx(dp: Int): Int {
@@ -925,9 +973,14 @@ class VideoTrimmerView(
           var newX = event.rawX - view.width.toFloat() / 2
 
           if (isLeading) {
+            val unclamped = newX
             newX = maxOf(0f, minOf(newX, trailingHandle.x - view.width))
+            if (unclamped < 0f) didClamp = true
           } else {
-            newX = minOf(trimmerContainerBg.width.toFloat() + view.width, maxOf(newX, leadingHandle.x + view.width))
+            val unclamped = newX
+            val maxX = trimmerContainerBg.width.toFloat() + view.width
+            newX = minOf(maxX, maxOf(newX, leadingHandle.x + view.width))
+            if (unclamped > maxX) didClamp = true
           }
 
           view.x = newX
@@ -1071,7 +1124,8 @@ class VideoTrimmerView(
 
   private fun playHapticFeedback(isLight: Boolean) {
     if (vibrator != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && enableHapticFeedback) {
-      vibrator!!.vibrate(VibrationEffect.createOneShot(if (isLight) 10L else 25L, VibrationEffect.DEFAULT_AMPLITUDE))
+      val amplitude = if (isLight) 30 else 80
+      vibrator!!.vibrate(VibrationEffect.createOneShot(if (isLight) 8L else 15L, amplitude))
     }
   }
 
@@ -1320,7 +1374,7 @@ class VideoTrimmerView(
     (videoContainer.height - videoContainer.paddingTop - videoContainer.paddingBottom).toFloat()
 
   private fun bracketOverflow(): Int =
-    TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics).toInt()
+    TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 8f, resources.displayMetrics).toInt()
 
   private fun onFlipTapped() {
     pushUndo()
@@ -1329,7 +1383,12 @@ class VideoTrimmerView(
     val fitScale = if (rotationCount % 2 != 0) {
       val cw = containerContentWidth()
       val ch = containerContentHeight()
-      if (cw > 0 && ch > 0) minOf(cw / ch, ch / cw) else 1f
+      val vw = mVideoView.width.toFloat()
+      val vh = mVideoView.height.toFloat()
+      val margin = bracketOverflow().toFloat()
+      val availW = cw - 2 * margin
+      val availH = ch - 2 * margin
+      if (availW > 0 && availH > 0 && vw > 0 && vh > 0) minOf(availW / vh, availH / vw) else 1f
     } else {
       1f
     }
@@ -1402,11 +1461,23 @@ class VideoTrimmerView(
     if (cw <= 0 || ch <= 0) return
 
     val fitScale = if (rotationCount % 2 != 0) {
-      minOf(cw / ch, ch / cw)
+      val vw = mVideoView.width.toFloat()
+      val vh = mVideoView.height.toFloat()
+      val margin = bracketOverflow().toFloat()
+      val availW = cw - 2 * margin
+      val availH = ch - 2 * margin
+      if (vw > 0 && vh > 0 && availW > 0 && availH > 0) minOf(availW / vh, availH / vw) else 1f
     } else {
       1f
     }
     val flipMul = if (isFlipped) -1f else 1f
+
+    if (isCropActive) {
+      cropOverlay?.animate()
+        ?.alpha(0f)
+        ?.setDuration(125)
+        ?.start()
+    }
 
     mVideoView.animate()
       .scaleX(flipMul * fitScale)
@@ -1418,6 +1489,10 @@ class VideoTrimmerView(
         if (resetCrop && isCropActive) {
           updateCropAllowedRect()
           cropOverlay?.resetCrop()
+          cropOverlay?.animate()
+            ?.alpha(1f)
+            ?.setDuration(125)
+            ?.start()
         }
       }
       .start()
@@ -1430,7 +1505,7 @@ class VideoTrimmerView(
   private fun onCropTapped() {
     isCropActive = !isCropActive
     cropBtn.setColorFilter(
-      if (isCropActive) Color.WHITE else Color.argb(128, 255, 255, 255),
+      if (isCropActive) iconColor else dimmedIconColor,
       android.graphics.PorterDuff.Mode.SRC_IN
     )
     playHapticFeedback(true)
@@ -1440,6 +1515,7 @@ class VideoTrimmerView(
   private fun showCropOverlay() {
     hideCropOverlayImmediate()
     val overlay = CropOverlayView(mContext)
+    overlay.isLightTheme = isLightTheme
     overlay.layoutParams = FrameLayout.LayoutParams(
       FrameLayout.LayoutParams.MATCH_PARENT,
       FrameLayout.LayoutParams.MATCH_PARENT
@@ -1475,6 +1551,7 @@ class VideoTrimmerView(
   private fun showCropOverlayImmediate() {
     hideCropOverlayImmediate()
     val overlay = CropOverlayView(mContext)
+    overlay.isLightTheme = isLightTheme
     overlay.layoutParams = FrameLayout.LayoutParams(
       FrameLayout.LayoutParams.MATCH_PARENT,
       FrameLayout.LayoutParams.MATCH_PARENT
@@ -1519,8 +1596,11 @@ class VideoTrimmerView(
 
     val pivotX = cw / 2f
     val pivotY = ch / 2f
+    val margin = bracketOverflow().toFloat()
+    val availW = cw - 2 * margin
+    val availH = ch - 2 * margin
     val fitScale = if (rotationCount % 2 != 0) {
-      minOf(cw / ch, ch / cw)
+      if (tvW > 0 && tvH > 0 && availW > 0 && availH > 0) minOf(availW / tvH, availH / tvW) else 1f
     } else {
       1f
     }
@@ -1623,8 +1703,13 @@ class VideoTrimmerView(
 
     val cw = containerContentWidth()
     val ch = containerContentHeight()
-    val fitScale = if (rotationCount % 2 != 0 && cw > 0 && ch > 0) {
-      minOf(cw / ch, ch / cw)
+    val vw = mVideoView.width.toFloat()
+    val vh = mVideoView.height.toFloat()
+    val margin = bracketOverflow().toFloat()
+    val availW = cw - 2 * margin
+    val availH = ch - 2 * margin
+    val fitScale = if (rotationCount % 2 != 0 && availW > 0 && availH > 0 && vw > 0 && vh > 0) {
+      minOf(availW / vh, availH / vw)
     } else {
       1f
     }
@@ -1634,17 +1719,14 @@ class VideoTrimmerView(
     val onComplete = Runnable {
       if (snap.isCropActive) {
         isCropActive = true
-        cropBtn.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)
+        cropBtn.setColorFilter(iconColor, android.graphics.PorterDuff.Mode.SRC_IN)
         showCropOverlayImmediate()
         updateCropAllowedRect()
         val norm = snap.cropNormalized
         if (norm != null) setCropFromNormalized(norm) else cropOverlay?.resetCrop()
       } else {
         isCropActive = false
-        cropBtn.setColorFilter(
-          Color.argb(128, 255, 255, 255),
-          android.graphics.PorterDuff.Mode.SRC_IN
-        )
+        cropBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
         hideCropOverlayImmediate()
       }
     }
@@ -1698,16 +1780,14 @@ class VideoTrimmerView(
   }
 
   private fun updateUndoRedoButtons() {
-    val dimmed = Color.argb(128, 255, 255, 255)
-    val active = Color.WHITE
     undoBtn.isEnabled = undoStack.isNotEmpty()
     undoBtn.setColorFilter(
-      if (undoStack.isNotEmpty()) active else dimmed,
+      if (undoStack.isNotEmpty()) iconColor else dimmedIconColor,
       android.graphics.PorterDuff.Mode.SRC_IN
     )
     redoBtn.isEnabled = redoStack.isNotEmpty()
     redoBtn.setColorFilter(
-      if (redoStack.isNotEmpty()) active else dimmed,
+      if (redoStack.isNotEmpty()) iconColor else dimmedIconColor,
       android.graphics.PorterDuff.Mode.SRC_IN
     )
   }

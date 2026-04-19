@@ -13,6 +13,9 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   private var vc: VideoTrimmerViewController?
   private var outputFile: URL?
   private var editorConfig: NSDictionary?
+  private var isLightTheme: Bool {
+    return (editorConfig?["theme"] as? String) == "light"
+  }
   
   // MARK: base options
   private var saveToPhoto: Bool {
@@ -289,7 +292,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       progressAlert.onDismiss = {
         if self.enableCancelTrimmingDialog {
           let dialogMessage = UIAlertController(title: self.cancelTrimmingDialogTitle, message: self.cancelTrimmingDialogMessage, preferredStyle: .alert)
-          dialogMessage.overrideUserInterfaceStyle = .dark
+          dialogMessage.overrideUserInterfaceStyle = self.isLightTheme ? .light : .dark
           
           // Create OK button with action handler
           let ok = UIAlertAction(title: self.cancelTrimmingDialogConfirmText, style: .destructive, handler: { (action) -> Void in
@@ -879,7 +882,7 @@ extension VideoTrim {
         
         // Create Alert
         let dialogMessage = UIAlertController(title: self.cancelDialogTitle, message: self.cancelDialogMessage, preferredStyle: .alert)
-        dialogMessage.overrideUserInterfaceStyle = .dark
+        dialogMessage.overrideUserInterfaceStyle = self.isLightTheme ? .light : .dark
         
         // Create OK button with action handler
         let ok = UIAlertAction(title: self.cancelDialogConfirmText, style: .destructive, handler: { (action) -> Void in
@@ -911,7 +914,7 @@ extension VideoTrim {
         
         // Create Alert
         let dialogMessage = UIAlertController(title: self.saveDialogTitle, message: self.saveDialogMessage, preferredStyle: .alert)
-        dialogMessage.overrideUserInterfaceStyle = .dark
+        dialogMessage.overrideUserInterfaceStyle = self.isLightTheme ? .light : .dark
         
         // Create OK button with action handler
         let ok = UIAlertAction(title: self.saveDialogConfirmText, style: .default, handler: { (action) -> Void in
@@ -1134,7 +1137,7 @@ extension VideoTrim {
     
     if alertOnFailToLoad {
       let dialogMessage = UIAlertController(title: alertOnFailTitle, message: alertOnFailMessage, preferredStyle: .alert)
-      dialogMessage.overrideUserInterfaceStyle = .dark
+      dialogMessage.overrideUserInterfaceStyle = isLightTheme ? .light : .dark
       
       // Create Cancel button with action handlder
       let ok = UIAlertAction(title: alertOnFailCloseText, style: .default)

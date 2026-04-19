@@ -106,9 +106,14 @@ export function showEditor(
   }
 ): void {
   const { headerTextColor, trimmerColor, handleIconColor } = config;
-  const _headerTextColor = processColor(headerTextColor || 'white');
+  const isLight = config.theme === 'light';
+  const _headerTextColor = processColor(
+    headerTextColor || (isLight ? 'black' : 'white')
+  );
   const _trimmerColor = processColor(trimmerColor || '#f1d247');
-  const _handleIconColor = processColor(handleIconColor || 'black');
+  const _handleIconColor = processColor(
+    handleIconColor || (isLight ? 'white' : 'black')
+  );
 
   VideoTrim.showEditor(
     filePath,

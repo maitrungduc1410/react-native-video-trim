@@ -12,6 +12,7 @@
   * [Behavior Options](#behavior-options)
 - [Platform Setup](#platform-setup)
 - [Advanced Features](#advanced-features)
+  * [Theming](#theming)
   * [Audio Trimming](#audio-trimming)
   * [Remote Files (HTTPS)](#remote-files-https)
   * [Video Transforms (Flip, Rotate, Crop)](#video-transforms-flip-rotate-crop)
@@ -47,6 +48,7 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 - **✅ File Validation** - Built-in validation for media files
 - **🗂️ File Management** - List, clean up, and delete specific files
 - **🔄 Universal Architecture** - Works with both New and Old React Native architectures
+- **🎨 Dark & Light Theme** - Built-in dark and light theme support
 
 ### 🎛️ Core Capabilities
 
@@ -59,6 +61,7 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 | **Save Options** | Photos, Documents, Share sheet integration |
 | **File Management** | Complete file lifecycle management |
 | **Customization** | Extensive UI and behavior customization |
+| **Theming** | Dark and light theme with automatic color adaptation |
 
 <div align="center">
   <img src="images/document_picker.png" width="250" />
@@ -281,14 +284,15 @@ All configuration options are optional. Here are the most commonly used ones:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `theme` | `'dark' \| 'light'` | `'dark'` | Editor color theme (see [Theming](#theming)) |
 | `cancelButtonText` | `string` | `"Cancel"` | Cancel button text |
 | `saveButtonText` | `string` | `"Save"` | Save button text |
 | `trimmingText` | `string` | `"Trimming video..."` | Progress dialog text |
 | `headerText` | `string` | - | Header text |
 | `headerTextSize` | `number` | `16` | Header text size |
-| `headerTextColor` | `string` | - | Header text color |
+| `headerTextColor` | `string` | - | Header text color (defaults to black in light theme, white in dark theme) |
 | `trimmerColor` | `string` | - | Trimmer bar color |
-| `handleIconColor` | `string` | - | Trimmer left/right handles color |
+| `handleIconColor` | `string` | - | Trimmer left/right handles color (defaults to black in light theme, white in dark theme) |
 | `fullScreenModalIOS` | `boolean` | `false` | Use fullscreen modal on iOS |
 
 ### Dialog Options
@@ -366,6 +370,7 @@ showEditor(videoPath, {
   removeAfterSavedToPhoto: true,
   
   // UI customization
+  theme: 'light',
   headerText: "Trim Your Video",
   cancelButtonText: "Back",
   saveButtonText: "Done",
@@ -396,6 +401,34 @@ buildscript {
 ```
 
 ## Advanced Features
+
+### Theming
+
+The editor supports dark and light themes. Set the `theme` option to switch between them:
+
+```javascript
+// Light theme
+showEditor(videoUrl, {
+  theme: 'light',
+});
+
+// Dark theme (default)
+showEditor(videoUrl, {
+  theme: 'dark',
+});
+```
+
+| | Dark (default) | Light |
+|---|---|---|
+| **Background** | Black | White |
+| **Icons & text** | White | Black |
+| **Cancel/Save text** | White | Black |
+| **Crop brackets & grid** | White | Black |
+| **Progress indicator** | White | White |
+| **Trimmer handle chevrons** | White | White |
+| **Dialogs** | Dark style | Light style |
+
+The `headerTextColor` and `handleIconColor` options automatically adapt to the active theme but can still be overridden explicitly.
 
 ### Audio Trimming
 

@@ -26,6 +26,10 @@ class CropOverlayView: UIView {
     var onCropBegan: (() -> Void)?
     var onCropEnded: (() -> Void)?
 
+    var isLightTheme = false {
+        didSet { setNeedsDisplay() }
+    }
+
     private let minCropSize: CGFloat = 60
     private let borderWidth: CGFloat = 1.0
     private let cornerLength: CGFloat = 20
@@ -73,16 +77,8 @@ class CropOverlayView: UIView {
         guard !cropRect.isEmpty, let ctx = UIGraphicsGetCurrentContext() else { return }
         let cr = cropRect
 
-        ctx.saveGState()
-        let fullPath = UIBezierPath(rect: bounds)
-        fullPath.append(UIBezierPath(rect: cr))
-        fullPath.usesEvenOddFillRule = true
-        ctx.addPath(fullPath.cgPath)
-        ctx.setFillColor(UIColor.black.withAlphaComponent(0.55).cgColor)
-        ctx.fillPath(using: .evenOdd)
-        ctx.restoreGState()
-
-        ctx.setStrokeColor(UIColor.white.cgColor)
+        let strokeColor = (isLightTheme ? UIColor.black : UIColor.white).cgColor
+        ctx.setStrokeColor(strokeColor)
         ctx.setLineWidth(borderWidth)
         ctx.stroke(cr)
 
@@ -99,7 +95,7 @@ class CropOverlayView: UIView {
         }
         ctx.strokePath()
 
-        ctx.setStrokeColor(UIColor.white.cgColor)
+        ctx.setStrokeColor(strokeColor)
         ctx.setLineWidth(cornerWidth)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)

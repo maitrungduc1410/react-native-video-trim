@@ -49,9 +49,11 @@ class VideoTrimmerViewController: UIViewController {
     private var enableHapticFeedback = true
     private var zoomOnWaitingDuration: Double = 5.0 // Default: 5 seconds
     
-    // New color properties
     private var trimmerColor: UIColor = UIColor.systemYellow
     private var handleIconColor: UIColor = UIColor.black
+    private var isLightTheme = false
+    private var iconColor: UIColor { isLightTheme ? .black : .white }
+    private var dimmedIconColor: UIColor { iconColor.withAlphaComponent(0.5) }
     
     private let playerController = AVPlayerViewController()
     private var trimmer: VideoTrimmer!
@@ -212,6 +214,14 @@ class VideoTrimmerViewController: UIViewController {
         setupView()
         setupButtons()
         setupTimeLabels()
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
+    }
+    
+    @objc private func appWillResignActive() {
+        guard asset != nil else { return }
+        player.pause()
+        setPlayBtnIcon()
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -228,8 +238,8 @@ class VideoTrimmerViewController: UIViewController {
             player.removeTimeObserver(token)
             timeObserverToken = nil
         }
-        // Remove observer
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: player.currentItem)
+        NotificationCenter.default.removeObserver(self, name: UIApplication.willResignActiveNotification, object: nil)
         
         playerController.player = nil
         playerController.dismiss(animated: false, completion: nil)
@@ -276,8 +286,8 @@ class VideoTrimmerViewController: UIViewController {
     
     // MARK: - Setup Methods
     private func setupView() {
-        self.overrideUserInterfaceStyle = .dark
-        view.backgroundColor = .black // need to have this otherwise during animation the background of this VC is still white in white theme
+        self.overrideUserInterfaceStyle = isLightTheme ? .light : .dark
+        view.backgroundColor = isLightTheme ? .white : .black
         
         if let headerText = headerText {
             headerView = UIView()
@@ -326,8 +336,8 @@ class VideoTrimmerViewController: UIViewController {
     }
     
     private func setupButtons() {
-        cancelBtn = UIButton.createButton(title: cancelButtonText, font: .systemFont(ofSize: 18), titleColor: .white, target: self, action: #selector(onCancelBtnClicked))
-        playBtn = UIButton.createButton(image: playIcon, tintColor: .white, target: self, action: #selector(togglePlay(sender:)))
+        cancelBtn = UIButton.createButton(title: cancelButtonText, font: .systemFont(ofSize: 18), titleColor: iconColor, target: self, action: #selector(onCancelBtnClicked))
+        playBtn = UIButton.createButton(image: playIcon, tintColor: iconColor, target: self, action: #selector(togglePlay(sender:)))
         playBtn.alpha = 0
         playBtn.isEnabled = false
         
@@ -354,11 +364,12 @@ class VideoTrimmerViewController: UIViewController {
     }
     
     private func setupTimeLabels() {
-        leadingTrimLabel = UILabel.createLabel(textAlignment: .left, textColor: .white)
+        let labelColor = isLightTheme ? UIColor.black : UIColor.white
+        leadingTrimLabel = UILabel.createLabel(textAlignment: .left, textColor: labelColor)
         leadingTrimLabel.text = "00:00.000"
-        currentTimeLabel = UILabel.createLabel(textAlignment: .center, textColor: .white)
+        currentTimeLabel = UILabel.createLabel(textAlignment: .center, textColor: labelColor)
         currentTimeLabel.text = "00:00.000"
-        trailingTrimLabel = UILabel.createLabel(textAlignment: .right, textColor: .white)
+        trailingTrimLabel = UILabel.createLabel(textAlignment: .right, textColor: labelColor)
         trailingTrimLabel.text = "00:00.000"
         
         timingStackView = UIStackView(arrangedSubviews: [leadingTrimLabel, currentTimeLabel, trailingTrimLabel])
@@ -377,6 +388,7 @@ class VideoTrimmerViewController: UIViewController {
     
     private func setupVideoTrimmer() {
         trimmer = VideoTrimmer()
+        trimmer.isLightTheme = isLightTheme
         trimmer.asset = asset
         trimmer.minimumDuration = CMTime(seconds: 1, preferredTimescale: 600)
         trimmer.enableHapticFeedback = enableHapticFeedback
@@ -469,12 +481,14 @@ class VideoTrimmerViewController: UIViewController {
         addChild(playerController)
         playerContainerView.addSubview(playerController.view)
         playerController.view.translatesAutoresizingMaskIntoConstraints = false
-        let bracketInset: CGFloat = 4
+        playerController.view.backgroundColor = .clear
+        
+        let bracketInset: CGFloat = 5
         NSLayoutConstraint.activate([
+            playerController.view.topAnchor.constraint(equalTo: playerContainerView.topAnchor, constant: bracketInset),
+            playerController.view.bottomAnchor.constraint(equalTo: playerContainerView.bottomAnchor, constant: -bracketInset),
             playerController.view.leadingAnchor.constraint(equalTo: playerContainerView.leadingAnchor, constant: bracketInset),
             playerController.view.trailingAnchor.constraint(equalTo: playerContainerView.trailingAnchor, constant: -bracketInset),
-            playerController.view.topAnchor.constraint(equalTo: playerContainerView.topAnchor, constant: bracketInset),
-            playerController.view.bottomAnchor.constraint(equalTo: playerContainerView.bottomAnchor, constant: -bracketInset)
         ])
         
         // Add observer for the end of playback
@@ -492,34 +506,33 @@ class VideoTrimmerViewController: UIViewController {
         guard isVideoType else { return }
         
         let symbolConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-        let dimmed = UIColor.white.withAlphaComponent(0.5)
         
         let flipBtn = UIButton(type: .system)
         flipBtn.setImage(UIImage(systemName: "arrow.trianglehead.left.and.right.righttriangle.left.righttriangle.right", withConfiguration: symbolConfig), for: .normal)
-        flipBtn.tintColor = .white
+        flipBtn.tintColor = iconColor
         flipBtn.addTarget(self, action: #selector(onFlipTapped), for: .touchUpInside)
         
         let rotateBtn = UIButton(type: .system)
         rotateBtn.setImage(UIImage(systemName: "rotate.left", withConfiguration: symbolConfig), for: .normal)
-        rotateBtn.tintColor = .white
+        rotateBtn.tintColor = iconColor
         rotateBtn.addTarget(self, action: #selector(onRotateTapped), for: .touchUpInside)
         
         let cropButton = UIButton(type: .system)
         cropButton.setImage(UIImage(systemName: "crop", withConfiguration: symbolConfig), for: .normal)
-        cropButton.tintColor = UIColor.white.withAlphaComponent(0.5)
+        cropButton.tintColor = dimmedIconColor
         cropButton.addTarget(self, action: #selector(onCropTapped), for: .touchUpInside)
         self.cropBtn = cropButton
         
         let undoButton = UIButton(type: .system)
         undoButton.setImage(UIImage(systemName: "arrow.uturn.backward", withConfiguration: symbolConfig), for: .normal)
-        undoButton.tintColor = dimmed
+        undoButton.tintColor = dimmedIconColor
         undoButton.isEnabled = false
         undoButton.addTarget(self, action: #selector(onUndoTapped), for: .touchUpInside)
         self.undoBtn = undoButton
         
         let redoButton = UIButton(type: .system)
         redoButton.setImage(UIImage(systemName: "arrow.uturn.forward", withConfiguration: symbolConfig), for: .normal)
-        redoButton.tintColor = dimmed
+        redoButton.tintColor = dimmedIconColor
         redoButton.isEnabled = false
         redoButton.addTarget(self, action: #selector(onRedoTapped), for: .touchUpInside)
         self.redoBtn = redoButton
@@ -583,29 +596,63 @@ class VideoTrimmerViewController: UIViewController {
         updateVideoTransform(resetCrop: true)
     }
     
-    private func updateVideoTransform(resetCrop: Bool = false) {
+    private func buildVideoTransform() -> CGAffineTransform {
         let angle = -CGFloat(rotationCount) * (.pi / 2)
         var transform = CGAffineTransform.identity
-        
         if isFlipped {
             transform = transform.scaledBy(x: -1, y: 1)
         }
         transform = transform.rotated(by: angle)
-        
         if rotationCount % 2 != 0 {
-            let bounds = playerContainerView.bounds
-            if bounds.width > 0 && bounds.height > 0 {
-                let fitScale = min(bounds.width / bounds.height, bounds.height / bounds.width)
+            let pvBounds = playerController.view.bounds
+            let cBounds = playerContainerView.bounds
+            if pvBounds.width > 0 && pvBounds.height > 0 && cBounds.width > 0 && cBounds.height > 0 {
+                var videoW = pvBounds.width
+                var videoH = pvBounds.height
+                if let track = asset?.tracks(withMediaType: .video).first {
+                    let raw = track.naturalSize
+                    let pt = track.preferredTransform
+                    let a = atan2(pt.b, pt.a)
+                    let srcRotated = abs(a - .pi / 2) < 0.1 || abs(a + .pi / 2) < 0.1
+                    let ds = srcRotated ? CGSize(width: raw.height, height: raw.width) : raw
+                    if ds.width > 0 && ds.height > 0 {
+                        let videoAR = ds.width / ds.height
+                        let viewAR = pvBounds.width / pvBounds.height
+                        if videoAR > viewAR {
+                            videoW = pvBounds.width
+                            videoH = pvBounds.width / videoAR
+                        } else {
+                            videoH = pvBounds.height
+                            videoW = pvBounds.height * videoAR
+                        }
+                    }
+                }
+                let bracketMargin: CGFloat = 5
+                let availW = cBounds.width - 2 * bracketMargin
+                let availH = cBounds.height - 2 * bracketMargin
+                let fitScale = min(availW / videoH, availH / videoW)
                 transform = transform.scaledBy(x: fitScale, y: fitScale)
             }
         }
-        
+        return transform
+    }
+    
+    private func updateVideoTransform(resetCrop: Bool = false) {
+        let transform = buildVideoTransform()
+        if isCropActive {
+            UIView.animate(withDuration: 0.15) {
+                self.cropOverlayView?.alpha = 0
+            }
+        }
         UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut]) {
             self.playerController.view.transform = transform
         } completion: { _ in
             if resetCrop && self.isCropActive {
                 self.updateCropAllowedRect()
                 self.cropOverlayView?.resetCrop()
+                UIView.animate(withDuration: 0.15) {
+                    self.cropOverlayView?.alpha = 1
+                }
             }
         }
     }
@@ -645,21 +692,11 @@ class VideoTrimmerViewController: UIViewController {
         rotationCount = snap.rotationCount
         isFlipped = snap.isFlipped
         
-        let angle = -CGFloat(rotationCount) * (.pi / 2)
-        var transform = CGAffineTransform.identity
-        if isFlipped { transform = transform.scaledBy(x: -1, y: 1) }
-        transform = transform.rotated(by: angle)
-        if rotationCount % 2 != 0 {
-            let bounds = playerContainerView.bounds
-            if bounds.width > 0 && bounds.height > 0 {
-                let fitScale = min(bounds.width / bounds.height, bounds.height / bounds.width)
-                transform = transform.scaledBy(x: fitScale, y: fitScale)
-            }
-        }
+        let transform = buildVideoTransform()
         
         let wasActive = isCropActive
         isCropActive = snap.isCropActive
-        cropBtn?.tintColor = isCropActive ? .white : UIColor.white.withAlphaComponent(0.5)
+        cropBtn?.tintColor = isCropActive ? iconColor : dimmedIconColor
         
         UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut]) {
             self.playerController.view.transform = transform
@@ -691,10 +728,9 @@ class VideoTrimmerViewController: UIViewController {
     }
     
     private func updateUndoRedoButtons() {
-        let dimmed = UIColor.white.withAlphaComponent(0.5)
-        undoBtn?.tintColor = undoStack.isEmpty ? dimmed : .white
+        undoBtn?.tintColor = undoStack.isEmpty ? dimmedIconColor : iconColor
         undoBtn?.isEnabled = !undoStack.isEmpty
-        redoBtn?.tintColor = redoStack.isEmpty ? dimmed : .white
+        redoBtn?.tintColor = redoStack.isEmpty ? dimmedIconColor : iconColor
         redoBtn?.isEnabled = !redoStack.isEmpty
     }
     
@@ -702,7 +738,7 @@ class VideoTrimmerViewController: UIViewController {
     
     @objc private func onCropTapped() {
         isCropActive.toggle()
-        cropBtn?.tintColor = isCropActive ? .white : UIColor.white.withAlphaComponent(0.5)
+        cropBtn?.tintColor = isCropActive ? iconColor : dimmedIconColor
         
         if enableHapticFeedback {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -743,6 +779,7 @@ class VideoTrimmerViewController: UIViewController {
     
     private func createCropOverlay() {
         let overlay = CropOverlayView()
+        overlay.isLightTheme = isLightTheme
         overlay.translatesAutoresizingMaskIntoConstraints = false
         overlay.alpha = 0
         playerContainerView.addSubview(overlay)
@@ -916,6 +953,8 @@ class VideoTrimmerViewController: UIViewController {
       minimumDuration = minDuration
     }
     
+    isLightTheme = (config["theme"] as? String) == "light"
+    
     cancelButtonText = config["cancelButtonText"] as? String ?? "Cancel"
     saveButtonText = config["saveButtonText"] as? String ?? "Save"
     jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Double ?? 0
@@ -927,12 +966,11 @@ class VideoTrimmerViewController: UIViewController {
     headerTextSize = config["headerTextSize"] as? Int ?? 16
     headerTextColor = config["headerTextColor"] as? Double
     
-    // Handle new color properties
     if let trimmerColorValue = config["trimmerColor"] as? Double {
         trimmerColor = RCTConvert.uiColor(trimmerColorValue) ?? UIColor.systemYellow
     }
     if let handleIconColorValue = config["handleIconColor"] as? Double {
-        handleIconColor = RCTConvert.uiColor(handleIconColorValue) ?? UIColor.black
+        handleIconColor = RCTConvert.uiColor(handleIconColorValue) ?? (isLightTheme ? .white : .black)
     }
   }
     

@@ -133,10 +133,10 @@ import AVFoundation
         }
     }
     
-    // the asset to use
     var asset: AVAsset? {
         didSet {
             if let asset = asset {
+                applyThemeColors()
                 let duration = asset.duration
                 range = CMTimeRange(start: .zero, duration: duration)
                 selectedRange = range
@@ -159,6 +159,7 @@ import AVFoundation
     var maximumDuration: CMTime = .positiveInfinity
     var enableHapticFeedback = true
     var zoomOnWaitingDuration: Double = 5.0 // Default: 5 seconds
+    var isLightTheme = false
     
     // the available range of the asset.
     // Will be set to the full duration of the asset when assigning a new asset
@@ -219,14 +220,12 @@ import AVFoundation
     // yes if the user is scrubbing the progress indicator
     private(set) var isScrubbing = false
     
-    // background color for the track
     var trackBackgroundColor = UIColor.black {
         didSet {
             thumbnailWrapperView.backgroundColor = trackBackgroundColor
         }
     }
     
-    // background color for the place where the thumbs rest on when the selectedRange == range
     var thumbRestColor = UIColor.black {
         didSet {
             leadingThumbRest.backgroundColor = thumbRestColor
@@ -276,6 +275,16 @@ import AVFoundation
     
     
     // MARK: - Private
+    private func applyThemeColors() {
+        let bg: UIColor = isLightTheme ? .white : .black
+        let coverAlpha: CGFloat = isLightTheme ? 0.6 : 0.75
+        trackBackgroundColor = bg
+        thumbRestColor = bg
+        thumbnailLeadingCoverView.backgroundColor = UIColor(white: isLightTheme ? 1 : 0, alpha: coverAlpha)
+        thumbnailTrailingCoverView.backgroundColor = UIColor(white: isLightTheme ? 1 : 0, alpha: coverAlpha)
+        shadowView.layer.shadowColor = (isLightTheme ? UIColor.gray : UIColor.black).cgColor
+    }
+    
     private func setup() {
         addSubview(thumbnailClipView)
         thumbnailClipView.addSubview(thumbnailWrapperView)
@@ -285,8 +294,6 @@ import AVFoundation
         thumbnailWrapperView.addSubview(thumbnailLeadingCoverView)
         thumbnailWrapperView.addSubview(thumbnailTrailingCoverView)
         
-        progressIndicator.backgroundColor = .white
-        progressIndicator.layer.shadowColor = UIColor.black.cgColor
         progressIndicator.layer.shadowOffset = .zero
         progressIndicator.layer.shadowRadius = 2
         progressIndicator.layer.shadowOpacity = 0.25
@@ -302,13 +309,7 @@ import AVFoundation
         
         thumbnailClipView.clipsToBounds = true
         thumbnailTrackView.clipsToBounds = true
-        thumbnailLeadingCoverView.backgroundColor = UIColor(white: 0, alpha: 0.75)
-        thumbnailTrailingCoverView.backgroundColor = UIColor(white: 0, alpha: 0.75)
         
-        leadingThumbRest.backgroundColor = thumbRestColor
-        trailingThumbRest.backgroundColor = thumbRestColor
-        
-        thumbnailWrapperView.backgroundColor = trackBackgroundColor
         thumbnailWrapperView.layer.cornerRadius = 6
         thumbnailWrapperView.layer.cornerCurve = .continuous
         
@@ -320,10 +321,19 @@ import AVFoundation
         trailingThumbRest.layer.maskedCorners = [.layerMaxXMaxYCorner, .layerMaxXMinYCorner]
         trailingThumbRest.layer.cornerCurve = .continuous
         
-        shadowView.layer.shadowColor = UIColor.black.cgColor
         shadowView.layer.shadowOffset = .zero
         shadowView.layer.shadowRadius = 2
         shadowView.layer.shadowOpacity = 0.25
+        
+        // Apply default (dark theme) colors — overridden by applyThemeColors() when asset is set
+        progressIndicator.backgroundColor = .white
+        progressIndicator.layer.shadowColor = UIColor.black.cgColor
+        thumbnailLeadingCoverView.backgroundColor = UIColor(white: 0, alpha: 0.75)
+        thumbnailTrailingCoverView.backgroundColor = UIColor(white: 0, alpha: 0.75)
+        leadingThumbRest.backgroundColor = thumbRestColor
+        trailingThumbRest.backgroundColor = thumbRestColor
+        thumbnailWrapperView.backgroundColor = trackBackgroundColor
+        shadowView.layer.shadowColor = UIColor.black.cgColor
         
         setupConstraints()
         setupGestures()

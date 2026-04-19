@@ -6,8 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.graphics.Region
-import android.os.Build
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.MotionEvent
@@ -46,6 +44,16 @@ class CropOverlayView @JvmOverloads constructor(
   var onCropBegan: (() -> Unit)? = null
   var onCropEnded: (() -> Unit)? = null
 
+  var isLightTheme = false
+    set(value) {
+      field = value
+      val c = if (value) Color.BLACK else Color.WHITE
+      borderPaint.color = c
+      gridPaint.color = c
+      cornerPaint.color = c
+      invalidate()
+    }
+
   private val minCropSize = dpToPx(60f)
   private val borderWidth = dpToPx(1f)
   private val cornerLength = dpToPx(20f)
@@ -70,10 +78,6 @@ class CropOverlayView @JvmOverloads constructor(
     strokeWidth = cornerWidth
     strokeCap = Paint.Cap.ROUND
     strokeJoin = Paint.Join.ROUND
-  }
-  private val dimmingPaint = Paint().apply {
-    color = Color.argb(140, 0, 0, 0)
-    style = Paint.Style.FILL
   }
 
   private enum class DragEdge {
@@ -128,8 +132,6 @@ class CropOverlayView @JvmOverloads constructor(
     if (cropRect.isEmpty) return
     val cr = cropRect
 
-    drawDimming(canvas, cr)
-
     canvas.drawRect(cr, borderPaint)
 
     for (i in 1..2) {
@@ -163,22 +165,6 @@ class CropOverlayView @JvmOverloads constructor(
     canvas.drawPath(path, cornerPaint)
   }
 
-  private fun drawDimming(canvas: Canvas, cr: RectF) {
-    canvas.save()
-    val fullPath = Path()
-    fullPath.addRect(0f, 0f, width.toFloat(), height.toFloat(), Path.Direction.CW)
-    val cropPath = Path()
-    cropPath.addRect(cr, Path.Direction.CW)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      fullPath.op(cropPath, Path.Op.DIFFERENCE)
-      canvas.drawPath(fullPath, dimmingPaint)
-    } else {
-      @Suppress("DEPRECATION")
-      canvas.clipPath(cropPath, Region.Op.DIFFERENCE)
-      canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimmingPaint)
-    }
-    canvas.restore()
-  }
 
   override fun onTouchEvent(event: MotionEvent): Boolean {
     if (event.pointerCount > 1) {
