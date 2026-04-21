@@ -73,6 +73,11 @@ function createEditorConfig(
     alertOnFailMessage:
       'Fail to load media. Possibly invalid file or no network connection',
     alertOnFailCloseText: 'Close',
+    waveformColor: processColor('white') as number,
+    waveformBackgroundColor: processColor('#3478F6') as number,
+    waveformBarWidth: 3,
+    waveformBarGap: 2,
+    waveformBarCornerRadius: 1.5,
     ...createBaseOptions(overrides),
     ...overrides,
   };
@@ -98,14 +103,29 @@ function createTrimOptions(overrides: Partial<TrimOptions> = {}): TrimOptions {
 export function showEditor(
   filePath: string,
   config: Partial<
-    Omit<EditorConfig, 'headerTextColor' | 'trimmerColor' | 'handleIconColor'>
+    Omit<
+      EditorConfig,
+      | 'headerTextColor'
+      | 'trimmerColor'
+      | 'handleIconColor'
+      | 'waveformColor'
+      | 'waveformBackgroundColor'
+    >
   > & {
     headerTextColor?: string;
     trimmerColor?: string;
     handleIconColor?: string;
+    waveformColor?: string;
+    waveformBackgroundColor?: string;
   }
 ): void {
-  const { headerTextColor, trimmerColor, handleIconColor } = config;
+  const {
+    headerTextColor,
+    trimmerColor,
+    handleIconColor,
+    waveformColor,
+    waveformBackgroundColor,
+  } = config;
   const isLight = config.theme === 'light';
   const _headerTextColor = processColor(
     headerTextColor || (isLight ? 'black' : 'white')
@@ -113,6 +133,10 @@ export function showEditor(
   const _trimmerColor = processColor(trimmerColor || '#f1d247');
   const _handleIconColor = processColor(
     handleIconColor || (isLight ? 'white' : 'black')
+  );
+  const _waveformColor = processColor(waveformColor || 'white');
+  const _waveformBackgroundColor = processColor(
+    waveformBackgroundColor || '#3478F6'
   );
 
   VideoTrim.showEditor(
@@ -122,6 +146,8 @@ export function showEditor(
       headerTextColor: _headerTextColor as any,
       trimmerColor: _trimmerColor as any,
       handleIconColor: _handleIconColor as any,
+      waveformColor: _waveformColor as any,
+      waveformBackgroundColor: _waveformBackgroundColor as any,
     })
   );
 }

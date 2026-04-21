@@ -22,8 +22,9 @@ ios/                          # Flat directory — all Swift/Obj-C++ native code
   VideoTrim.swift             # Core implementation: RCTEventEmitter, FFmpeg trim, editor, file helpers
   VideoTrimProtocol.swift     # Delegate protocol for New Arch event forwarding
   VideoTrimmerViewController.swift  # Full-screen editor UI (theme, transforms, crop, player lifecycle)
-  VideoTrimmer.swift          # Custom UIControl trimmer (thumbnails, handles, scrub, zoom)
+  VideoTrimmer.swift          # Custom UIControl trimmer (thumbnails, handles, scrub, zoom, waveform)
   VideoTrimmerThumb.swift     # Trimmer handle visuals
+  AudioWaveformView.swift     # UIView that renders audio waveform bars (rounded-rect, normalised amplitudes)
   CropOverlayView.swift       # Freeform crop overlay (brackets, grid, drag/pinch, theme-aware colors)
   AssetLoader.swift           # Async AVURLAsset loading
   ErrorCode.swift             # Error code enum
@@ -40,7 +41,8 @@ android/
       enums/ErrorCode.java
       interfaces/             # VideoTrimListener, IVideoTrimmerView
       utils/                  # MediaMetadataUtil, StorageUtil, VideoTrimmerUtil
-      widgets/VideoTrimmerView.kt    # Full-screen trimmer UI (theme, transforms, crop, player lifecycle)
+      widgets/VideoTrimmerView.kt    # Full-screen trimmer UI (theme, transforms, crop, player lifecycle, waveform)
+      widgets/AudioWaveformView.kt   # Custom View that renders audio waveform bars (rounded-rect, normalised amplitudes)
       widgets/CropOverlayView.kt     # Freeform crop overlay (brackets, grid, drag/pinch, theme-aware colors)
     java/iknow/android/utils/ # Screen, dp/px, background/UI thread helpers
     res/                      # Drawables, layout, colors, strings, file_paths.xml
@@ -81,6 +83,43 @@ Both platforms emit the same logical events: `onShow`, `onHide`, `onLoad`, `onSt
 ### Factory Functions
 
 `src/index.tsx` provides `createBaseOptions`, `createEditorConfig`, and `createTrimOptions` that merge user overrides with defaults and run `processColor` on color string props before passing to native.
+
+### Audio Waveform Visualization
+
+When the editor opens an audio file (`type: "audio"`), the thumbnail track is replaced with a waveform bar visualization. Both platforms follow the same strategy:
+
+1. **Amplitude extraction** — PCM samples are decoded from the audio track and grouped into per-bar buckets. Each bar's height is the RMS (root-mean-square) of its bucket, normalised so the loudest bar = 1.0. This produces visually consistent output across platforms.
+2. **Remote file handling** — `AVAssetReader` (iOS) and `MediaExtractor` (Android) both require (or strongly benefit from) local file access. Remote URLs are downloaded once to a temporary cache file; all subsequent reads (including zoom re-extractions) use the cached file, avoiding redundant network I/O.
+3. **Zoom** — On zoom-in the visible time range narrows; the waveform is re-extracted for that sub-range at higher resolution. On zoom-out the cached full-view amplitudes are restored instantly.
+
+#### iOS
+
+- **Decode**: `AVAssetReader` + `AVAssetReaderTrackOutput` with 32-bit float PCM output settings.
+- **Remote URL workaround**: `AVAssetReader` rejects non-local URLs. `downloadAudioForWaveform()` uses `URLSession.downloadTask` to save to a temp file with a correct file extension inferred from HTTP headers (Content-Disposition → MIME type → URL path → `m4a` fallback). iOS's `AVURLAsset` relies on the extension to identify the codec.
+- **Rendering**: `AudioWaveformView` (UIView) draws all bars in a single `CGContext` pass via `UIBezierPath(roundedRect:)`.
+- **Cleanup**: `deinit` + `asset.didSet` cancel the download task, asset reader, and delete the temp file. `viewWillDisappear` sets `trimmer.asset = nil` to trigger cleanup.
+
+#### Android
+
+- **Decode**: `MediaExtractor` (demux) → `MediaCodec` (hardware PCM decode, 16-bit short). RMS is accumulated on-the-fly into per-bar buckets.
+- **Remote URL handling**: `resolveLocalAudioPath()` downloads via `HttpURLConnection` to `cacheDir` with a `.tmp` extension. Android's `MediaExtractor` probes file content for codec detection, so the extension doesn't matter.
+- **Progressive display**: The decode loop fires `onProgress` callbacks at 5 % and then every 20 % of bars filled, so the UI renders incrementally.
+- **Rendering**: `AudioWaveformView` (custom View) draws bars via `Canvas.drawRoundRect()`.
+- **Cleanup**: `onDestroy()` sets `isGeneratingWaveform = false` (background loops check this flag), cancels named `BackgroundExecutor` tasks, and deletes the temp file via `cleanupLocalAudioFile()`.
+
+#### JS API
+
+Waveform options are part of `EditorConfig` in `NativeVideoTrim.ts`:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `waveformColor` | color string | `"white"` | Bar fill color |
+| `waveformBackgroundColor` | color string | `"#3478F6"` | Track background behind bars |
+| `waveformBarWidth` | number (dp/pt) | `3` | Width of each bar |
+| `waveformBarGap` | number (dp/pt) | `2` | Gap between bars |
+| `waveformBarCornerRadius` | number (dp/pt) | `1.5` | Corner radius for rounded bars |
+
+Colors are passed through `processColor()` in `src/index.tsx` before reaching native.
 
 ## Adding a New Feature
 
@@ -213,10 +252,12 @@ Uses `release-it` with `@release-it/conventional-changelog` (Angular preset). Bu
 | `ios/VideoTrim.mm` | iOS dual-arch native bridge |
 | `ios/VideoTrim.swift` | iOS core implementation |
 | `ios/VideoTrimmerViewController.swift` | iOS editor UI — theme, transforms, crop, player lifecycle |
-| `ios/VideoTrimmer.swift` | iOS trimmer control — timeline, thumbnails, handles |
+| `ios/VideoTrimmer.swift` | iOS trimmer control — timeline, thumbnails, handles, waveform |
+| `ios/AudioWaveformView.swift` | iOS waveform bar renderer |
 | `ios/CropOverlayView.swift` | iOS crop overlay — brackets, grid, theme-aware colors |
 | `android/.../BaseVideoTrimModule.kt` | Android core implementation |
-| `android/.../widgets/VideoTrimmerView.kt` | Android editor UI — theme, transforms, crop, player lifecycle |
+| `android/.../widgets/VideoTrimmerView.kt` | Android editor UI — theme, transforms, crop, player lifecycle, waveform |
+| `android/.../widgets/AudioWaveformView.kt` | Android waveform bar renderer |
 | `android/.../widgets/CropOverlayView.kt` | Android crop overlay — brackets, grid, theme-aware colors |
 | `android/src/oldarch/VideoTrimModule.kt` | Android Old Arch module |
 | `android/src/newarch/VideoTrimModule.kt` | Android New Arch module |

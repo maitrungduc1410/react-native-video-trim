@@ -134,14 +134,15 @@ export default function App() {
             // isValidFile(url2).then((res) => console.log('3isValidVideo:', res));
             // const url3 =
             //   'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
+            // showEditor('https://drive.usercontent.google.com/download?id=1duTfDMYYEjDWsX0InDgw7szUk46erecg&export=download', {
             showEditor(result.assets![0]?.uri || '', {
               // theme: 'light',
               // showEditor(url3, {
-              //   type: 'audio',
-              // outputExt: 'wav',
+              type: 'audio',
+              outputExt: 'wav',
               // closeWhenFinish: false,
               // minDuration: 50000,
-              maxDuration: 15000,
+              maxDuration: 30000,
               fullScreenModalIOS: true,
               saveToPhoto: true,
               removeAfterSavedToPhoto: true,

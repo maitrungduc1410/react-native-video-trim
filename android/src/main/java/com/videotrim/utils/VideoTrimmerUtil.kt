@@ -204,7 +204,7 @@ object VideoTrimmerUtil {
     endPosition: Long,
     callback: SingleCallback<Bitmap, Int>
   ) {
-    BackgroundExecutor.execute(object : BackgroundExecutor.Task("", 0L, "") {
+    BackgroundExecutor.execute(object : BackgroundExecutor.Task("initial_thumbs", 0L, "") {
       override fun execute() {
         try {
           val interval = (endPosition - startPosition) / (totalThumbsCount - 1)

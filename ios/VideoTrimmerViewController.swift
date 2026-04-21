@@ -52,6 +52,11 @@ class VideoTrimmerViewController: UIViewController {
     private var trimmerColor: UIColor = UIColor.systemYellow
     private var handleIconColor: UIColor = UIColor.black
     private var isLightTheme = false
+    private var waveformBarColor: UIColor = .white
+    private var waveformBgColor: UIColor = UIColor(red: 0.204, green: 0.471, blue: 0.965, alpha: 1)
+    private var waveformBarWidth: CGFloat = 3
+    private var waveformBarGap: CGFloat = 2
+    private var waveformBarCornerRadius: CGFloat = 1.5
     private var iconColor: UIColor { isLightTheme ? .black : .white }
     private var dimmedIconColor: UIColor { iconColor.withAlphaComponent(0.5) }
     
@@ -243,6 +248,11 @@ class VideoTrimmerViewController: UIViewController {
         
         playerController.player = nil
         playerController.dismiss(animated: false, completion: nil)
+        
+        // Setting asset to nil triggers VideoTrimmer.asset.didSet, which
+        // cancels all in-flight work (thumbnail generation, waveform reader,
+        // audio download) and deletes temporary files.
+        trimmer?.asset = nil
     }
     
     public func pausePlayer() {
@@ -389,6 +399,12 @@ class VideoTrimmerViewController: UIViewController {
     private func setupVideoTrimmer() {
         trimmer = VideoTrimmer()
         trimmer.isLightTheme = isLightTheme
+        trimmer.waveformBarColor = waveformBarColor
+        trimmer.waveformBgColor = waveformBgColor
+        trimmer.waveformBarWidth = waveformBarWidth
+        trimmer.waveformBarGap = waveformBarGap
+        trimmer.waveformBarCornerRadius = waveformBarCornerRadius
+        trimmer.isAudioOnly = !isVideoType
         trimmer.asset = asset
         trimmer.minimumDuration = CMTime(seconds: 1, preferredTimescale: 600)
         trimmer.enableHapticFeedback = enableHapticFeedback
@@ -972,6 +988,21 @@ class VideoTrimmerViewController: UIViewController {
     if let handleIconColorValue = config["handleIconColor"] as? Double {
         handleIconColor = RCTConvert.uiColor(handleIconColorValue) ?? (isLightTheme ? .white : .black)
     }
+    if let v = config["waveformColor"] as? Double {
+        waveformBarColor = RCTConvert.uiColor(v) ?? .white
+    }
+    if let v = config["waveformBackgroundColor"] as? Double {
+        waveformBgColor = RCTConvert.uiColor(v) ?? UIColor(red: 0.204, green: 0.471, blue: 0.965, alpha: 1)
+    }
+    if let v = config["waveformBarWidth"] as? Double, v > 0 {
+        waveformBarWidth = CGFloat(v)
+    }
+    if let v = config["waveformBarGap"] as? Double, v >= 0 {
+        waveformBarGap = CGFloat(v)
+    }
+    if let v = config["waveformBarCornerRadius"] as? Double, v >= 0 {
+        waveformBarCornerRadius = CGFloat(v)
+    }
   }
     
     private func onPlayerReady() {
@@ -992,7 +1023,8 @@ class VideoTrimmerViewController: UIViewController {
         
         if jumpToPositionOnLoad > 0 {
             let duration = (asset?.duration.seconds ?? 0) * 1000
-            let time = jumpToPositionOnLoad > duration ? duration : jumpToPositionOnLoad
+            let endMs = trimmer.selectedRange.end.seconds * 1000
+            let time = min(jumpToPositionOnLoad, min(duration, endMs))
             let cmtime = CMTime(value: CMTimeValue(time), timescale: 1000)
             
             self.seek(to: cmtime)

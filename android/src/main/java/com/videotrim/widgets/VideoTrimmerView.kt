@@ -8,6 +8,9 @@ import android.graphics.Matrix
 import android.graphics.RectF
 import android.graphics.SurfaceTexture
 import android.graphics.drawable.GradientDrawable
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
@@ -124,6 +127,31 @@ class VideoTrimmerView(
   private val cachedFullViewThumbnails = mutableListOf<ImageView>()
   @Volatile
   private var isGeneratingThumbnails = false
+
+  // region Audio waveform state
+  //
+  // For audio files the trimmer replaces the thumbnail track with a waveform.
+  // Amplitudes are extracted via MediaExtractor + MediaCodec (hardware-accelerated
+  // PCM decode) and rendered by AudioWaveformView as rounded-rect bars.
+  //
+  // Remote files are first downloaded to a local cache file so that both the
+  // initial extraction and any zoom-level re-extractions can read from disk
+  // instead of re-streaming over the network each time.
+  private var waveformView: AudioWaveformView? = null
+  /** Full-view (non-zoomed) amplitudes, cached so we can restore instantly on zoom-out. */
+  private var cachedFullWaveformAmplitudes: FloatArray? = null
+  @Volatile
+  private var isGeneratingWaveform = false
+  /** Local file path used for waveform extraction (populated after downloading remote audio). */
+  private var localAudioFilePath: String? = null
+  @Volatile
+  private var isDownloadingAudio = false
+  private var waveformBarColor = Color.WHITE
+  private var waveformBgColor = Color.parseColor("#3478F6")
+  private var waveformBarWidthDp = 3f
+  private var waveformBarGapDp = 2f
+  private var waveformBarCornerRadiusDp = 1.5f
+  // endregion
 
   private var mediaMetadataRetriever: MediaMetadataRetriever? = null
   private val retrieverLock = Object()
@@ -285,10 +313,20 @@ class VideoTrimmerView(
         override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
       }
     } else {
+      // Audio path: hide video surface, show the audio banner with a fade-in,
+      // and kick off waveform generation *in parallel* with MediaPlayer.prepareAsync()
+      // so the waveform starts appearing as soon as possible (the download / decode
+      // runs on a background thread while MediaPlayer streams independently).
       mVideoView.visibility = View.GONE
       audioBannerView.alpha = 0f
       audioBannerView.visibility = View.VISIBLE
       audioBannerView.animate().alpha(1f).setDuration(500).start()
+
+      VideoTrimmerUtil.SCREEN_WIDTH_FULL = getScreenWidthInPortraitMode()
+      VideoTrimmerUtil.VIDEO_FRAMES_WIDTH = VideoTrimmerUtil.SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2
+      // endMs = 0 means "unknown duration"; extractAmplitudes will fall back
+      // to the track's KEY_DURATION or a sensible default.
+      startWaveformGeneration(0, 0)
 
       mediaPlayer = MediaPlayer()
       try {
@@ -436,6 +474,24 @@ class VideoTrimmerView(
       startShootVideoThumbs(mContext, VideoTrimmerUtil.MAX_COUNT_RANGE, 0, mDuration.toLong())
     }
 
+    if (!isVideoType) {
+      // Waveform generation was started in initByURI, but the view is only
+      // created here (after MediaPlayer is ready) so the background color
+      // doesn't flash before the trimmer container is visible.
+      VideoTrimmerUtil.SCREEN_WIDTH_FULL = getScreenWidthInPortraitMode()
+      VideoTrimmerUtil.VIDEO_FRAMES_WIDTH = VideoTrimmerUtil.SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2
+      if (waveformView == null) {
+        setupWaveformView()
+      }
+      // If the background generation already finished, apply cached data immediately.
+      cachedFullWaveformAmplitudes?.let { waveformView?.setAmplitudes(it) }
+      // If generation hasn't started yet (e.g. failed the first time), retry
+      // now that we know the actual duration.
+      if (!isGeneratingWaveform && cachedFullWaveformAmplitudes == null) {
+        startWaveformGeneration(0, mDuration.toLong())
+      }
+    }
+
     endTime = if (mMaxDuration < mDuration) mMaxDuration else mDuration.toLong()
     updateHandlePositions()
 
@@ -444,7 +500,10 @@ class VideoTrimmerView(
     saveBtn.visibility = View.VISIBLE
 
     if (jumpToPositionOnLoad > 0) {
-      seekTo(if (jumpToPositionOnLoad > mDuration) mDuration.toLong() else jumpToPositionOnLoad, true)
+      // Clamp to endTime so that jumpToPositionOnLoad > maxDuration doesn't
+      // cause an immediate pause (the old bug where autoplay appeared broken).
+      val clampedJump = jumpToPositionOnLoad.coerceAtMost(endTime)
+      seekTo(if (clampedJump > mDuration) mDuration.toLong() else clampedJump, true)
     }
 
     if (autoplay) {
@@ -456,6 +515,9 @@ class VideoTrimmerView(
       transformRow.visibility = View.VISIBLE
       transformRow.animate().alpha(1f).setDuration(250).start()
       updateUndoRedoButtons()
+    } else {
+      // Fade the waveform in to match the trimmer container animation.
+      waveformView?.animate()?.alpha(1f)?.setDuration(250)?.start()
     }
 
     mOnTrimVideoListener.onLoad(mDuration)
@@ -596,16 +658,34 @@ class VideoTrimmerView(
     mContext.currentActivity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
   }
 
+  /**
+   * Comprehensive cleanup when the editor is dismissed.
+   *
+   * The user can close the editor at any time — even immediately after opening —
+   * so every background task and media resource must be released here:
+   *  • Flags (isGeneratingThumbnails / isGeneratingWaveform) are set to false first
+   *    so that in-flight background loops exit early on the next iteration.
+   *  • Named BackgroundExecutor tasks are cancelled to interrupt pending work.
+   *  • MediaPlayer listeners are nulled *before* stop()/release() to prevent
+   *    callbacks firing on a half-torn-down view.
+   *  • The downloaded local audio cache file is deleted.
+   *  • SurfaceTexture listener is cleared to avoid stale references.
+   */
   override fun onDestroy() {
     isGeneratingThumbnails = false
-    BackgroundExecutor.cancelAll("", true)
+    isGeneratingWaveform = false
+    BackgroundExecutor.cancelAll("initial_thumbs", true)
     BackgroundExecutor.cancelAll("progressive_thumbs", true)
+    BackgroundExecutor.cancelAll("waveform_gen", true)
     UiThreadExecutor.cancelAll("")
     mContext.currentActivity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     mTimingRunnable?.let { mTimingHandler.removeCallbacks(it) }
     zoomRunnable?.let { zoomWaitTimer.removeCallbacks(it) }
 
     cachedFullViewThumbnails.clear()
+    cachedFullWaveformAmplitudes = null
+    waveformView = null
+    cleanupLocalAudioFile()
 
     cropOverlay?.onCropBegan = null
     cropOverlay?.onCropEnded = null
@@ -622,17 +702,23 @@ class VideoTrimmerView(
       } catch (e: Exception) {
         e.printStackTrace()
       }
+      mediaMetadataRetriever = null
     }
 
     try {
+      mediaPlayer?.setOnPreparedListener(null)
+      mediaPlayer?.setOnCompletionListener(null)
+      mediaPlayer?.setOnErrorListener(null)
       mediaPlayer?.stop()
       mediaPlayer?.release()
     } catch (e: IllegalStateException) {
       e.printStackTrace()
       Log.d(TAG, "onDestroy mediaPlayer is already released")
     }
+    mediaPlayer = null
 
     try {
+      mVideoView.surfaceTextureListener = null
       videoSurface?.release()
     } catch (_: Exception) {}
     videoSurface = null
@@ -697,6 +783,22 @@ class VideoTrimmerView(
       R.string.trim_color
     ).toColorInt()
     handleIconColor = if (config.hasKey("handleIconColor")) config.getInt("handleIconColor") else (if (isLightTheme) Color.WHITE else Color.BLACK)
+
+    if (config.hasKey("waveformColor")) {
+      waveformBarColor = config.getInt("waveformColor")
+    }
+    if (config.hasKey("waveformBackgroundColor")) {
+      waveformBgColor = config.getInt("waveformBackgroundColor")
+    }
+    if (config.hasKey("waveformBarWidth") && config.getDouble("waveformBarWidth") > 0) {
+      waveformBarWidthDp = config.getDouble("waveformBarWidth").toFloat()
+    }
+    if (config.hasKey("waveformBarGap") && config.getDouble("waveformBarGap") >= 0) {
+      waveformBarGapDp = config.getDouble("waveformBarGap").toFloat()
+    }
+    if (config.hasKey("waveformBarCornerRadius") && config.getDouble("waveformBarCornerRadius") >= 0) {
+      waveformBarCornerRadiusDp = config.getDouble("waveformBarCornerRadius").toFloat()
+    }
 
     applyTrimmerColor()
     applyThemeColors()
@@ -876,7 +978,7 @@ class VideoTrimmerView(
   }
 
   private fun onTrimmerContainerPanned(event: MotionEvent) {
-    var newX = event.rawX
+    var newX = rawXToLocalX(event.rawX)
     var didClamp = false
 
     val leftBoundary = leadingHandle.x + leadingHandle.width
@@ -970,7 +1072,7 @@ class VideoTrimmerView(
           if (draggingDisabled) return@setOnTouchListener false
 
           var didClamp = false
-          var newX = event.rawX - view.width.toFloat() / 2
+          var newX = rawXToLocalX(event.rawX) - view.width.toFloat() / 2
 
           if (isLeading) {
             val unclamped = newX
@@ -1149,9 +1251,15 @@ class VideoTrimmerView(
     stopZoomWaitTimer()
     if (isZoomedIn) {
       isGeneratingThumbnails = false
+      isGeneratingWaveform = false
       BackgroundExecutor.cancelAll("progressive_thumbs", true)
+      BackgroundExecutor.cancelAll("waveform_gen", true)
       isZoomedIn = false
-      restoreCachedThumbnails()
+      if (isVideoType) {
+        restoreCachedThumbnails()
+      } else {
+        restoreCachedWaveform()
+      }
       animateZoomTransition {
         updateHandlePositions()
         updateCurrentTime(true)
@@ -1189,7 +1297,14 @@ class VideoTrimmerView(
 
     isZoomedIn = true
 
-    startProgressiveThumbnailGeneration()
+    if (isVideoType) {
+      startProgressiveThumbnailGeneration()
+    } else {
+      if (cachedFullWaveformAmplitudes == null) {
+        cachedFullWaveformAmplitudes = waveformView?.amplitudes?.copyOf()
+      }
+      startProgressiveWaveformGeneration()
+    }
     updateHandlePositionsForZoom(currentLeadingX, currentTrailingX)
     playHapticFeedback(true)
   }
@@ -1334,6 +1449,20 @@ class VideoTrimmerView(
     }
   }
 
+  /**
+   * Convert a screen-absolute X (from [MotionEvent.getRawX]) to a coordinate
+   * relative to [trimmerContainerWrapper].
+   *
+   * Touch events report rawX in screen-space, but the trimmer's handle/indicator
+   * positions are in the container's local coordinate space. Without this
+   * conversion the playhead lands to the right of the actual finger position.
+   */
+  private fun rawXToLocalX(rawX: Float): Float {
+    val location = IntArray(2)
+    trimmerContainerWrapper.getLocationOnScreen(location)
+    return rawX - location[0]
+  }
+
   private fun positionForTime(time: Long): Float {
     return if (isZoomedIn) {
       if (zoomedInRangeDuration <= 0) return 0f
@@ -1364,6 +1493,371 @@ class VideoTrimmerView(
       mThumbnailContainer.addView(restoredView)
     }
   }
+
+  // region Waveform — audio-only bar visualization
+  //
+  // Lifecycle:
+  //   1. initByURI starts background download + extraction (startWaveformGeneration).
+  //   2. mediaPrepared creates the AudioWaveformView and applies any cached data.
+  //   3. On zoom-in the visible time range changes; startProgressiveWaveformGeneration
+  //      re-extracts just that sub-range at higher resolution.
+  //   4. On zoom-out the cached full-view amplitudes are restored instantly.
+  //   5. onDestroy cancels all in-flight work and deletes the local cache file.
+
+  /** Create the AudioWaveformView and add it to the thumbnail container.
+   *  Starts with alpha=0; faded in later in mediaPrepared(). */
+  private fun setupWaveformView() {
+    val density = resources.displayMetrics.density
+    val view = AudioWaveformView(context)
+    view.barColor = waveformBarColor
+    view.setBackgroundColor(waveformBgColor)
+    view.barWidthPx = waveformBarWidthDp * density
+    view.barGapPx = waveformBarGapDp * density
+    view.barCornerRadiusPx = waveformBarCornerRadiusDp * density
+    view.layoutParams = LinearLayout.LayoutParams(
+      LinearLayout.LayoutParams.MATCH_PARENT,
+      LinearLayout.LayoutParams.MATCH_PARENT
+    )
+    view.alpha = 0f
+    mThumbnailContainer.removeAllViews()
+    mThumbnailContainer.addView(view)
+    waveformView = view
+  }
+
+  /**
+   * Generate waveform amplitudes for the full (non-zoomed) view.
+   *
+   * Called from initByURI (with endMs=0 meaning unknown) to start work as
+   * early as possible, and again from mediaPrepared if the first attempt
+   * didn't produce data (e.g. the duration wasn't known yet).
+   *
+   * For remote URLs the first call triggers [resolveLocalAudioPath], which
+   * downloads the audio to a cache file. Subsequent calls (zoom) reuse
+   * that cached file for instant re-extraction without network I/O.
+   *
+   * Progressive updates are sent to the UI via [onProgress] so the user
+   * sees bars filling in as they are decoded, rather than waiting for the
+   * entire file to finish.
+   */
+  private fun startWaveformGeneration(startMs: Long, endMs: Long) {
+    if (isGeneratingWaveform) return
+    isGeneratingWaveform = true
+
+    val sourceUri = mSourceUri?.toString() ?: return
+    val density = resources.displayMetrics.density
+    val containerWidth = mThumbnailContainer.width - mThumbnailContainer.paddingLeft - mThumbnailContainer.paddingRight
+    val effectiveWidth = if (containerWidth > 0) containerWidth else VideoTrimmerUtil.VIDEO_FRAMES_WIDTH
+    val step = waveformBarWidthDp * density + waveformBarGapDp * density
+    val barCount = maxOf(1, (effectiveWidth / step).toInt())
+
+    BackgroundExecutor.execute(object : BackgroundExecutor.Task("waveform_gen", 0L, "") {
+      override fun execute() {
+        try {
+          val effectiveUri = resolveLocalAudioPath(sourceUri) ?: return
+
+          val amplitudes = extractAmplitudes(effectiveUri, startMs, endMs, barCount) { intermediate ->
+            runOnUiThread {
+              if (isGeneratingWaveform) waveformView?.setAmplitudes(intermediate)
+            }
+          }
+
+          if (!isGeneratingWaveform) return
+
+          cachedFullWaveformAmplitudes = amplitudes.copyOf()
+
+          runOnUiThread {
+            waveformView?.setAmplitudes(amplitudes)
+          }
+        } catch (e: Exception) {
+          Log.e(TAG, "Error generating waveform", e)
+        } finally {
+          isGeneratingWaveform = false
+        }
+      }
+    })
+  }
+
+  /** Convert accumulated RMS² values to [0, 1] amplitudes normalised against the peak bar. */
+  private fun normalizeAmplitudes(sumSquares: DoubleArray, sampleCounts: IntArray, barCount: Int): FloatArray {
+    val amplitudes = FloatArray(barCount)
+    var maxAmp = 0f
+    for (i in 0 until barCount) {
+      if (sampleCounts[i] > 0) {
+        amplitudes[i] = kotlin.math.sqrt(sumSquares[i] / sampleCounts[i]).toFloat()
+        if (amplitudes[i] > maxAmp) maxAmp = amplitudes[i]
+      }
+    }
+    if (maxAmp > 0f) {
+      for (i in amplitudes.indices) {
+        amplitudes[i] = (amplitudes[i] / maxAmp).coerceIn(0f, 1f)
+      }
+    }
+    return amplitudes
+  }
+
+  /**
+   * Decode the audio track in [sourceUri] and compute RMS amplitude per bar.
+   *
+   * Pipeline:
+   *   MediaExtractor (demux compressed packets)
+   *     → MediaCodec (hardware-decode to 16-bit PCM)
+   *       → on-the-fly RMS accumulation into per-bar buckets
+   *
+   * Each output buffer's presentation timestamp determines which bar bucket
+   * receives its samples. The result is normalised so the loudest bar = 1.0.
+   *
+   * [onProgress] fires periodically so the UI can show bars filling in
+   * incrementally. The first update fires after 5 % of bars are filled
+   * (firstUpdateThreshold) and subsequent updates every 20 % (regularUpdateInterval).
+   *
+   * The codec is wrapped in its own try/finally to guarantee release even
+   * if an exception occurs mid-decode (e.g. editor closed).
+   *
+   * @param startMs start of the time range to extract (ms).
+   * @param endMs   end of the time range (ms); 0 = use track/fallback duration.
+   * @param barCount number of output amplitude bars.
+   */
+  private fun extractAmplitudes(
+    sourceUri: String, startMs: Long, endMs: Long, barCount: Int,
+    onProgress: ((FloatArray) -> Unit)? = null
+  ): FloatArray {
+    val extractor = MediaExtractor()
+    try {
+      if (sourceUri.startsWith("http://") || sourceUri.startsWith("https://")) {
+        extractor.setDataSource(sourceUri, HashMap())
+      } else {
+        extractor.setDataSource(sourceUri)
+      }
+
+      var audioTrackIndex = -1
+      var audioFormat: MediaFormat? = null
+      for (i in 0 until extractor.trackCount) {
+        val format = extractor.getTrackFormat(i)
+        val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
+        if (mime.startsWith("audio/")) {
+          audioTrackIndex = i
+          audioFormat = format
+          break
+        }
+      }
+      if (audioTrackIndex < 0 || audioFormat == null) return FloatArray(0)
+
+      extractor.selectTrack(audioTrackIndex)
+      extractor.seekTo(startMs * 1000, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+
+      val mime = audioFormat.getString(MediaFormat.KEY_MIME) ?: return FloatArray(0)
+      val codec = MediaCodec.createDecoderByType(mime)
+      try {
+        codec.configure(audioFormat, null, null, 0)
+        codec.start()
+
+        val startUs = startMs * 1000L
+        // containsKey guard for API < 29 compatibility (getLong(key, default) requires API 29)
+        val trackDurationUs = if (audioFormat.containsKey(MediaFormat.KEY_DURATION)) audioFormat.getLong(MediaFormat.KEY_DURATION) else 0L
+        val endUs = when {
+          endMs > 0 -> endMs * 1000L
+          trackDurationUs > 0 -> trackDurationUs
+          else -> Long.MAX_VALUE
+        }
+        val totalDurationUs = maxOf(1L, if (endUs == Long.MAX_VALUE) {
+          if (trackDurationUs > 0) trackDurationUs - startUs else 60_000_000L
+        } else {
+          endUs - startUs
+        })
+        val barDurationUs = totalDurationUs.toDouble() / barCount
+
+        val sumSquares = DoubleArray(barCount)
+        val sampleCounts = IntArray(barCount)
+        val bufferInfo = MediaCodec.BufferInfo()
+        var inputDone = false
+        var outputDone = false
+        val timeoutUs = 10_000L
+        var highestFilledBar = -1
+        // Show the first partial waveform early (5% of bars) for perceived speed
+        val firstUpdateThreshold = maxOf(1, barCount / 20)
+        val regularUpdateInterval = maxOf(1, barCount / 5)
+        var lastUpdateBar = -1
+
+        while (!outputDone && isGeneratingWaveform) {
+          if (!inputDone) {
+            val inputIndex = codec.dequeueInputBuffer(timeoutUs)
+            if (inputIndex >= 0) {
+              val inputBuffer = codec.getInputBuffer(inputIndex) ?: continue
+              val sampleSize = extractor.readSampleData(inputBuffer, 0)
+              if (sampleSize < 0 || extractor.sampleTime > endUs) {
+                codec.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                inputDone = true
+              } else {
+                codec.queueInputBuffer(inputIndex, 0, sampleSize, extractor.sampleTime, 0)
+                extractor.advance()
+              }
+            }
+          }
+
+          val outputIndex = codec.dequeueOutputBuffer(bufferInfo, timeoutUs)
+          if (outputIndex >= 0) {
+            if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+              outputDone = true
+            }
+            val outputBuffer = codec.getOutputBuffer(outputIndex)
+            if (outputBuffer != null && bufferInfo.size > 0) {
+              // Map this buffer's timestamp to the corresponding bar bucket
+              val bufferTimeUs = bufferInfo.presentationTimeUs - startUs
+              val barIndex = (bufferTimeUs / barDurationUs).toInt().coerceIn(0, barCount - 1)
+
+              outputBuffer.position(bufferInfo.offset)
+              outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
+              // PCM 16-bit: each sample is 2 bytes (Short)
+              val shortCount = bufferInfo.size / 2
+              for (i in 0 until shortCount) {
+                val sample = outputBuffer.short.toFloat() / Short.MAX_VALUE
+                sumSquares[barIndex] += (sample * sample).toDouble()
+                sampleCounts[barIndex]++
+              }
+
+              if (barIndex > highestFilledBar) highestFilledBar = barIndex
+
+              if (onProgress != null) {
+                val interval = if (lastUpdateBar < 0) firstUpdateThreshold else regularUpdateInterval
+                if (highestFilledBar - maxOf(0, lastUpdateBar) >= interval) {
+                  lastUpdateBar = highestFilledBar
+                  onProgress(normalizeAmplitudes(sumSquares, sampleCounts, barCount))
+                }
+              }
+            }
+            codec.releaseOutputBuffer(outputIndex, false)
+          }
+        }
+
+        return normalizeAmplitudes(sumSquares, sampleCounts, barCount)
+      } finally {
+        try { codec.stop() } catch (_: Exception) {}
+        codec.release()
+      }
+    } finally {
+      extractor.release()
+    }
+  }
+
+  /**
+   * Re-extract amplitudes for the currently visible (zoomed-in) time range.
+   *
+   * Uses the already-downloaded local file if available, so this is a pure
+   * disk-read + decode operation with no network latency.
+   */
+  private fun startProgressiveWaveformGeneration() {
+    if (isGeneratingWaveform) return
+    isGeneratingWaveform = true
+
+    val sourceUri = mSourceUri?.toString() ?: return
+    val density = resources.displayMetrics.density
+    val containerWidth = mThumbnailContainer.width - mThumbnailContainer.paddingLeft - mThumbnailContainer.paddingRight
+    val effectiveWidth = if (containerWidth > 0) containerWidth else VideoTrimmerUtil.VIDEO_FRAMES_WIDTH
+    val step = waveformBarWidthDp * density + waveformBarGapDp * density
+    val barCount = maxOf(1, (effectiveWidth / step).toInt())
+
+    val visibleStart = if (isZoomedIn) zoomedInRangeStart else 0L
+    val visibleEnd = if (isZoomedIn) zoomedInRangeStart + zoomedInRangeDuration else mDuration.toLong()
+
+    BackgroundExecutor.execute(object : BackgroundExecutor.Task("waveform_gen", 0L, "") {
+      override fun execute() {
+        try {
+          val effectiveUri = localAudioFilePath ?: sourceUri
+
+          val amplitudes = extractAmplitudes(effectiveUri, visibleStart, visibleEnd, barCount) { intermediate ->
+            runOnUiThread {
+              if (isGeneratingWaveform && isZoomedIn) waveformView?.setAmplitudes(intermediate)
+            }
+          }
+
+          if (!isGeneratingWaveform || !isZoomedIn) return
+
+          runOnUiThread {
+            waveformView?.setAmplitudes(amplitudes)
+          }
+        } catch (e: Exception) {
+          Log.e(TAG, "Error generating zoomed waveform", e)
+        } finally {
+          isGeneratingWaveform = false
+        }
+      }
+    })
+  }
+
+  /** Instantly restore the full-view waveform from cache on zoom-out. */
+  private fun restoreCachedWaveform() {
+    cachedFullWaveformAmplitudes?.let { cached ->
+      waveformView?.setAmplitudes(cached)
+    }
+  }
+
+  /**
+   * Ensure the audio source is available as a local file.
+   *
+   * For local URIs this is a no-op. For remote (http/https) URIs the file
+   * is downloaded once to [Context.getCacheDir] and the path is cached in
+   * [localAudioFilePath] for all subsequent reads (zoom re-extractions).
+   *
+   * Uses a `.tmp` extension because Android's MediaExtractor probes file
+   * content to determine the codec, unlike iOS's AVURLAsset which relies
+   * on the file extension.
+   *
+   * Returns null if a download is already in progress or if the editor
+   * was closed mid-download (checked via [isGeneratingWaveform]).
+   */
+  private fun resolveLocalAudioPath(sourceUri: String): String? {
+    if (!sourceUri.startsWith("http://") && !sourceUri.startsWith("https://")) {
+      return sourceUri
+    }
+
+    localAudioFilePath?.let { return it }
+
+    if (isDownloadingAudio) return null
+    isDownloadingAudio = true
+
+    try {
+      val url = java.net.URL(sourceUri)
+      val connection = url.openConnection() as java.net.HttpURLConnection
+      connection.connectTimeout = 30_000
+      connection.readTimeout = 30_000
+      connection.instanceFollowRedirects = true
+      connection.connect()
+
+      val destFile = java.io.File(context.cacheDir, "waveform_${System.currentTimeMillis()}.tmp")
+      connection.inputStream.use { input ->
+        java.io.FileOutputStream(destFile).use { output ->
+          val buffer = ByteArray(8192)
+          var bytesRead: Int
+          while (input.read(buffer).also { bytesRead = it } != -1) {
+            if (!isGeneratingWaveform) {
+              destFile.delete()
+              return null
+            }
+            output.write(buffer, 0, bytesRead)
+          }
+        }
+      }
+      connection.disconnect()
+
+      localAudioFilePath = destFile.absolutePath
+      return destFile.absolutePath
+    } catch (e: Exception) {
+      Log.e(TAG, "Failed to download audio for waveform", e)
+      return sourceUri
+    } finally {
+      isDownloadingAudio = false
+    }
+  }
+
+  /** Delete the temporary local audio file created by [resolveLocalAudioPath]. */
+  private fun cleanupLocalAudioFile() {
+    localAudioFilePath?.let {
+      try { java.io.File(it).delete() } catch (_: Exception) {}
+      localAudioFilePath = null
+    }
+  }
+
+  // endregion
 
   // region Transform
 
@@ -1680,7 +2174,7 @@ class VideoTrimmerView(
   private fun onUndoTapped() {
     if (undoStack.isEmpty()) return
     redoStack.add(currentSnapshot())
-    val snap = undoStack.removeLast()
+    val snap = undoStack.removeAt(undoStack.lastIndex)
     applySnapshot(snap)
     updateUndoRedoButtons()
   }
@@ -1688,7 +2182,7 @@ class VideoTrimmerView(
   private fun onRedoTapped() {
     if (redoStack.isEmpty()) return
     undoStack.add(currentSnapshot())
-    val snap = redoStack.removeLast()
+    val snap = redoStack.removeAt(redoStack.lastIndex)
     applySnapshot(snap)
     updateUndoRedoButtons()
   }

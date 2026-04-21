@@ -129,6 +129,16 @@ export interface EditorConfig extends BaseOptions {
    * `"light"` uses a white background with black icons/text and white trimmer-handle chevrons.
    */
   theme?: string;
+  /** Color of the audio waveform bars as a `processColor` value. */
+  waveformColor?: number;
+  /** Background color behind the audio waveform bars as a `processColor` value. */
+  waveformBackgroundColor?: number;
+  /** Width of each waveform bar in dp/pt (default: `3`). */
+  waveformBarWidth?: number;
+  /** Gap between waveform bars in dp/pt (default: `2`). */
+  waveformBarGap?: number;
+  /** Corner radius of waveform bars in dp/pt (default: `1.5`). */
+  waveformBarCornerRadius?: number;
 }
 
 /**

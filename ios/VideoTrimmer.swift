@@ -135,12 +135,25 @@ import AVFoundation
     
     var asset: AVAsset? {
         didSet {
+            // Clean up *all* async resources unconditionally — even when
+            // asset is set to nil (e.g. editor dismissal triggers this via
+            // VideoTrimmerViewController.viewWillDisappear).
+            generator?.cancelAllCGImageGeneration()
+            currentAssetReader?.cancelReading()
+            currentAssetReader = nil
+            audioDownloadTask?.cancel()
+            audioDownloadTask = nil
+            cleanupLocalAudioFile()
+            localAudioAsset = nil
+            
             if let asset = asset {
                 applyThemeColors()
                 let duration = asset.duration
                 range = CMTimeRange(start: .zero, duration: duration)
                 selectedRange = range
                 lastKnownViewSizeForThumbnailGeneration = .zero
+                lastKnownWaveformSize = .zero
+                lastKnownWaveformRange = .zero
                 setNeedsLayout()
             }
         }
@@ -160,6 +173,34 @@ import AVFoundation
     var enableHapticFeedback = true
     var zoomOnWaitingDuration: Double = 5.0 // Default: 5 seconds
     var isLightTheme = false
+    /// Explicitly set from JS config (`type != "video"`).
+    /// Using a dedicated flag instead of inspecting AVAsset tracks avoids
+    /// false negatives — some audio files (e.g. M4A with album art) report
+    /// a video track, which caused the original `.video` track guard to
+    /// skip waveform generation entirely.
+    var isAudioOnly = false {
+        didSet {
+            lastKnownWaveformSize = .zero
+            setNeedsLayout()
+        }
+    }
+    
+    // MARK: - Waveform customisation (forwarded to AudioWaveformView)
+    var waveformBarColor: UIColor = .white {
+        didSet { waveformView.barColor = waveformBarColor }
+    }
+    var waveformBgColor: UIColor = UIColor(red: 0.204, green: 0.471, blue: 0.965, alpha: 1) {
+        didSet { waveformView.backgroundColor = waveformBgColor }
+    }
+    var waveformBarWidth: CGFloat = 3 {
+        didSet { waveformView.barWidth = waveformBarWidth }
+    }
+    var waveformBarGap: CGFloat = 2 {
+        didSet { waveformView.barGap = waveformBarGap }
+    }
+    var waveformBarCornerRadius: CGFloat = 1.5 {
+        didSet { waveformView.barCornerRadius = waveformBarCornerRadius }
+    }
     
     // the available range of the asset.
     // Will be set to the full duration of the asset when assigning a new asset
@@ -270,9 +311,34 @@ import AVFoundation
     private var thumbnails = Array<Thumbnail>()
     private var generator: AVAssetImageGenerator?
     
+    // MARK: - Audio waveform state
+    //
+    // AVAssetReader cannot read from remote URLs, so for remote audio we
+    // download to a temporary local file first (via URLSession.downloadTask).
+    // The local AVURLAsset is reused for zoom re-extractions, and the temp
+    // file is deleted in cleanupLocalAudioFile() on dismiss.
+    private let waveformView = AudioWaveformView()
+    private var lastKnownWaveformSize: CGSize = .zero
+    private var lastKnownWaveformRange: CMTimeRange = .zero
+    private var currentAssetReader: AVAssetReader?
+    /** AVURLAsset pointing to the downloaded local file (nil for local sources). */
+    private var localAudioAsset: AVURLAsset?
+    /** File URL of the temporary download, for deletion on cleanup. */
+    private var localAudioFileURL: URL?
+    private var audioDownloadTask: URLSessionDownloadTask?
+    
     private var impactFeedbackGenerator: UIImpactFeedbackGenerator?
     private var didClampWhilePanning = false
     
+    
+    /// Cancel all in-flight async work and delete temporary files.
+    /// This fires both on normal dismiss and on immediate close.
+    deinit {
+        generator?.cancelAllCGImageGeneration()
+        audioDownloadTask?.cancel()
+        currentAssetReader?.cancelReading()
+        cleanupLocalAudioFile()
+    }
     
     // MARK: - Private
     private func applyThemeColors() {
@@ -291,6 +357,17 @@ import AVFoundation
         thumbnailWrapperView.addSubview(leadingThumbRest)
         thumbnailWrapperView.addSubview(trailingThumbRest)
         thumbnailWrapperView.addSubview(thumbnailTrackView)
+        
+        // Waveform view sits inside the thumbnail track but starts hidden;
+        // it's shown only for audio files once data is available.
+        waveformView.backgroundColor = waveformBgColor
+        waveformView.barColor = waveformBarColor
+        waveformView.barWidth = waveformBarWidth
+        waveformView.barGap = waveformBarGap
+        waveformView.barCornerRadius = waveformBarCornerRadius
+        waveformView.isHidden = true
+        thumbnailTrackView.addSubview(waveformView)
+        
         thumbnailWrapperView.addSubview(thumbnailLeadingCoverView)
         thumbnailWrapperView.addSubview(thumbnailTrailingCoverView)
         
@@ -419,6 +496,7 @@ import AVFoundation
         let transform = track.preferredTransform
         let fixedSize = naturalSize.applyingVideoTransform(transform)
         
+        self.generator?.cancelAllCGImageGeneration()
         let generator = AVAssetImageGenerator(asset: asset)
         generator.apertureMode = .cleanAperture
         generator.videoComposition = videoComposition
@@ -469,6 +547,223 @@ import AVFoundation
                     imageView.image = image
                 })
             }
+        }
+    }
+    
+    /// Called from layoutSubviews whenever the view size or visible time range changes.
+    ///
+    /// For remote URLs, the first call triggers a download; once the local
+    /// file is cached, subsequent calls (e.g. zoom) skip straight to reading.
+    private func regenerateWaveformIfNeeded() {
+        guard isAudioOnly else { return }
+        let size = bounds.size
+        guard size.width > 0 && size.height > 0 else { return }
+        guard lastKnownWaveformSize != size || !CMTimeRangeEqual(lastKnownWaveformRange, visibleRange) else { return }
+        guard let asset = asset else { return }
+        
+        // Remote URL path: download once, then reuse localAudioAsset for reads
+        if let urlAsset = asset as? AVURLAsset, !urlAsset.url.isFileURL {
+            if let localAsset = localAudioAsset {
+                guard let audioTrack = localAsset.tracks(withMediaType: .audio).first else { return }
+                readWaveformSamples(from: localAsset, audioTrack: audioTrack, size: size)
+            } else if audioDownloadTask == nil {
+                downloadAudioForWaveform(from: urlAsset.url)
+            }
+            return
+        }
+        
+        // Local file path: read directly
+        guard let audioTrack = asset.tracks(withMediaType: .audio).first else { return }
+        readWaveformSamples(from: asset, audioTrack: audioTrack, size: size)
+    }
+    
+    /// Download remote audio to a temporary local file so AVAssetReader can read it.
+    ///
+    /// The file extension is inferred from the HTTP response (Content-Disposition,
+    /// MIME type) or the original URL, because AVURLAsset on iOS relies on
+    /// the extension to identify the audio codec — a generic `.tmp` extension
+    /// would cause silent failures.
+    private func downloadAudioForWaveform(from url: URL) {
+        let task = URLSession.shared.downloadTask(with: url) { [weak self] tempURL, response, error in
+            guard let self = self, let tempURL = tempURL else {
+                print("AudioWaveform: Download failed: \(error?.localizedDescription ?? "unknown")")
+                DispatchQueue.main.async { self?.audioDownloadTask = nil }
+                return
+            }
+            
+            let ext = Self.audioFileExtension(from: response, originalURL: url)
+            let destURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("waveform_\(UUID().uuidString).\(ext)")
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: destURL)
+                let localAsset = AVURLAsset(url: destURL, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+                localAsset.loadValuesAsynchronously(forKeys: ["tracks"]) {
+                    var trackError: NSError?
+                    let status = localAsset.statusOfValue(forKey: "tracks", error: &trackError)
+                    guard status == .loaded else {
+                        print("AudioWaveform: Failed to load tracks from downloaded file: \(trackError?.localizedDescription ?? "unknown")")
+                        try? FileManager.default.removeItem(at: destURL)
+                        DispatchQueue.main.async { self.audioDownloadTask = nil }
+                        return
+                    }
+                    DispatchQueue.main.async {
+                        self.localAudioFileURL = destURL
+                        self.localAudioAsset = localAsset
+                        self.audioDownloadTask = nil
+                        self.lastKnownWaveformSize = .zero
+                        self.setNeedsLayout()
+                    }
+                }
+            } catch {
+                print("AudioWaveform: Failed to move downloaded file: \(error)")
+                DispatchQueue.main.async { self.audioDownloadTask = nil }
+            }
+        }
+        audioDownloadTask = task
+        task.resume()
+    }
+    
+    /// Determine the correct audio file extension from the HTTP response.
+    /// Priority: Content-Disposition → MIME type → URL path extension → "m4a" fallback.
+    private static func audioFileExtension(from response: URLResponse?, originalURL: URL) -> String {
+        if let suggested = response?.suggestedFilename, !suggested.isEmpty {
+            let ext = (suggested as NSString).pathExtension
+            if !ext.isEmpty { return ext }
+        }
+        
+        if let mimeType = response?.mimeType?.lowercased() {
+            switch mimeType {
+            case "audio/mpeg", "audio/mp3": return "mp3"
+            case "audio/mp4", "audio/x-m4a", "audio/aac": return "m4a"
+            case "audio/wav", "audio/x-wav", "audio/wave": return "wav"
+            case "audio/flac": return "flac"
+            case "audio/ogg", "audio/vorbis": return "ogg"
+            case "audio/aiff", "audio/x-aiff": return "aiff"
+            default: break
+            }
+        }
+        
+        let urlExt = originalURL.pathExtension
+        if !urlExt.isEmpty { return urlExt }
+        
+        return "m4a"
+    }
+    
+    /// Decode PCM samples from the given asset's audio track and compute
+    /// per-bar RMS amplitudes normalised to [0, 1].
+    ///
+    /// Runs the heavy decode on a background queue and posts the result
+    /// back to the main thread. The AVAssetReader is stored in
+    /// `currentAssetReader` so it can be cancelled if the editor is closed
+    /// or the view resizes mid-read.
+    private func readWaveformSamples(from asset: AVAsset, audioTrack: AVAssetTrack, size: CGSize) {
+        lastKnownWaveformSize = size
+        lastKnownWaveformRange = visibleRange
+        
+        waveformView.isHidden = false
+        
+        currentAssetReader?.cancelReading()
+        currentAssetReader = nil
+        
+        let timeRange = visibleRange
+        let step = waveformBarWidth + waveformBarGap
+        let barCount = max(1, Int(floor(size.width / step)))
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            let reader: AVAssetReader
+            do {
+                reader = try AVAssetReader(asset: asset)
+            } catch {
+                print("AudioWaveform: Failed to create AVAssetReader: \(error)")
+                return
+            }
+            
+            reader.timeRange = timeRange
+            
+            let outputSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMBitDepthKey: 32,
+                AVNumberOfChannelsKey: 1,
+            ]
+            let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
+            
+            guard reader.canAdd(output) else {
+                print("AudioWaveform: Cannot add output to reader")
+                return
+            }
+            reader.add(output)
+            
+            DispatchQueue.main.sync {
+                self.currentAssetReader = reader
+            }
+            
+            guard reader.startReading() else {
+                print("AudioWaveform: Failed to start reading: \(String(describing: reader.error))")
+                return
+            }
+            
+            var allSamples = [Float]()
+            allSamples.reserveCapacity(barCount * 512)
+            
+            while reader.status == .reading {
+                guard let sampleBuffer = output.copyNextSampleBuffer() else { break }
+                guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
+                
+                let length = CMBlockBufferGetDataLength(blockBuffer)
+                let sampleCount = length / MemoryLayout<Float>.size
+                guard sampleCount > 0 else { continue }
+                
+                var data = [Float](repeating: 0, count: sampleCount)
+                CMBlockBufferCopyDataBytes(blockBuffer, atOffset: 0, dataLength: length, destination: &data)
+                allSamples.append(contentsOf: data)
+            }
+            
+            guard !allSamples.isEmpty else {
+                DispatchQueue.main.async {
+                    self.waveformView.amplitudes = []
+                }
+                return
+            }
+            
+            let samplesPerBar = max(1, allSamples.count / barCount)
+            var amplitudes = [CGFloat]()
+            amplitudes.reserveCapacity(barCount)
+            
+            for i in 0..<barCount {
+                let start = i * samplesPerBar
+                let end = min(start + samplesPerBar, allSamples.count)
+                guard start < allSamples.count else {
+                    amplitudes.append(0)
+                    continue
+                }
+                
+                var sumSquares: Float = 0
+                for j in start..<end {
+                    let s = allSamples[j]
+                    sumSquares += s * s
+                }
+                let rms = sqrt(sumSquares / Float(end - start))
+                amplitudes.append(CGFloat(rms))
+            }
+            
+            let maxAmp = amplitudes.max() ?? 1
+            let normalizer: CGFloat = maxAmp > 0 ? 1.0 / maxAmp : 1.0
+            let normalized = amplitudes.map { min($0 * normalizer, 1.0) }
+            
+            DispatchQueue.main.async {
+                self.waveformView.amplitudes = normalized
+            }
+        }
+    }
+    
+    /// Delete the temporary local audio file created by downloadAudioForWaveform.
+    private func cleanupLocalAudioFile() {
+        if let url = localAudioFileURL {
+            try? FileManager.default.removeItem(at: url)
+            localAudioFileURL = nil
         }
     }
     
@@ -942,6 +1237,11 @@ import AVFoundation
         }
         
         regenerateThumbnailsIfNeeded()
+        regenerateWaveformIfNeeded()
+        // Inset waveformView by the leading handle's chevron width so its
+        // background doesn't bleed underneath the translucent handle area.
+        let waveformLeft = thumbView.chevronWidth
+        waveformView.frame = CGRect(x: waveformLeft, y: 0, width: max(0, thumbnailTrackView.bounds.width - waveformLeft), height: thumbnailTrackView.bounds.height)
         
         for thumbnail in thumbnails {
             let position = locationForTime(thumbnail.time) - horizontalInset + thumbnailOffset

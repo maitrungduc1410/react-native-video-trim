@@ -40,7 +40,7 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 
 ### ✨ Key Features
 
-- **📹 Video & Audio Support** - Trim both video and audio files
+- **📹 Video & Audio Support** - Trim both video and audio files with waveform visualization
 - **🔄 Flip, Rotate & Crop** - Built-in video transforms with undo/redo support
 - **🎯 Precise Trimming** - Optional frame-accurate cuts via hardware-accelerated re-encoding
 - **🌐 Local & Remote Files** - Support for local storage and HTTPS URLs
@@ -54,7 +54,7 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 
 | Feature | Description |
 |---------|-------------|
-| **Trimming** | Video/audio trimming with visual timeline controls |
+| **Trimming** | Video/audio trimming with visual timeline controls and audio waveform |
 | **Transforms** | Horizontal flip, 90° rotation, and freeform crop with undo/redo |
 | **Precise Trimming** | Frame-accurate cuts using hardware re-encoding (opt-in) |
 | **Validation** | Check if files are valid video/audio before processing |
@@ -295,6 +295,18 @@ All configuration options are optional. Here are the most commonly used ones:
 | `handleIconColor` | `string` | - | Trimmer left/right handles color (defaults to black in light theme, white in dark theme) |
 | `fullScreenModalIOS` | `boolean` | `false` | Use fullscreen modal on iOS |
 
+### Audio Waveform Options
+
+These options only apply when `type: 'audio'`. The waveform replaces the thumbnail track with a bar visualization of the audio amplitude.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `waveformColor` | `string` | `"white"` | Fill color of the waveform bars |
+| `waveformBackgroundColor` | `string` | `"#3478F6"` | Background color behind the bars |
+| `waveformBarWidth` | `number` | `3` | Width of each bar in dp/pt |
+| `waveformBarGap` | `number` | `2` | Gap between bars in dp/pt |
+| `waveformBarCornerRadius` | `number` | `1.5` | Corner radius of each bar in dp/pt |
+
 ### Dialog Options
 
 <details>
@@ -433,17 +445,31 @@ The `headerTextColor` and `handleIconColor` options automatically adapt to the a
 ### Audio Trimming
 
 <div align="center">
-  <img src="images/audio_android.jpg" width="200" />
-  <img src="images/audio_ios.jpg" width="200" />
+  <img src="images/audio_android.png" width="200" />
+  <img src="images/audio_ios.png" width="200" />
 </div>
 
-For audio-only trimming, specify the media type and output format:
+For audio-only trimming, specify the media type and output format. The editor automatically displays an audio waveform visualization in place of the thumbnail track. The waveform updates on zoom for higher resolution.
 
 ```javascript
 showEditor(audioUrl, {
   type: 'audio',        // Enable audio mode
   outputExt: 'wav',     // Output format (mp3, wav, m4a, etc.)
   maxDuration: 30000,   // 30 seconds max
+});
+```
+
+Customize the waveform appearance:
+
+```javascript
+showEditor(audioUrl, {
+  type: 'audio',
+  outputExt: 'mp3',
+  waveformColor: '#FFFFFF',
+  waveformBackgroundColor: '#3478F6',
+  waveformBarWidth: 3,
+  waveformBarGap: 2,
+  waveformBarCornerRadius: 1.5,
 });
 ```
 

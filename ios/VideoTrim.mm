@@ -155,6 +155,31 @@ RCT_EXPORT_MODULE()
     dict[@"handleIconColor"] = @(handleIconColorOpt.value());
   }
   
+  auto waveformColorOpt = config.waveformColor();
+  if (waveformColorOpt.has_value()) {
+    dict[@"waveformColor"] = @(waveformColorOpt.value());
+  }
+  
+  auto waveformBackgroundColorOpt = config.waveformBackgroundColor();
+  if (waveformBackgroundColorOpt.has_value()) {
+    dict[@"waveformBackgroundColor"] = @(waveformBackgroundColorOpt.value());
+  }
+  
+  auto waveformBarWidthOpt = config.waveformBarWidth();
+  if (waveformBarWidthOpt.has_value()) {
+    dict[@"waveformBarWidth"] = @(waveformBarWidthOpt.value());
+  }
+  
+  auto waveformBarGapOpt = config.waveformBarGap();
+  if (waveformBarGapOpt.has_value()) {
+    dict[@"waveformBarGap"] = @(waveformBarGapOpt.value());
+  }
+  
+  auto waveformBarCornerRadiusOpt = config.waveformBarCornerRadius();
+  if (waveformBarCornerRadiusOpt.has_value()) {
+    dict[@"waveformBarCornerRadius"] = @(waveformBarCornerRadiusOpt.value());
+  }
+  
   auto zoomOnWaitingDurationOpt = config.zoomOnWaitingDuration();
   if (zoomOnWaitingDurationOpt.has_value()) {
     dict[@"zoomOnWaitingDuration"] = @(zoomOnWaitingDurationOpt.value());
