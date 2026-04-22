@@ -26,6 +26,14 @@ export interface BaseOptions {
    * happens regardless of this flag, so precise trimming comes for free in that case.
    */
   enablePreciseTrimming: boolean;
+  /** When `true`, strips the audio track from the output. Default `false`. */
+  removeAudio: boolean;
+  /**
+   * Playback speed multiplier applied during export. `1.0` is normal speed,
+   * `2.0` is double speed, `0.5` is half speed. Valid range: 0.25–4.0.
+   * When not `1.0`, re-encoding is forced regardless of `enablePreciseTrimming`.
+   */
+  speed: number;
 }
 
 /**
@@ -180,6 +188,143 @@ export interface TrimResult {
 }
 
 /**
+ * Options for extracting a single frame from a video.
+ */
+export interface FrameExtractionOptions {
+  /** Timestamp in milliseconds at which to extract the frame. */
+  time: number;
+  /** Output image format: `"jpeg"` (default) or `"png"`. */
+  format: string;
+  /** JPEG compression quality from 0–100. Default `80`. Ignored for PNG. */
+  quality: number;
+  /** Maximum width in pixels. Height is auto-calculated to preserve aspect ratio. `-1` for original. */
+  maxWidth: number;
+  /** Maximum height in pixels. Width is auto-calculated to preserve aspect ratio. `-1` for original. */
+  maxHeight: number;
+}
+
+/**
+ * Result returned by {@link Spec.getFrameAt}.
+ */
+export interface FrameResult {
+  /** Absolute path to the extracted image file. */
+  outputPath: string;
+}
+
+/**
+ * Options for extracting the audio track from a video file.
+ */
+export interface ExtractAudioOptions {
+  /** Output audio file extension (e.g. `"mp3"`, `"m4a"`, `"wav"`). Default `"mp3"`. */
+  outputExt: string;
+}
+
+/**
+ * Result returned by {@link Spec.extractAudio}.
+ */
+export interface ExtractAudioResult {
+  /** Absolute path to the extracted audio file. */
+  outputPath: string;
+  /** Duration of the audio in milliseconds. */
+  duration: number;
+}
+
+/**
+ * Options for compressing a video file.
+ */
+export interface CompressOptions {
+  /**
+   * Quality preset: `"low"` (smallest file), `"medium"` (balanced), `"high"` (best quality).
+   * Maps to CRF 28, 23, 18 respectively. Ignored when `bitrate` is set.
+   */
+  quality: string;
+  /** Explicit target bitrate in bits per second. Overrides `quality` when set. `-1` to use quality preset. */
+  bitrate: number;
+  /** Target width in pixels. `-1` to keep original. Height is auto-calculated to preserve aspect ratio. */
+  width: number;
+  /** Target height in pixels. `-1` to keep original. Width is auto-calculated to preserve aspect ratio. */
+  height: number;
+  /** Target frame rate. `-1` to keep original. */
+  frameRate: number;
+  /** Output file extension (e.g. `"mp4"`). Default `"mp4"`. */
+  outputExt: string;
+  /** When `true`, strips the audio track from the output. Default `false`. */
+  removeAudio: boolean;
+}
+
+/**
+ * Result returned by {@link Spec.compress}.
+ */
+export interface CompressResult {
+  /** Absolute path to the compressed output file. */
+  outputPath: string;
+}
+
+/**
+ * Options for converting a video segment to an animated GIF.
+ */
+export interface GifOptions {
+  /** Start time in milliseconds. Default `0`. */
+  startTime: number;
+  /** End time in milliseconds. Default `-1` (end of video). */
+  endTime: number;
+  /** Frame rate of the GIF. Default `10`. */
+  fps: number;
+  /** Width in pixels. Height is auto-calculated to preserve aspect ratio. `-1` for original. */
+  width: number;
+}
+
+/**
+ * Result returned by {@link Spec.toGif}.
+ */
+export interface GifResult {
+  /** Absolute path to the generated GIF file. */
+  outputPath: string;
+}
+
+/**
+ * Options for merging multiple media files into one.
+ */
+export interface MergeOptions {
+  /** Output file extension (e.g. `"mp4"`, `"wav"`). Default `"mp4"`. */
+  outputExt: string;
+}
+
+/**
+ * Result returned by {@link Spec.merge}.
+ */
+export interface MergeResult {
+  /** Absolute path to the merged output file. */
+  outputPath: string;
+  /** Total duration of the merged file in milliseconds. */
+  duration: number;
+}
+
+/**
+ * Result returned by {@link Spec.saveToPhoto}.
+ */
+export interface SaveToPhotoResult {
+  /** Whether the file was saved to the photo library successfully. */
+  success: boolean;
+}
+
+/**
+ * Result returned by {@link Spec.saveToDocuments}.
+ */
+export interface SaveToDocumentsResult {
+  /** Whether the file was saved to documents successfully. */
+  success: boolean;
+}
+
+/**
+ * Result returned by {@link Spec.share}.
+ */
+export interface ShareResult {
+  /** Whether the user completed the share action. */
+  success: boolean;
+}
+
+/**
  * TurboModule spec for the native VideoTrim module.
  */
 export interface Spec extends TurboModule {
@@ -197,6 +342,31 @@ export interface Spec extends TurboModule {
   isValidFile(url: string): Promise<FileValidationResult>;
   /** Perform a headless trim (no UI) on the given URL with the specified options. */
   trim(url: string, options: TrimOptions): Promise<TrimResult>;
+  /** Extract a single frame from a video at the specified timestamp. */
+  getFrameAt(
+    url: string,
+    options: FrameExtractionOptions
+  ): Promise<FrameResult>;
+  /** Extract the audio track from a video file into a separate audio file. */
+  extractAudio(
+    url: string,
+    options: ExtractAudioOptions
+  ): Promise<ExtractAudioResult>;
+  /** Compress a video file to reduce its size. */
+  compress(url: string, options: CompressOptions): Promise<CompressResult>;
+  /** Convert a video segment to an animated GIF. */
+  toGif(url: string, options: GifOptions): Promise<GifResult>;
+  /** Merge multiple media files into a single file. Headless only, no editor UI. */
+  merge(
+    urls: ReadonlyArray<string>,
+    options: MergeOptions
+  ): Promise<MergeResult>;
+  /** Save a file to the device's photo library. Requires photo library permission. */
+  saveToPhoto(filePath: string): Promise<SaveToPhotoResult>;
+  /** Present the system document picker to save a file to the user's chosen location. */
+  saveToDocuments(filePath: string): Promise<SaveToDocumentsResult>;
+  /** Open the system share sheet for a file. */
+  share(filePath: string): Promise<ShareResult>;
 
   /** Emitted when the trim operation starts. */
   readonly onStartTrimming: EventEmitter<void>;

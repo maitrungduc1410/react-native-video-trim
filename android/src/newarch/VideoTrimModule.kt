@@ -3,6 +3,7 @@ package com.videotrim
 import android.util.Log
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableMap
 
@@ -67,6 +68,38 @@ class VideoTrimModule(
     promise: Promise
   ) {
     base.trim(url, options, promise)
+  }
+
+  override fun getFrameAt(url: String, options: ReadableMap, promise: Promise) {
+    base.getFrameAt(url, options, promise)
+  }
+
+  override fun extractAudio(url: String, options: ReadableMap, promise: Promise) {
+    base.extractAudio(url, options, promise)
+  }
+
+  override fun compress(url: String, options: ReadableMap, promise: Promise) {
+    base.compress(url, options, promise)
+  }
+
+  override fun toGif(url: String, options: ReadableMap, promise: Promise) {
+    base.toGif(url, options, promise)
+  }
+
+  override fun merge(urls: ReadableArray, options: ReadableMap, promise: Promise) {
+    base.merge(urls, options, promise)
+  }
+
+  override fun saveToPhoto(filePath: String, promise: Promise) {
+    base.saveToPhoto(filePath, promise)
+  }
+
+  override fun saveToDocuments(filePath: String, promise: Promise) {
+    base.saveToDocuments(filePath, promise)
+  }
+
+  override fun share(filePath: String, promise: Promise) {
+    base.share(filePath, promise)
   }
 
   companion object {

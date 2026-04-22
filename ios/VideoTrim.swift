@@ -1,6 +1,7 @@
 import React
 import Photos
 import AVFoundation
+import UIKit
 import ffmpegkit
 
 let FILE_PREFIX = "trimmedVideo"
@@ -60,6 +61,10 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     get {
       return editorConfig?["enablePreciseTrimming"] as? Bool ?? false
     }
+  }
+  
+  private var removeAudio: Bool {
+    return editorConfig?["removeAudio"] as? Bool ?? false
   }
   
   // MARK: trimming with editor options
@@ -262,6 +267,22 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     }
   }
   
+  /// Chains FFmpeg `atempo` filters so each stage stays within 0.5–2.0.
+  private func buildAtempoChain(_ speed: Double) -> String {
+    var remaining = speed
+    var filters: [String] = []
+    while remaining < 0.5 {
+      filters.append("atempo=0.5")
+      remaining /= 0.5
+    }
+    while remaining > 2.0 {
+      filters.append("atempo=2.0")
+      remaining /= 2.0
+    }
+    filters.append("atempo=\(remaining)")
+    return filters.joined(separator: ",")
+  }
+  
   private func trim(viewController: VideoTrimmerViewController, inputFile: URL, videoDuration: Double, startTime: Double, endTime: Double, isVideoType: Bool) {
     guard !isTrimming else { return }
     isTrimming = true
@@ -348,10 +369,13 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     var videoFilters: [String] = []
     let hasUserTransform = vc != nil && (vc!.rotationCount != 0 || vc!.isFlipped)
     let cropNorm = vc?.cropNormalizedRect
+    let stripAudio = removeAudio || viewController.isMuted
+    let playbackSpeed = viewController.speed
+    let needsSpeed = abs(playbackSpeed - 1.0) > 0.0001
     // Re-encode is required when: (1) user applied flip/rotate, (2) user cropped, or
-    // (3) enablePreciseTrimming is on. In all three cases, -c copy won't work because
-    // either we need video filters or we need frame-accurate cut points.
-    let needsReEncode = hasUserTransform || cropNorm != nil || enablePreciseTrimming
+    // (3) enablePreciseTrimming is on, or (4) export speed != 1.0. In those cases, -c copy
+    // won't work because we need filters or frame-accurate cut points.
+    let needsReEncode = hasUserTransform || cropNorm != nil || enablePreciseTrimming || needsSpeed
     
     if needsReEncode, let vc = vc {
       // -noautorotate disables FFmpeg's automatic rotation, so we must manually
@@ -415,6 +439,10 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       }
     }
     
+    if needsReEncode && needsSpeed {
+      videoFilters.append("setpts=\(1.0 / playbackSpeed)*PTS")
+    }
+    
     guard let outputFile = outputFile else {
       self.onError(message: "Output file path is nil", code: .trimmingFailed)
       return
@@ -447,19 +475,28 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
         "h264_videotoolbox",
         "-b:v",
         bitrateStr,
-        "-c:a",
-        "copy",
+      ])
+      if stripAudio {
+        cmds.append("-an")
+      } else if needsSpeed {
+        cmds.append(contentsOf: ["-af", buildAtempoChain(playbackSpeed), "-c:a", "aac"])
+      } else {
+        cmds.append(contentsOf: ["-c:a", "copy"])
+      }
+      cmds.append(contentsOf: [
         "-metadata",
         "creation_time=\(dateTime)",
         outputFile.path
       ])
     } else {
       // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
+      cmds.append(contentsOf: ["-i", inputFile.path])
+      if stripAudio {
+        cmds.append(contentsOf: ["-c:v", "copy", "-an"])
+      } else {
+        cmds.append(contentsOf: ["-c", "copy"])
+      }
       cmds.append(contentsOf: [
-        "-i",
-        inputFile.path,
-        "-c",
-        "copy",
         "-metadata",
         "creation_time=\(dateTime)",
         outputFile.path
@@ -586,16 +623,14 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   }
   
   // New Arch
-  @objc(trim:url:config:)
+  @objc(trimWithInputFile:config:completion:)
   public func _trim(inputFile: String, config: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
-    guard let destPath = URL(string: inputFile) ?? URL(fileURLWithPath: inputFile) as URL? else {
-      let result = [
+    let destPath = URL(string: inputFile) ?? URL(fileURLWithPath: inputFile)
+    if destPath.path.isEmpty {
+      completion([
         "success": false,
         "message": "Invalid input file path",
-      ] as [String : Any]
-      
-      completion(result)
-      
+      ] as [String: Any])
       return
     }
     
@@ -620,10 +655,13 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     ]
     
     // Headless trim: no editor UI, so no transforms (flip/rotate/crop) are possible.
-    // The only reason to re-encode here is enablePreciseTrimming for frame-accurate cuts.
     let enablePrecise = config["enablePreciseTrimming"] as? Bool ?? false
+    let stripAudio = config["removeAudio"] as? Bool ?? false
+    let speed = config["speed"] as? Double ?? 1.0
+    let needsSpeed = abs(speed - 1.0) > 0.0001
+    let needsReEncode = enablePrecise || needsSpeed
     
-    if enablePrecise {
+    if needsReEncode {
       // Match source bitrate to preserve quality; fall back to 10 Mbps.
       var bitrateStr = "10M"
       let asset = AVURLAsset(url: destPath)
@@ -634,28 +672,44 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
         }
       }
       
+      var videoFilters: [String] = []
+      if needsSpeed {
+        videoFilters.append("setpts=\(1.0 / speed)*PTS")
+      }
+      
       // No -noautorotate here: headless trim has no manual rotation filters,
       // so FFmpeg's auto-rotation produces the correct output orientation.
+      cmds.append(contentsOf: ["-i", destPath.path])
+      if !videoFilters.isEmpty {
+        cmds.append(contentsOf: ["-vf", videoFilters.joined(separator: ",")])
+      }
       cmds.append(contentsOf: [
-        "-i",
-        destPath.path,
         "-c:v",
         "h264_videotoolbox",
         "-b:v",
         bitrateStr,
-        "-c:a",
-        "copy",
+      ])
+      if stripAudio {
+        cmds.append("-an")
+      } else if needsSpeed {
+        cmds.append(contentsOf: ["-af", buildAtempoChain(speed), "-c:a", "aac"])
+      } else {
+        cmds.append(contentsOf: ["-c:a", "copy"])
+      }
+      cmds.append(contentsOf: [
         "-metadata",
         "creation_time=\(dateTime)",
         outputFile.path
       ])
     } else {
       // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
+      cmds.append(contentsOf: ["-i", destPath.path])
+      if stripAudio {
+        cmds.append(contentsOf: ["-c:v", "copy", "-an"])
+      } else {
+        cmds.append(contentsOf: ["-c", "copy"])
+      }
       cmds.append(contentsOf: [
-        "-i",
-        destPath.path,
-        "-c",
-        "copy",
         "-metadata",
         "creation_time=\(dateTime)",
         outputFile.path
@@ -765,9 +819,10 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
         completion(result)
       } else {
         // FAILURE
+        let logs = session?.getAllLogsAsString() ?? ""
         let result = [
           "success": false,
-          "message": "Command failed with rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))",
+          "message": "Command failed with rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))\n\(logs)",
         ] as [String : Any]
         
         completion(result)
@@ -1031,23 +1086,30 @@ extension VideoTrim {
     resolve(VideoTrim.deleteFile(uri: uri))
   }
   
+  // Scans both the documents directory (showEditor/trim outputs) and the caches
+  // directory (headless API outputs) for files matching our FILE_PREFIX.
   private static func listFiles() -> [URL] {
     var files: [URL] = []
-    
-    let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-    
-    do {
-      let directoryContents = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
-      
-      for fileURL in directoryContents {
-        if fileURL.lastPathComponent.starts(with: FILE_PREFIX) {
-          files.append(fileURL)
+
+    let dirs = [
+      FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!,
+      FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!,
+    ]
+
+    for dir in dirs {
+      do {
+        let directoryContents = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+
+        for fileURL in directoryContents {
+          if fileURL.lastPathComponent.starts(with: FILE_PREFIX) {
+            files.append(fileURL)
+          }
         }
+      } catch {
+        print("[listFiles] Error when retrieving files in \(dir): \(error)")
       }
-    } catch {
-      print("[listFiles] Error when retrieving files: \(error)")
     }
-    
+
     return files
   }
   
@@ -1080,6 +1142,519 @@ extension VideoTrim {
   func isValidFile(uri: String, resolve: @escaping RCTPromiseResolveBlock,reject: @escaping RCTPromiseRejectBlock) -> Void {
     VideoTrim.isValidFile(url: uri, completion: { payload in
       resolve(payload)
+    })
+  }
+  
+  // MARK: - Headless API: getFrameAt
+  // Extracts a single video frame as JPEG/PNG using AVAssetImageGenerator.
+  // Output goes to the caches directory (OS-managed, auto-purged under storage pressure).
+  @objc
+  public static func getFrameAt(_ url: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
+    let destPath = URL(string: url) ?? URL(fileURLWithPath: url)
+
+    let time = options["time"] as? Double ?? 0
+    let format = options["format"] as? String ?? "jpeg"
+    let qualityNum = options["quality"] as? NSNumber
+    let quality = qualityNum?.intValue ?? 80
+    let maxWidth = options["maxWidth"] as? Int ?? -1
+    let maxHeight = options["maxHeight"] as? Int ?? -1
+
+    DispatchQueue.global(qos: .userInitiated).async {
+      let asset = AVURLAsset(url: destPath)
+      let generator = AVAssetImageGenerator(asset: asset)
+      generator.appliesPreferredTrackTransform = true
+      generator.requestedTimeToleranceBefore = CMTime(seconds: 0.1, preferredTimescale: 600)
+      generator.requestedTimeToleranceAfter = CMTime(seconds: 0.1, preferredTimescale: 600)
+
+      if maxWidth > 0 || maxHeight > 0 {
+        let w = maxWidth > 0 ? maxWidth : 0
+        let h = maxHeight > 0 ? maxHeight : 0
+        generator.maximumSize = CGSize(width: CGFloat(w), height: CGFloat(h))
+      } else if let track = asset.tracks(withMediaType: .video).first {
+        // AVAssetImageGenerator defaults to a reduced size if maximumSize is not set.
+        // Explicitly set it to the video's natural size (accounting for rotation via
+        // preferredTransform) to ensure full-resolution frame extraction.
+        let size = track.naturalSize.applying(track.preferredTransform)
+        generator.maximumSize = CGSize(width: abs(size.width), height: abs(size.height))
+      }
+
+      let cmTime = CMTime(value: CMTimeValue(time), timescale: 1000)
+
+      do {
+        let cgImage = try generator.copyCGImage(at: cmTime, actualTime: nil)
+        let uiImage = UIImage(cgImage: cgImage)
+
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let ext = format == "png" ? "png" : "jpg"
+        let outputName = "\(FILE_PREFIX)_frame_\(timestamp).\(ext)"
+        let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let outputURL = cacheDirectory.appendingPathComponent(outputName)
+
+        let data: Data?
+        if format == "png" {
+          data = uiImage.pngData()
+        } else {
+          data = uiImage.jpegData(compressionQuality: CGFloat(quality) / 100.0)
+        }
+
+        guard let imageData = data else {
+          completion(["error": "Failed to encode image"])
+          return
+        }
+
+        try imageData.write(to: outputURL)
+        completion(["outputPath": outputURL.absoluteString])
+      } catch {
+        completion(["error": "Failed to extract frame: \(error.localizedDescription)"])
+      }
+    }
+  }
+
+  // Old Arch
+  @objc(getFrameAt:withOptions:withResolver:withRejecter:)
+  func getFrameAt(_ url: String, withOptions options: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    VideoTrim.getFrameAt(url, options: options, completion: { payload in
+      if let error = payload["error"] as? String {
+        reject("ERR_FRAME_EXTRACTION", error, NSError(domain: "", code: 200, userInfo: nil))
+      } else {
+        resolve(payload)
+      }
+    })
+  }
+
+  // MARK: - Headless API: extractAudio
+  // Strips the video track, keeping only audio. Default output is m4a (AAC) because the
+  // default FFmpegKit builds do not include libmp3lame, so mp3 encoding would fail.
+  @objc
+  public static func extractAudio(_ url: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
+    let destPath = URL(string: url) ?? URL(fileURLWithPath: url)
+
+    let outputExt = options["outputExt"] as? String ?? "m4a"
+    let timestamp = Int(Date().timeIntervalSince1970)
+    let outputName = "\(FILE_PREFIX)_audio_\(timestamp).\(outputExt)"
+    let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+    let outputFile = cacheDirectory.appendingPathComponent(outputName)
+
+    let cmds = ["-i", destPath.path, "-vn", "-y", outputFile.path]
+    print("extractAudio command:", cmds.joined(separator: " "))
+
+    FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
+      let returnCode = session?.getReturnCode()
+      if ReturnCode.isSuccess(returnCode) {
+        let asset = AVURLAsset(url: outputFile)
+        let duration = CMTimeGetSeconds(asset.duration) * 1000
+        completion([
+          "outputPath": outputFile.absoluteString,
+          "duration": duration.rounded()
+        ])
+      } else {
+        let logs = session?.getAllLogsAsString() ?? ""
+        completion(["error": "Failed to extract audio: rc \(String(describing: returnCode))\n\(logs)"])
+      }
+    }, withLogCallback: nil, withStatisticsCallback: nil)
+  }
+
+  // Old Arch
+  @objc(extractAudio:withOptions:withResolver:withRejecter:)
+  func extractAudio(_ url: String, withOptions options: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    VideoTrim.extractAudio(url, options: options, completion: { payload in
+      if let error = payload["error"] as? String {
+        reject("ERR_EXTRACT_AUDIO", error, NSError(domain: "", code: 200, userInfo: nil))
+      } else {
+        resolve(payload)
+      }
+    })
+  }
+
+  // MARK: - Headless API: compress
+  // Re-encodes video with h264_videotoolbox (hardware) at the requested quality/bitrate.
+  // Uses CRF-style -global_quality for quality presets, or explicit -b:v for custom bitrate.
+  @objc
+  public static func compress(_ url: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
+    let destPath = URL(string: url) ?? URL(fileURLWithPath: url)
+
+    let quality = options["quality"] as? String ?? "medium"
+    let bitrate = options["bitrate"] as? Double ?? -1
+    let width = options["width"] as? Int ?? -1
+    let height = options["height"] as? Int ?? -1
+    let frameRate = options["frameRate"] as? Double ?? -1
+    let outputExt = options["outputExt"] as? String ?? "mp4"
+    let removeAudio = options["removeAudio"] as? Bool ?? false
+
+    let timestamp = Int(Date().timeIntervalSince1970)
+    let outputName = "\(FILE_PREFIX)_compressed_\(timestamp).\(outputExt)"
+    let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+    let outputFile = cacheDirectory.appendingPathComponent(outputName)
+
+    var cmds: [String] = ["-i", destPath.path]
+    var videoFilters: [String] = []
+
+    if width > 0 && height > 0 {
+      videoFilters.append("scale=\(width):\(height)")
+    } else if width > 0 {
+      videoFilters.append("scale=\(width):-2")
+    } else if height > 0 {
+      videoFilters.append("scale=-2:\(height)")
+    }
+
+    if !videoFilters.isEmpty {
+      cmds.append(contentsOf: ["-vf", videoFilters.joined(separator: ",")])
+    }
+
+    cmds.append(contentsOf: ["-c:v", "h264_videotoolbox"])
+
+    if bitrate > 0 {
+      cmds.append(contentsOf: ["-b:v", "\(Int(bitrate))"])
+    } else {
+      let crf: String
+      switch quality {
+      case "low": crf = "28"
+      case "high": crf = "18"
+      default: crf = "23"
+      }
+      cmds.append(contentsOf: ["-global_quality", crf])
+    }
+
+    if frameRate > 0 {
+      cmds.append(contentsOf: ["-r", "\(frameRate)"])
+    }
+
+    if removeAudio {
+      cmds.append("-an")
+    } else {
+      cmds.append(contentsOf: ["-c:a", "aac"])
+    }
+
+    cmds.append(contentsOf: ["-y", outputFile.path])
+    print("compress command:", cmds.joined(separator: " "))
+
+    FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
+      let returnCode = session?.getReturnCode()
+      if ReturnCode.isSuccess(returnCode) {
+        completion(["outputPath": outputFile.absoluteString])
+      } else {
+        let logs = session?.getAllLogsAsString() ?? ""
+        completion(["error": "Compression failed: rc \(String(describing: returnCode))\n\(logs)"])
+      }
+    }, withLogCallback: nil, withStatisticsCallback: nil)
+  }
+
+  // Old Arch
+  @objc(compress:withOptions:withResolver:withRejecter:)
+  func compress(_ url: String, withOptions options: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    VideoTrim.compress(url, options: options, completion: { payload in
+      if let error = payload["error"] as? String {
+        reject("ERR_COMPRESS", error, NSError(domain: "", code: 200, userInfo: nil))
+      } else {
+        resolve(payload)
+      }
+    })
+  }
+
+  // MARK: - Headless API: toGif
+  // Two-pass GIF conversion: pass 1 generates an optimal palette, pass 2 encodes the GIF
+  // using that palette for better color accuracy than single-pass dithering.
+  @objc
+  public static func toGif(_ url: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
+    let destPath = URL(string: url) ?? URL(fileURLWithPath: url)
+
+    let startTime = options["startTime"] as? Double ?? 0
+    let endTime = options["endTime"] as? Double ?? -1
+    let fps = options["fps"] as? Int ?? 10
+    let width = options["width"] as? Int ?? -1
+
+    let timestamp = Int(Date().timeIntervalSince1970)
+    let paletteName = "\(FILE_PREFIX)_palette_\(timestamp).png"
+    let outputName = "\(FILE_PREFIX)_gif_\(timestamp).gif"
+    let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+    let paletteFile = cacheDirectory.appendingPathComponent(paletteName)
+    let outputFile = cacheDirectory.appendingPathComponent(outputName)
+
+    let scaleExpr = width > 0 ? "\(width):-1" : "-1:-1"
+    let filterBase = "fps=\(fps),scale=\(scaleExpr):flags=lanczos"
+
+    var timeArgs: [String] = []
+    if startTime > 0 { timeArgs.append(contentsOf: ["-ss", "\(startTime)ms"]) }
+    if endTime > 0 { timeArgs.append(contentsOf: ["-to", "\(endTime)ms"]) }
+
+    let pass1 = timeArgs + ["-i", destPath.path, "-vf", "\(filterBase),palettegen", "-y", paletteFile.path]
+    print("toGif pass1 command:", pass1.joined(separator: " "))
+
+    FFmpegKit.execute(withArgumentsAsync: pass1, withCompleteCallback: { session in
+      guard ReturnCode.isSuccess(session?.getReturnCode()) else {
+        let logs = session?.getAllLogsAsString() ?? ""
+        completion(["error": "GIF palette generation failed\n\(logs)"])
+        return
+      }
+
+      let pass2 = timeArgs + [
+        "-i", destPath.path,
+        "-i", paletteFile.path,
+        "-lavfi", "[0:v]\(filterBase)[x];[x][1:v]paletteuse",
+        "-y", outputFile.path
+      ]
+      print("toGif pass2 command:", pass2.joined(separator: " "))
+
+      FFmpegKit.execute(withArgumentsAsync: pass2, withCompleteCallback: { session2 in
+        try? FileManager.default.removeItem(at: paletteFile)
+
+        guard ReturnCode.isSuccess(session2?.getReturnCode()) else {
+          let logs = session2?.getAllLogsAsString() ?? ""
+          completion(["error": "GIF creation failed\n\(logs)"])
+          return
+        }
+        completion(["outputPath": outputFile.absoluteString])
+      }, withLogCallback: nil, withStatisticsCallback: nil)
+    }, withLogCallback: nil, withStatisticsCallback: nil)
+  }
+
+  // Old Arch
+  @objc(toGif:withOptions:withResolver:withRejecter:)
+  func toGif(_ url: String, withOptions options: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    VideoTrim.toGif(url, options: options, completion: { payload in
+      if let error = payload["error"] as? String {
+        reject("ERR_GIF", error, NSError(domain: "", code: 200, userInfo: nil))
+      } else {
+        resolve(payload)
+      }
+    })
+  }
+
+  // MARK: - Headless API: merge
+  // Concatenates multiple local video files using FFmpeg's concat *filter* (not demuxer).
+  // Each input is normalized to the first clip's resolution via scale+pad+setsar+format
+  // before entering the concat, so clips with different dimensions, pixel formats, or SARs
+  // merge correctly (mismatched inputs get letterboxed/pillarboxed with black bars).
+  //
+  // Bitrate: probes all input videos and uses the highest detected bitrate as the target
+  // (-b:v) so the output quality matches the best source. Falls back to 10 Mbps.
+  //
+  // Limitation: only supports local file paths. Remote URLs are not supported because the
+  // default FFmpegKit build does not include OpenSSL (--disable-openssl).
+  @objc
+  public static func merge(_ urls: [String], options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
+    let outputExt = options["outputExt"] as? String ?? "mp4"
+    let timestamp = Int(Date().timeIntervalSince1970)
+    let outputName = "\(FILE_PREFIX)_merged_\(timestamp).\(outputExt)"
+    let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+    let outputFile = cacheDirectory.appendingPathComponent(outputName)
+
+    guard !urls.isEmpty else {
+      completion(["error": "No input URLs"])
+      return
+    }
+
+    var cmds: [String] = []
+    var maxBitrate: Int = 0
+    for urlStr in urls {
+      let u = URL(string: urlStr) ?? URL(fileURLWithPath: urlStr)
+      cmds.append(contentsOf: ["-i", u.path])
+      let asset = AVURLAsset(url: u)
+      if let track = asset.tracks(withMediaType: .video).first {
+        maxBitrate = max(maxBitrate, Int(track.estimatedDataRate))
+      }
+    }
+    let bitrateStr = maxBitrate > 0 ? "\(maxBitrate)" : "10M"
+
+    // Use the first clip's dimensions and frame rate as the target for all inputs.
+    let firstURL = URL(string: urls[0]) ?? URL(fileURLWithPath: urls[0])
+    let firstAsset = AVURLAsset(url: firstURL)
+    var targetW = 1280; var targetH = 720
+    var targetFps = 30
+    if let track = firstAsset.tracks(withMediaType: .video).first {
+      let size = track.naturalSize.applying(track.preferredTransform)
+      targetW = Int(abs(size.width))
+      targetH = Int(abs(size.height))
+      targetFps = min(Int(ceil(track.nominalFrameRate)), 30)
+      if targetFps <= 0 { targetFps = 30 }
+    }
+
+    // Normalize each input to the same resolution, pixel format, SAR, and frame rate
+    // before concat. The fps filter prevents massive frame duplication when inputs have
+    // very different frame rates (e.g. 24fps + 60fps would cause thousands of dupes).
+    let n = urls.count
+    let scaleFilter = "scale=\(targetW):\(targetH):force_original_aspect_ratio=decrease,pad=\(targetW):\(targetH):(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,fps=\(targetFps)"
+    var scaleParts: [String] = []
+    for i in 0..<n {
+      scaleParts.append("[\(i):v:0]\(scaleFilter)[v\(i)]")
+    }
+    let concatInputs = (0..<n).map { "[v\($0)][\($0):a:0]" }.joined()
+    let filterComplex = scaleParts.joined(separator: ";") + ";" + concatInputs + "concat=n=\(n):v=1:a=1[outv][outa]"
+
+    cmds.append(contentsOf: [
+      "-filter_complex", filterComplex,
+      "-map", "[outv]", "-map", "[outa]",
+      "-c:v", "h264_videotoolbox", "-b:v", bitrateStr,
+      "-c:a", "aac",
+      "-y", outputFile.path
+    ])
+    print("merge command:", cmds.joined(separator: " "))
+
+    FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
+      let returnCode = session?.getReturnCode()
+      if ReturnCode.isSuccess(returnCode) {
+        let asset = AVURLAsset(url: outputFile)
+        let duration = CMTimeGetSeconds(asset.duration) * 1000
+        completion([
+          "outputPath": outputFile.absoluteString,
+          "duration": duration.rounded()
+        ])
+      } else {
+        let logs = session?.getAllLogsAsString() ?? ""
+        completion(["error": "Merge failed: rc \(String(describing: returnCode))\n\(logs)"])
+      }
+    }, withLogCallback: nil, withStatisticsCallback: nil)
+  }
+
+  // Old Arch
+  @objc(merge:withOptions:withResolver:withRejecter:)
+  func merge(_ urls: [String], withOptions options: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    VideoTrim.merge(urls, options: options, completion: { payload in
+      if let error = payload["error"] as? String {
+        reject("ERR_MERGE", error, NSError(domain: "", code: 200, userInfo: nil))
+      } else {
+        resolve(payload)
+      }
+    })
+  }
+
+  // MARK: - Utility: saveToPhoto
+  // Saves a file to the Photo Library. Detects whether the file is an image or video by
+  // extension, then calls the appropriate PHAssetChangeRequest factory method. Using the
+  // wrong factory (e.g. creationRequestForAssetFromVideo for a .jpg) causes the Photos
+  // app to treat the file as a broken video.
+
+  private static let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "tiff", "tif"]
+
+  @objc
+  public static func saveToPhoto(_ filePath: String, completion: @escaping ([String: Any]) -> Void) {
+    let fileURL = URL(string: filePath) ?? URL(fileURLWithPath: filePath)
+
+    guard FileManager.default.fileExists(atPath: fileURL.path) else {
+      completion(["error": "File does not exist at path: \(filePath)"])
+      return
+    }
+
+    let ext = fileURL.pathExtension.lowercased()
+    let isImage = imageExtensions.contains(ext)
+
+    PHPhotoLibrary.requestAuthorization { status in
+      guard status == .authorized else {
+        completion(["error": "Permission to access Photo Library is not granted"])
+        return
+      }
+
+      PHPhotoLibrary.shared().performChanges({
+        if isImage {
+          PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: fileURL)
+        } else {
+          PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileURL)
+        }
+      }) { success, error in
+        if success {
+          completion(["success": true])
+        } else {
+          completion(["error": "Failed to save to Photo Library: \(error?.localizedDescription ?? "Unknown error")"])
+        }
+      }
+    }
+  }
+
+  // Old Arch
+  @objc(saveToPhoto:withResolver:withRejecter:)
+  func saveToPhoto(_ filePath: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    VideoTrim.saveToPhoto(filePath, completion: { payload in
+      if let error = payload["error"] as? String {
+        reject("ERR_SAVE_TO_PHOTO", error, NSError(domain: "", code: 200, userInfo: nil))
+      } else {
+        resolve(payload)
+      }
+    })
+  }
+
+  // MARK: - Utility: saveToDocuments
+  // Presents UIDocumentPickerViewController in exportToService mode so the user can
+  // choose where to save. Uses a standalone DocumentPickerDelegate (retained via
+  // objc_setAssociatedObject) that is independent of the editor lifecycle.
+
+  @objc
+  public static func saveToDocuments(_ filePath: String, completion: @escaping ([String: Any]) -> Void) {
+    let fileURL = URL(string: filePath) ?? URL(fileURLWithPath: filePath)
+
+    guard FileManager.default.fileExists(atPath: fileURL.path) else {
+      completion(["error": "File does not exist at path: \(filePath)"])
+      return
+    }
+
+    DispatchQueue.main.async {
+      let picker = UIDocumentPickerViewController(url: fileURL, in: .exportToService)
+      picker.modalPresentationStyle = .formSheet
+
+      let delegate = DocumentPickerDelegate(completion: completion)
+      picker.delegate = delegate
+      objc_setAssociatedObject(picker, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+
+      if let root = RCTPresentedViewController() {
+        root.present(picker, animated: true, completion: nil)
+      } else {
+        completion(["error": "No root view controller available"])
+      }
+    }
+  }
+
+  // Old Arch
+  @objc(saveToDocuments:withResolver:withRejecter:)
+  func saveToDocuments(_ filePath: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    VideoTrim.saveToDocuments(filePath, completion: { payload in
+      if let error = payload["error"] as? String {
+        reject("ERR_SAVE_TO_DOCUMENTS", error, NSError(domain: "", code: 200, userInfo: nil))
+      } else {
+        resolve(payload)
+      }
+    })
+  }
+
+  // MARK: - Utility: share
+  // Opens UIActivityViewController with the file URL. The completion handler resolves
+  // with success=true if the user completed a share action, false if cancelled.
+
+  @objc
+  public static func share(_ filePath: String, completion: @escaping ([String: Any]) -> Void) {
+    let fileURL = URL(string: filePath) ?? URL(fileURLWithPath: filePath)
+
+    guard FileManager.default.fileExists(atPath: fileURL.path) else {
+      completion(["error": "File does not exist at path: \(filePath)"])
+      return
+    }
+
+    DispatchQueue.main.async {
+      let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+
+      activityVC.completionWithItemsHandler = { _, completed, _, error in
+        if let error = error {
+          completion(["error": "Sharing error: \(error.localizedDescription)"])
+          return
+        }
+        completion(["success": completed])
+      }
+
+      if let root = RCTPresentedViewController() {
+        root.present(activityVC, animated: true, completion: nil)
+      } else {
+        completion(["error": "No root view controller available"])
+      }
+    }
+  }
+
+  // Old Arch
+  @objc(share:withResolver:withRejecter:)
+  func share(_ filePath: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    VideoTrim.share(filePath, completion: { payload in
+      if let error = payload["error"] as? String {
+        reject("ERR_SHARE", error, NSError(domain: "", code: 200, userInfo: nil))
+      } else {
+        resolve(payload)
+      }
     })
   }
   
@@ -1180,5 +1755,23 @@ extension VideoTrim {
       let _ = VideoTrim.deleteFile(url: outputFile)
     }
     closeEditor()
+  }
+}
+
+/// Standalone delegate for the `saveToDocuments` utility (not tied to editor lifecycle).
+private class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
+  private let completion: ([String: Any]) -> Void
+
+  init(completion: @escaping ([String: Any]) -> Void) {
+    self.completion = completion
+    super.init()
+  }
+
+  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+    completion(["success": true])
+  }
+
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    completion(["success": false])
   }
 }

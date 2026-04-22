@@ -13,6 +13,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
+import android.media.PlaybackParams
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -202,8 +203,16 @@ class VideoTrimmerView(
   private lateinit var cropBtn: ImageView
   private lateinit var undoBtn: ImageView
   private lateinit var redoBtn: ImageView
+  private lateinit var muteBtn: ImageView
+  private lateinit var speedBtn: TextView
   private lateinit var videoContainer: FrameLayout
   private var cropOverlay: CropOverlayView? = null
+
+  internal var isMuted = false
+    private set
+  private var configRemoveAudio = false
+  private var speed: Double = 1.0
+  private val speedOptions = doubleArrayOf(0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0)
 
   private lateinit var trimmerView: RelativeLayout
 
@@ -283,6 +292,8 @@ class VideoTrimmerView(
     flipBtn = findViewById(R.id.flipBtn)
     rotateBtn = findViewById(R.id.rotateBtn)
     cropBtn = findViewById(R.id.cropBtn)
+    muteBtn = findViewById(R.id.muteBtn)
+    speedBtn = findViewById(R.id.speedBtn)
     undoBtn = findViewById(R.id.undoBtn)
     redoBtn = findViewById(R.id.redoBtn)
     videoContainer = findViewById(R.id.videoContainer)
@@ -510,6 +521,9 @@ class VideoTrimmerView(
       playOrPause()
     }
 
+    mediaPlayer?.setVolume(if (isMuted) 0f else 1f, if (isMuted) 0f else 1f)
+    applyPlaybackSpeed()
+
     if (isVideoType) {
       transformRow.alpha = 0f
       transformRow.visibility = View.VISIBLE
@@ -568,9 +582,54 @@ class VideoTrimmerView(
         seekTo(startTime, true)
       }
       player.start()
+      applyPlaybackSpeed()
       startTimingRunnable()
     }
     setPlayPauseViewIcon(player.isPlaying)
+  }
+
+  private fun applyPlaybackSpeed() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      val player = mediaPlayer ?: return
+      val params = player.playbackParams ?: PlaybackParams()
+      player.playbackParams = params.setSpeed(speed.toFloat())
+    }
+  }
+
+  private fun onMuteTapped() {
+    isMuted = !isMuted
+    muteBtn.setImageResource(if (isMuted) R.drawable.speaker_slash_fill else R.drawable.speaker_wave_2_fill)
+    mediaPlayer?.setVolume(if (isMuted) 0f else 1f, if (isMuted) 0f else 1f)
+    if (enableHapticFeedback) {
+      performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+    }
+  }
+
+  // Uses Android's native PopupMenu anchored to the speed button for a platform-
+  // consistent speed selector (equivalent to iOS's UIMenu on iOS 14+).
+  private fun onSpeedTapped() {
+    val popup = android.widget.PopupMenu(context, speedBtn)
+    speedOptions.forEachIndexed { index, opt ->
+      val title = if (opt == 1.0) "Normal (1x)" else "${opt}x"
+      popup.menu.add(0, index, index, title)
+    }
+    popup.setOnMenuItemClickListener { item ->
+      setSpeed(speedOptions[item.itemId])
+      true
+    }
+    popup.show()
+  }
+
+  private fun setSpeed(newSpeed: Double) {
+    speed = newSpeed
+    speedBtn.text = if (newSpeed == 1.0) "1x" else "${newSpeed}x"
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      mediaPlayer?.playbackParams = mediaPlayer?.playbackParams?.setSpeed(newSpeed.toFloat())
+        ?: PlaybackParams().setSpeed(newSpeed.toFloat())
+    }
+    if (enableHapticFeedback) {
+      performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+    }
   }
 
   fun onMediaPause() {
@@ -598,6 +657,8 @@ class VideoTrimmerView(
     cropBtn.setOnClickListener { onCropTapped() }
     undoBtn.setOnClickListener { onUndoTapped() }
     redoBtn.setOnClickListener { onRedoTapped() }
+    muteBtn.setOnClickListener { onMuteTapped() }
+    speedBtn.setOnClickListener { onSpeedTapped() }
 
     cropBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
     undoBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
@@ -614,6 +675,7 @@ class VideoTrimmerView(
         ?.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
         ?.toLongOrNull() ?: 0L
     }
+    val effectiveRemoveAudio = isMuted || configRemoveAudio
     ffmpegSession = VideoTrimmerUtil.trim(
       mSourceUri.toString(),
       StorageUtil.getOutputPath(mContext, mOutputExt),
@@ -627,6 +689,8 @@ class VideoTrimmerView(
       vh,
       bitrate,
       enablePreciseTrimming,
+      effectiveRemoveAudio,
+      speed,
       mOnTrimVideoListener
     )
   }
@@ -755,6 +819,17 @@ class VideoTrimmerView(
     enablePreciseTrimming = config.hasKey("enablePreciseTrimming") && config.getBoolean("enablePreciseTrimming")
     autoplay = config.hasKey("autoplay") && config.getBoolean("autoplay")
 
+    if (config.hasKey("removeAudio")) {
+      configRemoveAudio = config.getBoolean("removeAudio")
+      isMuted = configRemoveAudio
+    }
+    if (config.hasKey("speed") && config.getDouble("speed") > 0) {
+      speed = config.getDouble("speed")
+      speedBtn.text = if (speed == 1.0) "1x" else "${speed}x"
+    }
+    muteBtn.setImageResource(if (isMuted) R.drawable.speaker_slash_fill else R.drawable.speaker_wave_2_fill)
+    muteBtn.visibility = if (isVideoType) View.VISIBLE else View.GONE
+
     if (config.hasKey("jumpToPositionOnLoad") && config.getDouble("jumpToPositionOnLoad") > 0) {
       jumpToPositionOnLoad = maxOf(0, (config.getDouble("jumpToPositionOnLoad") * 1000L).toLong())
     }
@@ -856,6 +931,8 @@ class VideoTrimmerView(
     cropBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
     undoBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
     redoBtn.setColorFilter(dimmedIconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+    muteBtn.setColorFilter(iconColor, android.graphics.PorterDuff.Mode.SRC_IN)
+    speedBtn.setTextColor(iconColor)
 
     // Overlays
     leadingOverlay.setBackgroundColor(overlayColor)

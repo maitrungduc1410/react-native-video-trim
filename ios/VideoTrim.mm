@@ -73,8 +73,10 @@ RCT_EXPORT_MODULE()
   dict[@"startTime"] = @(options.startTime());
   dict[@"endTime"] = @(options.endTime());
   dict[@"enablePreciseTrimming"] = @(options.enablePreciseTrimming());
+  dict[@"removeAudio"] = @(options.removeAudio());
+  dict[@"speed"] = @(options.speed());
   
-  [self->videoTrim trim:url url:dict config:^(NSDictionary<NSString *,id> * _Nonnull result) {
+  [self->videoTrim trimWithInputFile:url config:dict completion:^(NSDictionary<NSString *,id> * _Nonnull result) {
     BOOL success = [result[@"success"] boolValue];
     if (success) {
       resolve(result);
@@ -143,6 +145,8 @@ RCT_EXPORT_MODULE()
   dict[@"alertOnFailMessage"] = config.alertOnFailMessage();
   dict[@"alertOnFailCloseText"] = config.alertOnFailCloseText();
   dict[@"enablePreciseTrimming"] = @(config.enablePreciseTrimming());
+  dict[@"removeAudio"] = @(config.removeAudio());
+  dict[@"speed"] = @(config.speed());
   
   // Handle optional color values
   auto trimmerColorOpt = config.trimmerColor();
@@ -191,6 +195,135 @@ RCT_EXPORT_MODULE()
   }
   
   [self->videoTrim showEditor:filePath withConfig:dict];
+}
+
+- (void)getFrameAt:(nonnull NSString *)url
+           options:(JS::NativeVideoTrim::FrameExtractionOptions &)options
+           resolve:(nonnull RCTPromiseResolveBlock)resolve
+            reject:(nonnull RCTPromiseRejectBlock)reject {
+  NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+  dict[@"time"] = @(options.time());
+  dict[@"format"] = options.format();
+  dict[@"quality"] = @(options.quality());
+  dict[@"maxWidth"] = @(options.maxWidth());
+  dict[@"maxHeight"] = @(options.maxHeight());
+
+  [VideoTrimSwift getFrameAt:url options:dict completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
+    if (result[@"error"]) {
+      reject(@"ERR_FRAME_EXTRACTION", result[@"error"], [NSError errorWithDomain:@"" code:200 userInfo:nil]);
+    } else {
+      resolve(result);
+    }
+  }];
+}
+
+- (void)extractAudio:(nonnull NSString *)url
+             options:(JS::NativeVideoTrim::ExtractAudioOptions &)options
+             resolve:(nonnull RCTPromiseResolveBlock)resolve
+              reject:(nonnull RCTPromiseRejectBlock)reject {
+  NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+  dict[@"outputExt"] = options.outputExt();
+
+  [VideoTrimSwift extractAudio:url options:dict completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
+    if (result[@"error"]) {
+      reject(@"ERR_EXTRACT_AUDIO", result[@"error"], [NSError errorWithDomain:@"" code:200 userInfo:nil]);
+    } else {
+      resolve(result);
+    }
+  }];
+}
+
+- (void)compress:(nonnull NSString *)url
+         options:(JS::NativeVideoTrim::CompressOptions &)options
+         resolve:(nonnull RCTPromiseResolveBlock)resolve
+          reject:(nonnull RCTPromiseRejectBlock)reject {
+  NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+  dict[@"quality"] = options.quality();
+  dict[@"bitrate"] = @(options.bitrate());
+  dict[@"width"] = @(options.width());
+  dict[@"height"] = @(options.height());
+  dict[@"frameRate"] = @(options.frameRate());
+  dict[@"outputExt"] = options.outputExt();
+  dict[@"removeAudio"] = @(options.removeAudio());
+
+  [VideoTrimSwift compress:url options:dict completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
+    if (result[@"error"]) {
+      reject(@"ERR_COMPRESS", result[@"error"], [NSError errorWithDomain:@"" code:200 userInfo:nil]);
+    } else {
+      resolve(result);
+    }
+  }];
+}
+
+- (void)toGif:(nonnull NSString *)url
+      options:(JS::NativeVideoTrim::GifOptions &)options
+      resolve:(nonnull RCTPromiseResolveBlock)resolve
+       reject:(nonnull RCTPromiseRejectBlock)reject {
+  NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+  dict[@"startTime"] = @(options.startTime());
+  dict[@"endTime"] = @(options.endTime());
+  dict[@"fps"] = @(options.fps());
+  dict[@"width"] = @(options.width());
+
+  [VideoTrimSwift toGif:url options:dict completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
+    if (result[@"error"]) {
+      reject(@"ERR_GIF", result[@"error"], [NSError errorWithDomain:@"" code:200 userInfo:nil]);
+    } else {
+      resolve(result);
+    }
+  }];
+}
+
+- (void)merge:(nonnull NSArray<NSString *> *)urls
+      options:(JS::NativeVideoTrim::MergeOptions &)options
+      resolve:(nonnull RCTPromiseResolveBlock)resolve
+       reject:(nonnull RCTPromiseRejectBlock)reject {
+  NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+  dict[@"outputExt"] = options.outputExt();
+
+  [VideoTrimSwift merge:urls options:dict completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
+    if (result[@"error"]) {
+      reject(@"ERR_MERGE", result[@"error"], [NSError errorWithDomain:@"" code:200 userInfo:nil]);
+    } else {
+      resolve(result);
+    }
+  }];
+}
+
+- (void)saveToPhoto:(nonnull NSString *)filePath
+            resolve:(nonnull RCTPromiseResolveBlock)resolve
+             reject:(nonnull RCTPromiseRejectBlock)reject {
+  [VideoTrimSwift saveToPhoto:filePath completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
+    if (result[@"error"]) {
+      reject(@"ERR_SAVE_TO_PHOTO", result[@"error"], [NSError errorWithDomain:@"" code:200 userInfo:nil]);
+    } else {
+      resolve(result);
+    }
+  }];
+}
+
+- (void)saveToDocuments:(nonnull NSString *)filePath
+                resolve:(nonnull RCTPromiseResolveBlock)resolve
+                 reject:(nonnull RCTPromiseRejectBlock)reject {
+  [VideoTrimSwift saveToDocuments:filePath completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
+    if (result[@"error"]) {
+      reject(@"ERR_SAVE_TO_DOCUMENTS", result[@"error"], [NSError errorWithDomain:@"" code:200 userInfo:nil]);
+    } else {
+      resolve(result);
+    }
+  }];
+}
+
+- (void)share:(nonnull NSString *)filePath
+      resolve:(nonnull RCTPromiseResolveBlock)resolve
+       reject:(nonnull RCTPromiseRejectBlock)reject {
+  [VideoTrimSwift share:filePath completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
+    if (result[@"error"]) {
+      reject(@"ERR_SHARE", result[@"error"], [NSError errorWithDomain:@"" code:200 userInfo:nil]);
+    } else {
+      resolve(result);
+    }
+  }];
 }
 
 - (void)closeEditor {
@@ -252,6 +385,27 @@ RCT_EXTERN_METHOD(isValidFile:(NSString*)uri withResolver:(RCTPromiseResolveBloc
                   withRejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(trim:(NSString*)uri withConfig:(NSDictionary *)config
                   withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(getFrameAt:(NSString*)url withOptions:(NSDictionary *)options
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(extractAudio:(NSString*)url withOptions:(NSDictionary *)options
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(compress:(NSString*)url withOptions:(NSDictionary *)options
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(toGif:(NSString*)url withOptions:(NSDictionary *)options
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(merge:(NSArray *)urls withOptions:(NSDictionary *)options
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(saveToPhoto:(NSString*)filePath withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(saveToDocuments:(NSString*)filePath withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(share:(NSString*)filePath withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 @end
 

@@ -2,8 +2,21 @@ import VideoTrimNewArch from './NativeVideoTrim';
 import VideoTrimOldArch from './OldArch';
 import type {
   BaseOptions,
+  CompressOptions,
+  CompressResult,
   EditorConfig,
+  ExtractAudioOptions,
+  ExtractAudioResult,
   FileValidationResult,
+  FrameExtractionOptions,
+  FrameResult,
+  GifOptions,
+  GifResult,
+  MergeOptions,
+  MergeResult,
+  SaveToDocumentsResult,
+  SaveToPhotoResult,
+  ShareResult,
   TrimOptions,
   TrimResult,
 } from './NativeVideoTrim';
@@ -21,6 +34,64 @@ function createBaseOptions(overrides: Partial<BaseOptions> = {}): BaseOptions {
     removeAfterSavedToPhoto: false,
     removeAfterFailedToSavePhoto: false,
     enablePreciseTrimming: false,
+    removeAudio: false,
+    speed: 1.0,
+    ...overrides,
+  };
+}
+
+function createCompressOptions(
+  overrides: Partial<CompressOptions> = {}
+): CompressOptions {
+  return {
+    quality: 'medium',
+    bitrate: -1,
+    width: -1,
+    height: -1,
+    frameRate: -1,
+    outputExt: 'mp4',
+    removeAudio: false,
+    ...overrides,
+  };
+}
+
+function createFrameExtractionOptions(
+  overrides: Partial<FrameExtractionOptions> = {}
+): FrameExtractionOptions {
+  return {
+    time: 0,
+    format: 'jpeg',
+    quality: 80,
+    maxWidth: -1,
+    maxHeight: -1,
+    ...overrides,
+  };
+}
+
+function createExtractAudioOptions(
+  overrides: Partial<ExtractAudioOptions> = {}
+): ExtractAudioOptions {
+  return {
+    outputExt: 'm4a',
+    ...overrides,
+  };
+}
+
+function createGifOptions(overrides: Partial<GifOptions> = {}): GifOptions {
+  return {
+    startTime: 0,
+    endTime: -1,
+    fps: 10,
+    width: -1,
+    ...overrides,
+  };
+}
+
+function createMergeOptions(
+  overrides: Partial<MergeOptions> = {}
+): MergeOptions {
+  return {
+    outputExt: 'mp4',
     ...overrides,
   };
 }
@@ -212,6 +283,120 @@ export function trim(
   options: Partial<TrimOptions>
 ): Promise<TrimResult> {
   return VideoTrim.trim(url, createTrimOptions(options));
+}
+
+/**
+ * Extract a single frame from a video at a given timestamp
+ *
+ * @param {string} url: absolute non-empty file path
+ * @param {Partial<FrameExtractionOptions>} options: extraction options
+ * @returns {Promise<FrameResult>} A **Promise** which resolves to the FrameResult
+ */
+export function getFrameAt(
+  url: string,
+  options: Partial<FrameExtractionOptions> = {}
+): Promise<FrameResult> {
+  return VideoTrim.getFrameAt(url, createFrameExtractionOptions(options));
+}
+
+/**
+ * Extract the audio track from a video file
+ *
+ * @param {string} url: absolute non-empty file path
+ * @param {Partial<ExtractAudioOptions>} options: extraction options
+ * @returns {Promise<ExtractAudioResult>} A **Promise** which resolves to the result
+ */
+export function extractAudio(
+  url: string,
+  options: Partial<ExtractAudioOptions> = {}
+): Promise<ExtractAudioResult> {
+  return VideoTrim.extractAudio(url, createExtractAudioOptions(options));
+}
+
+/**
+ * Compress a video file to reduce its size
+ *
+ * @param {string} url: absolute non-empty file path
+ * @param {Partial<CompressOptions>} options: compression options
+ * @returns {Promise<CompressResult>} A **Promise** which resolves to the result
+ */
+export function compress(
+  url: string,
+  options: Partial<CompressOptions> = {}
+): Promise<CompressResult> {
+  return VideoTrim.compress(url, createCompressOptions(options));
+}
+
+/**
+ * Convert a video segment to an animated GIF
+ *
+ * @param {string} url: absolute non-empty file path
+ * @param {Partial<GifOptions>} options: GIF conversion options
+ * @returns {Promise<GifResult>} A **Promise** which resolves to the result
+ */
+export function toGif(
+  url: string,
+  options: Partial<GifOptions> = {}
+): Promise<GifResult> {
+  return VideoTrim.toGif(url, createGifOptions(options));
+}
+
+/**
+ * Merge multiple media files into a single file (headless, no UI)
+ *
+ * @param {string[]} urls: array of file paths to merge in order
+ * @param {Partial<MergeOptions>} options: merge options
+ * @returns {Promise<MergeResult>} A **Promise** which resolves to the result
+ */
+export function merge(
+  urls: string[],
+  options: Partial<MergeOptions> = {}
+): Promise<MergeResult> {
+  if (!urls?.length) {
+    throw new Error('URLs array cannot be empty!');
+  }
+  return VideoTrim.merge(urls, createMergeOptions(options));
+}
+
+/**
+ * Save a file to the device's photo library
+ *
+ * @param {string} filePath: absolute path to the file
+ * @returns {Promise<SaveToPhotoResult>} A **Promise** which resolves to the result
+ */
+export function saveToPhoto(filePath: string): Promise<SaveToPhotoResult> {
+  if (!filePath?.trim().length) {
+    throw new Error('File path cannot be empty!');
+  }
+  return VideoTrim.saveToPhoto(filePath);
+}
+
+/**
+ * Present the system document picker to save a file
+ *
+ * @param {string} filePath: absolute path to the file
+ * @returns {Promise<SaveToDocumentsResult>} A **Promise** which resolves to the result
+ */
+export function saveToDocuments(
+  filePath: string
+): Promise<SaveToDocumentsResult> {
+  if (!filePath?.trim().length) {
+    throw new Error('File path cannot be empty!');
+  }
+  return VideoTrim.saveToDocuments(filePath);
+}
+
+/**
+ * Open the system share sheet for a file
+ *
+ * @param {string} filePath: absolute path to the file
+ * @returns {Promise<ShareResult>} A **Promise** which resolves to the result
+ */
+export function share(filePath: string): Promise<ShareResult> {
+  if (!filePath?.trim().length) {
+    throw new Error('File path cannot be empty!');
+  }
+  return VideoTrim.share(filePath);
 }
 
 export * from './NativeVideoTrim';

@@ -59,6 +59,8 @@ class VideoTrimmerViewController: UIViewController {
     private var waveformBarCornerRadius: CGFloat = 1.5
     private var iconColor: UIColor { isLightTheme ? .black : .white }
     private var dimmedIconColor: UIColor { iconColor.withAlphaComponent(0.5) }
+    private let symbolConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+    private let speedOptions: [Double] = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
     
     private let playerController = AVPlayerViewController()
     private var trimmer: VideoTrimmer!
@@ -86,6 +88,10 @@ class VideoTrimmerViewController: UIViewController {
     
     private(set) var rotationCount = 0
     private(set) var isFlipped = false
+    private(set) var isMuted = false
+    private var muteBtn: UIButton?
+    private(set) var speed: Double = 1.0
+    private var speedBtn: UIButton?
     private var isVideoType = true
     private var playerContainerView: UIView!
     private var transformStackView: UIStackView?
@@ -270,6 +276,7 @@ class VideoTrimmerViewController: UIViewController {
             }
             
             player.play()
+            player.rate = Float(speed)
         }
         
         setPlayBtnIcon()
@@ -463,6 +470,7 @@ class VideoTrimmerViewController: UIViewController {
         }
         playerController.player = AVPlayer()
         player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
+        player.isMuted = isMuted
         
         statusObservation = player.observe(\.status, options: [.new, .initial]) { [weak self] player, _ in
             DispatchQueue.main.async {
@@ -521,8 +529,6 @@ class VideoTrimmerViewController: UIViewController {
     private func setupTransformButtons() {
         guard isVideoType else { return }
         
-        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-        
         let flipBtn = UIButton(type: .system)
         flipBtn.setImage(UIImage(systemName: "arrow.trianglehead.left.and.right.righttriangle.left.righttriangle.right", withConfiguration: symbolConfig), for: .normal)
         flipBtn.tintColor = iconColor
@@ -539,6 +545,25 @@ class VideoTrimmerViewController: UIViewController {
         cropButton.addTarget(self, action: #selector(onCropTapped), for: .touchUpInside)
         self.cropBtn = cropButton
         
+        let muteButton = UIButton(type: .system)
+        muteButton.setImage(UIImage(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill", withConfiguration: symbolConfig), for: .normal)
+        muteButton.tintColor = iconColor
+        muteButton.addTarget(self, action: #selector(onMuteTapped), for: .touchUpInside)
+        self.muteBtn = muteButton
+        
+        let speedButton = UIButton(type: .system)
+        let speedLabel = speed == 1.0 ? "1x" : "\(speed)x"
+        speedButton.setTitle(speedLabel, for: .normal)
+        speedButton.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        speedButton.tintColor = iconColor
+        if #available(iOS 14.0, *) {
+            speedButton.showsMenuAsPrimaryAction = true
+            speedButton.menu = buildSpeedMenu()
+        } else {
+            speedButton.addTarget(self, action: #selector(onSpeedTapped), for: .touchUpInside)
+        }
+        self.speedBtn = speedButton
+        
         let undoButton = UIButton(type: .system)
         undoButton.setImage(UIImage(systemName: "arrow.uturn.backward", withConfiguration: symbolConfig), for: .normal)
         undoButton.tintColor = dimmedIconColor
@@ -553,7 +578,7 @@ class VideoTrimmerViewController: UIViewController {
         redoButton.addTarget(self, action: #selector(onRedoTapped), for: .touchUpInside)
         self.redoBtn = redoButton
         
-        let leftStack = UIStackView(arrangedSubviews: [flipBtn, rotateBtn, cropButton])
+        let leftStack = UIStackView(arrangedSubviews: [flipBtn, rotateBtn, cropButton, muteButton, speedButton])
         leftStack.axis = .horizontal
         leftStack.spacing = 12
         
@@ -578,6 +603,10 @@ class VideoTrimmerViewController: UIViewController {
             rotateBtn.heightAnchor.constraint(equalToConstant: btnSize),
             cropButton.widthAnchor.constraint(equalToConstant: btnSize),
             cropButton.heightAnchor.constraint(equalToConstant: btnSize),
+            muteButton.widthAnchor.constraint(equalToConstant: btnSize),
+            muteButton.heightAnchor.constraint(equalToConstant: btnSize),
+            speedButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 36),
+            speedButton.heightAnchor.constraint(equalToConstant: btnSize),
             undoButton.widthAnchor.constraint(equalToConstant: btnSize),
             undoButton.heightAnchor.constraint(equalToConstant: btnSize),
             redoButton.widthAnchor.constraint(equalToConstant: btnSize),
@@ -588,6 +617,66 @@ class VideoTrimmerViewController: UIViewController {
         ])
         
         self.transformStackView = fullRow
+    }
+    
+    @objc private func onMuteTapped() {
+        isMuted.toggle()
+        muteBtn?.setImage(UIImage(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill", withConfiguration: symbolConfig), for: .normal)
+        player.isMuted = isMuted
+        if enableHapticFeedback {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+    }
+    
+    // Builds a native context menu for speed selection (iOS 14+). The menu is
+    // attached via showsMenuAsPrimaryAction so it opens on tap without an extra
+    // long-press gesture. Falls back to UIAlertController on older iOS versions.
+    @available(iOS 14.0, *)
+    private func buildSpeedMenu() -> UIMenu {
+        let actions = speedOptions.map { opt in
+            let title = opt == 1.0 ? "Normal (1x)" : "\(opt)x"
+            let isSelected = abs(opt - speed) < 0.0001
+            return UIAction(title: title, state: isSelected ? .on : .off) { [weak self] _ in
+                self?.setSpeed(opt)
+            }
+        }
+        return UIMenu(title: "", children: actions)
+    }
+
+    /// Fallback for iOS < 14 where UIMenu is unavailable.
+    @objc private func onSpeedTapped() {
+        let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        alert.overrideUserInterfaceStyle = isLightTheme ? .light : .dark
+        for opt in speedOptions {
+            let title = opt == 1.0 ? "Normal (1x)" : "\(opt)x"
+            let isSelected = abs(opt - speed) < 0.0001
+            let action = UIAlertAction(title: title, style: isSelected ? .destructive : .default) { [weak self] _ in
+                self?.setSpeed(opt)
+            }
+            alert.addAction(action)
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        if let pop = alert.popoverPresentationController, let btn = speedBtn {
+            pop.sourceView = btn
+            pop.sourceRect = btn.bounds
+        }
+        present(alert, animated: true)
+    }
+    
+    private func setSpeed(_ newSpeed: Double) {
+        speed = newSpeed
+        let label = newSpeed == 1.0 ? "1x" : "\(newSpeed)x"
+        speedBtn?.setTitle(label, for: .normal)
+        if #available(iOS 14.0, *) {
+            speedBtn?.menu = buildSpeedMenu()
+        }
+        player.rate = Float(newSpeed)
+        if player.timeControlStatus != .playing {
+            player.pause()
+        }
+        if enableHapticFeedback {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
     }
     
     @objc private func onFlipTapped() {
@@ -978,6 +1067,10 @@ class VideoTrimmerViewController: UIViewController {
     zoomOnWaitingDuration = (config["zoomOnWaitingDuration"] as? Double ?? 5.0) / 1000.0 // convert ms to s
     autoplay = config["autoplay"] as? Bool ?? false
     isVideoType = (config["type"] as? String ?? "video") == "video"
+    isMuted = config["removeAudio"] as? Bool ?? false
+    if let cfgSpeed = config["speed"] as? Double {
+        speed = cfgSpeed
+    }
     headerText = config["headerText"] as? String
     headerTextSize = config["headerTextSize"] as? Int ?? 16
     headerTextColor = config["headerTextColor"] as? Double

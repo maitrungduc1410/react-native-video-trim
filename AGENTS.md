@@ -82,7 +82,46 @@ Both platforms emit the same logical events: `onShow`, `onHide`, `onLoad`, `onSt
 
 ### Factory Functions
 
-`src/index.tsx` provides `createBaseOptions`, `createEditorConfig`, and `createTrimOptions` that merge user overrides with defaults and run `processColor` on color string props before passing to native.
+`src/index.tsx` provides factory functions (`createBaseOptions`, `createEditorConfig`, `createTrimOptions`, `createCompressOptions`, `createFrameExtractionOptions`, `createExtractAudioOptions`, `createGifOptions`, `createMergeOptions`) that merge user overrides with defaults and run `processColor` on color string props before passing to native.
+
+### Headless APIs
+
+In addition to the editor UI (`showEditor`) and headless trim (`trim`), the library provides several headless (no-UI) media processing APIs:
+
+| API | Description | FFmpeg | Platform-native |
+|-----|-------------|--------|-----------------|
+| `getFrameAt` | Extract a single frame as JPEG/PNG | — | `AVAssetImageGenerator` (iOS), `MediaMetadataRetriever` (Android) |
+| `extractAudio` | Strip video, keep audio track | `-vn` | — |
+| `compress` | Re-encode with quality/bitrate/resolution controls | h264_videotoolbox / h264_mediacodec | — |
+| `toGif` | Two-pass palette-based GIF conversion | `palettegen` + `paletteuse` | — |
+| `merge` | Concatenate multiple clips into one | concat filter + re-encode | — |
+
+**Key decisions:**
+- `extractAudio` defaults to `m4a` (AAC) because the default FFmpegKit builds lack `libmp3lame` for mp3 encoding.
+- `merge` uses the concat **filter** (`-filter_complex concat=n=N:v=1:a=1`) rather than the concat **demuxer** (`-f concat -c copy`). Each input is normalized to the first clip's resolution and frame rate via `scale+pad+setsar+format+fps` filters before entering the concat, so clips with different dimensions, pixel formats, SARs, or frame rates merge correctly (mismatched aspect ratios get letterboxed/pillarboxed with black bars; frame rate is capped at 30 fps to prevent massive frame duplication).
+- `merge` probes all input videos for bitrate and uses the maximum as the output target (`-b:v`) to preserve quality. Falls back to 10 Mbps.
+- `merge` only supports **local file paths**. Remote URLs are not supported because the default FFmpegKit build disables OpenSSL.
+- `getFrameAt` explicitly sets full-resolution output: `AVAssetImageGenerator.maximumSize` on iOS (to the video's natural size), `MediaMetadataRetriever.getScaledFrameAtTime` on Android (API 27+).
+- All FFmpeg-based headless APIs include full FFmpeg log output in error messages for debugging.
+
+### Utility Functions
+
+Three standalone utility functions handle saving/sharing output files from any API:
+
+| Function | iOS Implementation | Android Implementation |
+|----------|-------------------|----------------------|
+| `saveToPhoto` | `PHPhotoLibrary` — detects image vs video by extension, calls appropriate `PHAssetChangeRequest` factory | `MediaStore` — dispatches to `Images.Media` or `Video.Media` collection based on extension, uses `IS_PENDING` pattern on Q+ |
+| `saveToDocuments` | `UIDocumentPickerViewController` in `exportToService` mode | `ACTION_CREATE_DOCUMENT` via SAF (Storage Access Framework) |
+| `share` | `UIActivityViewController` | `ACTION_SEND` with `FileProvider` content URI |
+
+### File Storage Strategy
+
+| Output source | Directory | Lifecycle |
+|---------------|-----------|-----------|
+| `showEditor`, `trim` | Documents / filesDir (persistent) | Survives app restarts, must be manually deleted |
+| `getFrameAt`, `extractAudio`, `compress`, `toGif`, `merge` | Caches / cacheDir | OS may purge under storage pressure |
+
+`listFiles()` and `cleanFiles()` scan **both** directories. `deleteFile()` validates paths against both allowed directories before deletion.
 
 ### Audio Waveform Visualization
 
@@ -123,11 +162,14 @@ Colors are passed through `processColor()` in `src/index.tsx` before reaching na
 
 ## Adding a New Feature
 
-1. **Define the TypeScript interface** in `src/NativeVideoTrim.ts` — add to `Spec`, update relevant option types (`BaseOptions`, `EditorConfig`, `TrimOptions`).
-2. **Implement in base classes**: `ios/VideoTrim.swift` and `android/.../BaseVideoTrimModule.kt`.
-3. **Wire events** (if any) in both `android/src/oldarch/VideoTrimModule.kt` and `android/src/newarch/VideoTrimModule.kt`, and in `ios/VideoTrim.mm` (`emitEventToJSWithEventName` dispatch).
-4. **Export from `src/index.tsx`** — add helper function if needed, update factory defaults.
-5. **Test both architectures** on iOS and Android via the `example/` app.
+1. **Define the TypeScript interface** in `src/NativeVideoTrim.ts` — add to `Spec`, create option/result types.
+2. **Create a factory function** in `src/index.tsx` (e.g. `createMyOptions`) that merges user overrides with defaults.
+3. **Implement in base classes**: `ios/VideoTrim.swift` (as `@objc public static func` for New Arch class methods + Old Arch instance wrapper) and `android/.../BaseVideoTrimModule.kt`.
+4. **Bridge the method** in `ios/VideoTrim.mm` (New Arch dispatch) and in both `android/src/oldarch/VideoTrimModule.kt` and `android/src/newarch/VideoTrimModule.kt`.
+5. **Wire events** (if any) in both Android arch modules and in `ios/VideoTrim.mm` (`emitEventToJSWithEventName` dispatch).
+6. **Export from `src/index.tsx`** — add the public function with input validation.
+7. **Choose output directory**: persistent (documents/filesDir) for editor-produced files, cache (cachesDirectory/cacheDir) for headless API outputs.
+8. **Test both architectures** on iOS and Android via the `example/` app.
 
 ## Code Style & Conventions
 
@@ -246,17 +288,18 @@ Uses `release-it` with `@release-it/conventional-changelog` (Angular preset). Bu
 
 | File | Purpose |
 |------|---------|
-| `src/NativeVideoTrim.ts` | TurboModule Spec — source of truth for API surface and events |
-| `src/index.tsx` | Public JS API, architecture detection, factory functions |
+| `src/NativeVideoTrim.ts` | TurboModule Spec — source of truth for API surface, events, option/result types |
+| `src/index.tsx` | Public JS API, architecture detection, factory functions for all APIs |
 | `src/OldArch.ts` | Old Architecture NativeModules bridge |
 | `ios/VideoTrim.mm` | iOS dual-arch native bridge |
-| `ios/VideoTrim.swift` | iOS core implementation |
-| `ios/VideoTrimmerViewController.swift` | iOS editor UI — theme, transforms, crop, player lifecycle |
+| `ios/VideoTrim.swift` | iOS core: editor, headless APIs (trim/compress/toGif/merge/extractAudio/getFrameAt), utilities (saveToPhoto/saveToDocuments/share), file management |
+| `ios/VideoTrimmerViewController.swift` | iOS editor UI — theme, transforms, crop, player lifecycle, speed menu (UIMenu on iOS 14+) |
 | `ios/VideoTrimmer.swift` | iOS trimmer control — timeline, thumbnails, handles, waveform |
 | `ios/AudioWaveformView.swift` | iOS waveform bar renderer |
 | `ios/CropOverlayView.swift` | iOS crop overlay — brackets, grid, theme-aware colors |
-| `android/.../BaseVideoTrimModule.kt` | Android core implementation |
-| `android/.../widgets/VideoTrimmerView.kt` | Android editor UI — theme, transforms, crop, player lifecycle, waveform |
+| `android/.../BaseVideoTrimModule.kt` | Android core: editor, headless APIs, utilities, file management, activity result handling |
+| `android/.../utils/StorageUtil.kt` | Android file paths, gallery saving (image/video dispatch, IS_PENDING pattern), cache/persistent directory management |
+| `android/.../widgets/VideoTrimmerView.kt` | Android editor UI — theme, transforms, crop, player lifecycle, waveform, speed PopupMenu |
 | `android/.../widgets/AudioWaveformView.kt` | Android waveform bar renderer |
 | `android/.../widgets/CropOverlayView.kt` | Android crop overlay — brackets, grid, theme-aware colors |
 | `android/src/oldarch/VideoTrimModule.kt` | Android Old Arch module |

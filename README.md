@@ -5,6 +5,12 @@
 - [API Reference](#api-reference)
   * [showEditor()](#showeditor)
   * [trim()](#trim)
+  * [getFrameAt()](#getframeat)
+  * [extractAudio()](#extractaudio)
+  * [compress()](#compress)
+  * [toGif()](#togif)
+  * [merge()](#merge)
+  * [Utility Functions](#utility-functions)
   * [File Management](#file-management)
 - [Configuration Options](#configuration-options)
   * [Basic Options](#basic-options)
@@ -12,6 +18,8 @@
   * [Behavior Options](#behavior-options)
 - [Platform Setup](#platform-setup)
 - [Advanced Features](#advanced-features)
+  * [Mute Audio / Remove Audio](#mute-audio--remove-audio)
+  * [Speed Adjustment](#speed-adjustment)
   * [Theming](#theming)
   * [Audio Trimming](#audio-trimming)
   * [Remote Files (HTTPS)](#remote-files-https)
@@ -43,6 +51,13 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 - **📹 Video & Audio Support** - Trim both video and audio files with waveform visualization
 - **🔄 Flip, Rotate & Crop** - Built-in video transforms with undo/redo support
 - **🎯 Precise Trimming** - Optional frame-accurate cuts via hardware-accelerated re-encoding
+- **🔇 Mute / Remove Audio** - Strip audio track via editor toggle or headless option
+- **⏩ Speed Adjustment** - Change playback speed (0.25x–4x) in editor or headless
+- **🗜️ Video Compression** - Reduce file size with quality presets or custom bitrate/resolution
+- **🖼️ Frame Extraction** - Extract a single frame as JPEG/PNG at any timestamp
+- **🎵 Extract Audio** - Pull the audio track out of a video file
+- **🎞️ GIF Conversion** - Convert a video segment to an animated GIF
+- **🔗 Video Merge** - Concatenate multiple clips into a single file (headless)
 - **🌐 Local & Remote Files** - Support for local storage and HTTPS URLs
 - **💾 Multiple Save Options** - Photos, Documents, or Share to other apps
 - **✅ File Validation** - Built-in validation for media files
@@ -57,6 +72,13 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 | **Trimming** | Video/audio trimming with visual timeline controls and audio waveform |
 | **Transforms** | Horizontal flip, 90° rotation, and freeform crop with undo/redo |
 | **Precise Trimming** | Frame-accurate cuts using hardware re-encoding (opt-in) |
+| **Mute Audio** | Strip audio track from output — editor toggle + headless option |
+| **Speed Control** | 0.25x–4x playback speed — editor selector + headless option |
+| **Compression** | Reduce file size via quality presets or custom bitrate/resolution |
+| **Frame Extraction** | Extract a single frame as JPEG/PNG at a given timestamp |
+| **Audio Extraction** | Extract the audio track from a video into a separate file |
+| **GIF Conversion** | Convert a video segment to an animated GIF with palette optimization |
+| **Video Merge** | Concatenate multiple clips into one file (headless API) |
 | **Validation** | Check if files are valid video/audio before processing |
 | **Save Options** | Photos, Documents, Share sheet integration |
 | **File Management** | Complete file lifecycle management |
@@ -125,6 +147,7 @@ Create `android/app/src/main/res/xml/file_paths.xml`:
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
   <files-path name="internal_files" path="." />
+  <cache-path name="cache_files" path="." />
   <external-path name="external_files" path="." />
 </paths>
 ```
@@ -227,6 +250,184 @@ const outputPath = await trim('/path/to/video.mp4', {
 });
 ```
 
+### getFrameAt()
+
+Extract a single video frame as a JPEG or PNG image.
+
+```typescript
+getFrameAt(url: string, options?: Partial<FrameExtractionOptions>): Promise<FrameResult>
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `time` | `number` | `0` | Timestamp in milliseconds |
+| `format` | `string` | `"jpeg"` | Output format: `"jpeg"` or `"png"` |
+| `quality` | `number` | `80` | JPEG quality (0–100). Ignored for PNG |
+| `maxWidth` | `number` | `-1` | Max width in pixels (`-1` for original) |
+| `maxHeight` | `number` | `-1` | Max height in pixels (`-1` for original) |
+
+**Example:**
+```javascript
+import { getFrameAt } from 'react-native-video-trim';
+
+const { outputPath } = await getFrameAt('/path/to/video.mp4', {
+  time: 5000,       // 5 seconds
+  format: 'jpeg',
+  quality: 90,
+  maxWidth: 640,
+});
+```
+
+### extractAudio()
+
+Extract the audio track from a video file into a separate audio file.
+
+```typescript
+extractAudio(url: string, options?: Partial<ExtractAudioOptions>): Promise<ExtractAudioResult>
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `outputExt` | `string` | `"m4a"` | Output format: `"m4a"`, `"wav"`, `"mp3"` (requires FFmpegKit with libmp3lame), etc. |
+
+**Returns:** `{ outputPath: string, duration: number }` (duration in milliseconds)
+
+**Example:**
+```javascript
+import { extractAudio } from 'react-native-video-trim';
+
+const { outputPath, duration } = await extractAudio('/path/to/video.mp4', {
+  outputExt: 'm4a',
+});
+```
+
+### compress()
+
+Compress a video file to reduce its size.
+
+```typescript
+compress(url: string, options?: Partial<CompressOptions>): Promise<CompressResult>
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `quality` | `string` | `"medium"` | Preset: `"low"`, `"medium"`, or `"high"` |
+| `bitrate` | `number` | `-1` | Explicit bitrate in bps. Overrides `quality` when set |
+| `width` | `number` | `-1` | Target width (`-1` to keep original) |
+| `height` | `number` | `-1` | Target height (`-1` to keep original) |
+| `frameRate` | `number` | `-1` | Target frame rate (`-1` to keep original) |
+| `outputExt` | `string` | `"mp4"` | Output file extension |
+| `removeAudio` | `boolean` | `false` | Strip audio from the output |
+
+**Example:**
+```javascript
+import { compress } from 'react-native-video-trim';
+
+// Quality preset
+const { outputPath } = await compress('/path/to/video.mp4', {
+  quality: 'medium',
+});
+
+// Custom settings
+const { outputPath } = await compress('/path/to/video.mp4', {
+  width: 720,
+  bitrate: 2_000_000,
+  removeAudio: true,
+});
+```
+
+### toGif()
+
+Convert a video segment to an animated GIF using FFmpeg's palette-based encoding for good quality.
+
+```typescript
+toGif(url: string, options?: Partial<GifOptions>): Promise<GifResult>
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `startTime` | `number` | `0` | Start time in milliseconds |
+| `endTime` | `number` | `-1` | End time in milliseconds (`-1` for end of video) |
+| `fps` | `number` | `10` | Frame rate of the GIF |
+| `width` | `number` | `-1` | Width in pixels (`-1` for original). Height auto-scales |
+
+**Example:**
+```javascript
+import { toGif } from 'react-native-video-trim';
+
+const { outputPath } = await toGif('/path/to/video.mp4', {
+  startTime: 2000,
+  endTime: 7000,
+  fps: 15,
+  width: 320,
+});
+```
+
+### merge()
+
+Concatenate multiple media files into a single file. Headless only (no editor UI).
+
+```typescript
+merge(urls: string[], options?: Partial<MergeOptions>): Promise<MergeResult>
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `outputExt` | `string` | `"mp4"` | Output file extension |
+
+**Returns:** `{ outputPath: string, duration: number }` (duration in milliseconds)
+
+> **Note:** Merge uses FFmpeg's concat filter with hardware-accelerated re-encoding (h264_videotoolbox on iOS, h264_mediacodec on Android). Input clips can have different codecs, resolutions, or frame rates — each input is automatically scaled, padded (letterboxed/pillarboxed), and frame-rate-normalized to match the first clip's dimensions and fps (capped at 30 fps). The output bitrate matches the highest-quality input to preserve quality.
+>
+> **Limitation:** Only **local file paths** are supported. Remote URLs are not supported because the default FFmpegKit build does not include OpenSSL.
+
+**Example:**
+```javascript
+import { merge } from 'react-native-video-trim';
+
+const { outputPath, duration } = await merge([
+  '/path/to/clip1.mp4',
+  '/path/to/clip2.mp4',
+  '/path/to/clip3.mp4',
+]);
+```
+
+### Utility Functions
+
+Standalone functions for saving, sharing, or exporting any output file. These work with output from any API (`compress`, `toGif`, `merge`, `trim`, etc.).
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `saveToPhoto(filePath)` | Save a file to the device's photo library (requires permission) | `Promise<SaveToPhotoResult>` |
+| `saveToDocuments(filePath)` | Open the system document picker to save a file | `Promise<SaveToDocumentsResult>` |
+| `share(filePath)` | Open the system share sheet for a file | `Promise<ShareResult>` |
+
+**Examples:**
+```javascript
+import { compress, saveToPhoto, share, deleteFile } from 'react-native-video-trim';
+
+// Compress then save to photo library
+const { outputPath } = await compress('/path/to/video.mp4', { quality: 'medium' });
+await saveToPhoto(outputPath);
+await deleteFile(outputPath);
+
+// Merge then share
+const { outputPath: merged } = await merge(['/clip1.mp4', '/clip2.mp4']);
+await share(merged);
+```
+
+> **Note:** Headless API outputs (`getFrameAt`, `extractAudio`, `compress`, `toGif`, `merge`) are written to the **cache directory**, which the OS may purge under storage pressure when your app is not running. Files from `showEditor` and `trim` are written to the persistent documents directory. For all outputs, call `deleteFile(outputPath)` when you are done with the file, or use `cleanFiles()` periodically to free space.
+
 ### File Management
 
 | Method | Description | Returns |
@@ -265,6 +466,8 @@ All configuration options are optional. Here are the most commonly used ones:
 | `minDuration` | `number` | `1000` | Minimum duration in milliseconds |
 | `autoplay` | `boolean` | `false` | Auto-play media on load |
 | `jumpToPositionOnLoad` | `number` | - | Initial position in milliseconds |
+| `removeAudio` | `boolean` | `false` | Strip the audio track from the output (see [Mute Audio](#mute-audio--remove-audio)) |
+| `speed` | `number` | `1.0` | Playback speed multiplier (0.25–4.0). Forces re-encoding when ≠ 1.0 (see [Speed Adjustment](#speed-adjustment)) |
 
 ### Save & Share Options
 
@@ -381,6 +584,10 @@ showEditor(videoPath, {
   openShareSheetOnFinish: true,
   removeAfterSavedToPhoto: true,
   
+  // Audio & speed
+  removeAudio: false,
+  speed: 1.0,
+  
   // UI customization
   theme: 'light',
   headerText: "Trim Your Video",
@@ -413,6 +620,52 @@ buildscript {
 ```
 
 ## Advanced Features
+
+### Mute Audio / Remove Audio
+
+Strip the audio track from the output. Available in both the editor UI and headless APIs.
+
+**Editor UI:** A mute toggle button appears in the toolbar (speaker icon). Tap to toggle audio on/off. The mute state carries over to the exported file.
+
+**Headless / Config:** Set `removeAudio: true` on `showEditor()`, `trim()`, or `compress()`.
+
+```javascript
+// Editor with audio muted by default
+showEditor(videoUrl, {
+  removeAudio: true,
+});
+
+// Headless trim without audio
+const result = await trim(videoUrl, {
+  startTime: 0,
+  endTime: 10000,
+  removeAudio: true,
+});
+```
+
+### Speed Adjustment
+
+Change the playback speed of the output (0.25x to 4x). Available in both the editor UI and headless APIs.
+
+**Editor UI:** A speed button appears in the toolbar showing the current speed (e.g. "1x"). Tap to open a native speed menu — `UIMenu` on iOS 14+ (with `UIAlertController` fallback on older versions), `PopupMenu` on Android. Choose from: 0.25x, 0.5x, 1x, 1.5x, 2x, 3x, 4x. The preview updates in real time, and the selected speed is applied during export.
+
+**Headless / Config:** Set the `speed` option. When speed ≠ 1.0, re-encoding is automatically forced (video via `setpts` filter, audio via `atempo` chain).
+
+```javascript
+// Editor starting at 2x speed
+showEditor(videoUrl, {
+  speed: 2.0,
+});
+
+// Headless trim at half speed
+const result = await trim(videoUrl, {
+  startTime: 0,
+  endTime: 30000,
+  speed: 0.5,
+});
+```
+
+> **Note:** Speed adjustment forces re-encoding regardless of the `enablePreciseTrimming` flag, since FFmpeg filters are required to alter the tempo.
 
 ### Theming
 
@@ -704,7 +957,9 @@ export default function VideoTrimmer() {
 
 - Use `trim()` for batch processing without UI
 - Clean up generated files regularly with `cleanFiles()`
-- Consider file compression for large videos
+- Use `compress()` to reduce large videos before upload
+- `merge()` always re-encodes via the concat filter — expect longer processing for large files or many clips
+- Speed adjustment, compression, and merge force re-encoding — expect longer processing for large files
 
 ## Credits
 

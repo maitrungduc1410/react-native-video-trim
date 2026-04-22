@@ -38,6 +38,21 @@ object VideoTrimmerUtil {
   @JvmField val THUMB_WIDTH = UnitConverter.dpToPx(25)
   private const val THUMB_RESOLUTION_RES = 2
 
+  internal fun buildAtempoChain(speed: Double): String {
+    var remaining = speed
+    val filters = mutableListOf<String>()
+    while (remaining < 0.5) {
+      filters.add("atempo=0.5")
+      remaining /= 0.5
+    }
+    while (remaining > 2.0) {
+      filters.add("atempo=2.0")
+      remaining /= 2.0
+    }
+    filters.add("atempo=$remaining")
+    return filters.joinToString(",")
+  }
+
   fun trim(
     inputFile: String,
     outputFile: String,
@@ -51,6 +66,8 @@ object VideoTrimmerUtil {
     videoHeight: Int,
     videoBitrate: Long,
     enablePreciseTrimming: Boolean,
+    removeAudio: Boolean,
+    speed: Double,
     callback: VideoTrimListener
   ): FFmpegSession {
     val currentDate = Date()
@@ -67,9 +84,9 @@ object VideoTrimmerUtil {
 
     val hasUserTransform = userRotationCount != 0 || userIsFlipped
     // Re-encode is required when: (1) user applied flip/rotate, (2) user cropped, or
-    // (3) enablePreciseTrimming is on. In all three cases, -c copy won't work because
-    // either we need video filters or we need frame-accurate cut points.
-    val needsReEncode = hasUserTransform || cropNormalized != null || enablePreciseTrimming
+    // (3) enablePreciseTrimming is on, or (4) speed != 1.0. In those cases, -c copy
+    // won't work because either we need video filters or we need frame-accurate cut points.
+    val needsReEncode = hasUserTransform || cropNormalized != null || enablePreciseTrimming || speed != 1.0
 
     if (needsReEncode) {
       val videoFilters = mutableListOf<String>()
@@ -105,6 +122,10 @@ object VideoTrimmerUtil {
         }
       }
 
+      if (speed != 1.0) {
+        videoFilters.add("setpts=${1.0 / speed}*PTS")
+      }
+
       val filterString = videoFilters.joinToString(",")
       // Preserve source quality by matching the original bitrate. Falls back to 10 Mbps.
       val bitrateStr = if (videoBitrate > 0) "$videoBitrate" else "10M"
@@ -118,21 +139,22 @@ object VideoTrimmerUtil {
       // h264_mediacodec: Android's hardware H.264 encoder — fast and energy-efficient.
       // Note: Android FFmpegKit auto-rotates by default, so no -noautorotate is needed.
       // The transpose filters above only handle user-initiated rotation, not source metadata.
-      cmds.addAll(listOf(
-        "-c:v", "h264_mediacodec",
-        "-b:v", bitrateStr,
-        "-c:a", "copy",
-        "-metadata", "creation_time=$formattedDateTime",
-        outputFile
-      ))
+      cmds.addAll(listOf("-c:v", "h264_mediacodec", "-b:v", bitrateStr))
+      when {
+        removeAudio -> cmds.add("-an")
+        speed != 1.0 -> cmds.addAll(listOf("-af", buildAtempoChain(speed)))
+        else -> cmds.addAll(listOf("-c:a", "copy"))
+      }
+      cmds.addAll(listOf("-metadata", "creation_time=$formattedDateTime", outputFile))
     } else {
       // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
-      cmds.addAll(listOf(
-        "-i", inputFile,
-        "-c", "copy",
-        "-metadata", "creation_time=$formattedDateTime",
-        outputFile
-      ))
+      cmds.addAll(listOf("-i", inputFile))
+      if (removeAudio) {
+        cmds.addAll(listOf("-c:v", "copy", "-an"))
+      } else {
+        cmds.addAll(listOf("-c", "copy"))
+      }
+      cmds.addAll(listOf("-metadata", "creation_time=$formattedDateTime", outputFile))
     }
 
     val command = cmds.toTypedArray()

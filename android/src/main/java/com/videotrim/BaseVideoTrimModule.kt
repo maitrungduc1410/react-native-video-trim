@@ -10,6 +10,7 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -38,6 +39,7 @@ import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.bridge.WritableMap
@@ -45,14 +47,17 @@ import com.videotrim.enums.ErrorCode
 import com.videotrim.interfaces.VideoTrimListener
 import com.videotrim.utils.MediaMetadataUtil
 import com.videotrim.utils.StorageUtil
+import com.videotrim.utils.VideoTrimmerUtil
 import com.videotrim.widgets.VideoTrimmerView
 import iknow.android.utils.BaseUtils
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.TimeZone
+import kotlin.math.min
 
 /**
  * Contains all shared business logic between old + new arch.
@@ -75,6 +80,8 @@ open class BaseVideoTrimModule internal constructor(
   private var originalStatusBarColor: Int = Color.TRANSPARENT
   private val shouldChangeStatusBarColorOnOpen: Boolean
     get() = editorConfig?.hasKey("changeStatusBarColorOnOpen") == true && editorConfig?.getBoolean("changeStatusBarColorOnOpen") == true
+  private var pendingSaveToDocumentsPromise: Promise? = null
+  private var pendingSaveToDocumentsFile: File? = null
 
   init {
     reactApplicationContext.addLifecycleEventListener(this)
@@ -121,6 +128,44 @@ open class BaseVideoTrimModule internal constructor(
             }
           } finally {
             hideDialog(true)
+          }
+        }
+
+        if (requestCode == REQUEST_CODE_SAVE_TO_DOCUMENTS) {
+          val promise = pendingSaveToDocumentsPromise
+          val sourceFile = pendingSaveToDocumentsFile
+          pendingSaveToDocumentsPromise = null
+          pendingSaveToDocumentsFile = null
+
+          if (promise == null || sourceFile == null) return
+
+          if (resultCode == Activity.RESULT_OK) {
+            val uri = intent?.data
+            if (uri == null) {
+              promise.reject(Exception("No destination selected"))
+              return
+            }
+            try {
+              reactApplicationContext.contentResolver?.openOutputStream(uri)
+                ?.use { outputStream ->
+                  FileInputStream(sourceFile).use { inputStream ->
+                    val buffer = ByteArray(1024)
+                    var length: Int
+                    while (inputStream.read(buffer).also { length = it } > 0) {
+                      outputStream.write(buffer, 0, length)
+                    }
+                  }
+                }
+              val result = Arguments.createMap()
+              result.putBoolean("success", true)
+              promise.resolve(result)
+            } catch (e: Exception) {
+              promise.reject(Exception("Failed to save to documents: ${e.message}"))
+            }
+          } else {
+            val result = Arguments.createMap()
+            result.putBoolean("success", false)
+            promise.resolve(result)
           }
         }
       }
@@ -298,7 +343,7 @@ open class BaseVideoTrimModule internal constructor(
 
     if (editorConfig?.getBoolean("saveToPhoto") == true && isVideoType) {
       try {
-        StorageUtil.saveVideoToGallery(reactApplicationContext, outputFile)
+        StorageUtil.saveToGallery(reactApplicationContext, outputFile)
         Log.d(TAG, "Edited video saved to Photo Library successfully.")
         if (editorConfig?.getBoolean("removeAfterSavedToPhoto") == true) {
           StorageUtil.deleteFile(outputFile)
@@ -576,27 +621,27 @@ open class BaseVideoTrimModule internal constructor(
     val startTime = options?.getDouble("startTime") ?: 0.0
     val endTime = options?.getDouble("endTime") ?: 1000.0
 
-    var cmds = arrayOf(
+    val removeAudio = options?.hasKey("removeAudio") == true && options.getBoolean("removeAudio")
+    val speed = if (options?.hasKey("speed") == true) options.getDouble("speed") else 1.0
+
+    val outputFile = StorageUtil.getOutputPath(reactApplicationContext, options?.getString("outputExt") ?: "mp4")
+
+    val resolvedOutputFile = outputFile
+
+    // Headless trim: no editor UI, so no transforms (flip/rotate/crop) are possible.
+    // Re-encode for enablePreciseTrimming (frame-accurate cuts) or non-1.0 speed (filters + atempo).
+    val enablePrecise = options?.hasKey("enablePreciseTrimming") == true &&
+      options.getBoolean("enablePreciseTrimming")
+    val needsReEncode = enablePrecise || speed != 1.0
+
+    val cmds = mutableListOf(
       "-ss",
       "${startTime}ms",
       "-to",
       "${endTime}ms",
     )
 
-    val outputFile = StorageUtil.getOutputPath(reactApplicationContext, options?.getString("outputExt") ?: "mp4")
-
-    val resolvedOutputFile = outputFile ?: run {
-      promise.reject(Exception("Failed to create output file path"))
-      return
-    }
-
-    // Headless trim: no editor UI, so no transforms (flip/rotate/crop) are possible.
-    // The only reason to re-encode here is enablePreciseTrimming for frame-accurate cuts.
-    val enablePrecise = options?.hasKey("enablePreciseTrimming") == true &&
-      options.getBoolean("enablePreciseTrimming")
-
-    if (enablePrecise) {
-      // Match source bitrate to preserve quality; fall back to 10 Mbps.
+    if (needsReEncode) {
       var bitrateStr = "10M"
       try {
         val retriever = MediaMetadataRetriever()
@@ -607,29 +652,30 @@ open class BaseVideoTrimModule internal constructor(
         retriever.release()
       } catch (_: Exception) {}
 
-      // h264_mediacodec: Android's hardware H.264 encoder.
-      // No -noautorotate needed — FFmpegKit on Android auto-rotates correctly.
-      cmds += arrayOf(
-        "-i", url,
-        "-c:v", "h264_mediacodec",
-        "-b:v", bitrateStr,
-        "-c:a", "copy",
-        "-metadata", "creation_time=$formattedDateTime",
-        resolvedOutputFile
-      )
+      cmds.addAll(listOf("-i", url))
+      if (speed != 1.0) {
+        cmds.addAll(listOf("-vf", "setpts=${1.0 / speed}*PTS"))
+      }
+      cmds.addAll(listOf("-c:v", "h264_mediacodec", "-b:v", bitrateStr))
+      when {
+        removeAudio -> cmds.add("-an")
+        speed != 1.0 -> cmds.addAll(listOf("-af", VideoTrimmerUtil.buildAtempoChain(speed)))
+        else -> cmds.addAll(listOf("-c:a", "copy"))
+      }
+      cmds.addAll(listOf("-metadata", "creation_time=$formattedDateTime", resolvedOutputFile))
     } else {
-      // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
-      cmds += arrayOf(
-        "-i", url,
-        "-c", "copy",
-        "-metadata", "creation_time=$formattedDateTime",
-        resolvedOutputFile
-      )
+      cmds.addAll(listOf("-i", url))
+      if (removeAudio) {
+        cmds.addAll(listOf("-c:v", "copy", "-an"))
+      } else {
+        cmds.addAll(listOf("-c", "copy"))
+      }
+      cmds.addAll(listOf("-metadata", "creation_time=$formattedDateTime", resolvedOutputFile))
     }
 
-    Log.d(TAG, "Command: ${cmds.joinToString(",")}")
+    Log.d(TAG, "Command: ${cmds.joinToString(" ")}")
 
-    FFmpegKit.executeWithArgumentsAsync(cmds, { session ->
+    FFmpegKit.executeWithArgumentsAsync(cmds.toTypedArray(), { session ->
       val state = session.state
       val returnCode = session.returnCode
       UiThreadUtil.runOnUiThread {
@@ -647,7 +693,7 @@ open class BaseVideoTrimModule internal constructor(
             if (options?.getBoolean("saveToPhoto") == true && options.getString("type") == "video") {
               Log.d(TAG, "Android trim: saveToPhoto is true, attempting to save to gallery")
               try {
-                StorageUtil.saveVideoToGallery(reactApplicationContext, resolvedOutputFile)
+                StorageUtil.saveToGallery(reactApplicationContext, resolvedOutputFile)
                 Log.d(TAG, "Edited video saved to Photo Library successfully.")
                 if (options.getBoolean("removeAfterSavedToPhoto")) {
                   Log.d(TAG, "Removing file after successful save to photo")
@@ -695,6 +741,335 @@ open class BaseVideoTrimModule internal constructor(
     })
   }
 
+  // Extracts a single video frame as JPEG/PNG. Output goes to the cache directory.
+  // On API 27+ (O_MR1), uses getScaledFrameAtTime with the video's native dimensions
+  // to get full-resolution frames. The plain getFrameAtTime() on older APIs may return
+  // a reduced-resolution bitmap at the decoder's discretion.
+  fun getFrameAt(url: String, options: ReadableMap?, promise: Promise) {
+    Thread {
+      try {
+        val time = options?.getDouble("time")?.toLong() ?: 0L
+        val format = options?.getString("format") ?: "jpeg"
+        val quality = options?.getInt("quality") ?: 80
+        val maxWidth = options?.getInt("maxWidth") ?: -1
+        val maxHeight = options?.getInt("maxHeight") ?: -1
+
+        val retriever = MediaMetadataUtil.getMediaMetadataRetriever(url)
+        if (retriever == null) {
+          UiThreadUtil.runOnUiThread { promise.reject(Exception("Failed to load media")) }
+          return@Thread
+        }
+
+        val videoWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+        val videoHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+
+        var bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && videoWidth > 0 && videoHeight > 0) {
+          retriever.getScaledFrameAtTime(time * 1000, MediaMetadataRetriever.OPTION_CLOSEST, videoWidth, videoHeight)
+        } else {
+          retriever.getFrameAtTime(time * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+        }
+        retriever.release()
+
+        if (bitmap == null) {
+          UiThreadUtil.runOnUiThread { promise.reject(Exception("Failed to extract frame")) }
+          return@Thread
+        }
+
+        if (maxWidth > 0 || maxHeight > 0) {
+          val origW = bitmap.width
+          val origH = bitmap.height
+          var targetW = if (maxWidth > 0) maxWidth else origW
+          var targetH = if (maxHeight > 0) maxHeight else origH
+
+          val ratioW = targetW.toFloat() / origW
+          val ratioH = targetH.toFloat() / origH
+          val ratio = min(min(ratioW, ratioH), 1f)
+
+          targetW = (origW * ratio).toInt()
+          targetH = (origH * ratio).toInt()
+
+          if (targetW != origW || targetH != origH) {
+            bitmap = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+          }
+        }
+
+        val ext = if (format == "png") "png" else "jpg"
+        val timestamp = System.currentTimeMillis() / 1000
+        val file = File(reactApplicationContext.cacheDir, "${VideoTrimmerUtil.FILE_PREFIX}_frame_${timestamp}.$ext")
+
+        val outputStream = FileOutputStream(file)
+        if (format == "png") {
+          bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+        } else {
+          bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+        }
+        outputStream.close()
+
+        val result = Arguments.createMap()
+        result.putString("outputPath", file.absolutePath)
+        UiThreadUtil.runOnUiThread { promise.resolve(result) }
+      } catch (e: Exception) {
+        UiThreadUtil.runOnUiThread { promise.reject(Exception("Frame extraction failed: ${e.message}")) }
+      }
+    }.start()
+  }
+
+  // Strips the video track via FFmpeg -vn. Default output is m4a (AAC) because the
+  // default FFmpegKit builds do not include libmp3lame for mp3 encoding.
+  fun extractAudio(url: String, options: ReadableMap?, promise: Promise) {
+    val outputExt = options?.getString("outputExt") ?: "m4a"
+    val outputFile = StorageUtil.getCacheOutputPath(reactApplicationContext, outputExt)
+
+    val cmds = arrayOf("-i", url, "-vn", "-y", outputFile)
+    Log.d(TAG, "extractAudio command: ${cmds.joinToString(" ")}")
+
+    FFmpegKit.executeWithArgumentsAsync(cmds, { session ->
+      val returnCode = session.returnCode
+      UiThreadUtil.runOnUiThread {
+        if (ReturnCode.isSuccess(returnCode)) {
+          val retriever = MediaMetadataRetriever()
+          var duration = 0.0
+          try {
+            retriever.setDataSource(outputFile)
+            duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull() ?: 0.0
+            retriever.release()
+          } catch (_: Exception) {
+          }
+
+          val result = Arguments.createMap()
+          result.putString("outputPath", outputFile)
+          result.putDouble("duration", duration)
+          promise.resolve(result)
+        } else {
+          val logs = session.allLogsAsString ?: ""
+          promise.reject(Exception("Extract audio failed: rc $returnCode\n$logs"))
+        }
+      }
+    }, null, null)
+  }
+
+  // Re-encodes video with h264_mediacodec (hardware) at the requested quality/bitrate.
+  // Uses preset bitrate tiers for quality levels since Android's MediaCodec does not
+  // support CRF-style quality control like VideoToolbox's -global_quality on iOS.
+  fun compress(url: String, options: ReadableMap?, promise: Promise) {
+    val quality = options?.getString("quality") ?: "medium"
+    val bitrate = options?.getDouble("bitrate") ?: -1.0
+    val width = options?.getInt("width") ?: -1
+    val height = options?.getInt("height") ?: -1
+    val frameRate = options?.getDouble("frameRate") ?: -1.0
+    val outputExt = options?.getString("outputExt") ?: "mp4"
+    val removeAudio = options?.hasKey("removeAudio") == true && options.getBoolean("removeAudio")
+
+    val outputFile = StorageUtil.getCacheOutputPath(reactApplicationContext, outputExt)
+
+    val cmds = mutableListOf("-i", url)
+    val videoFilters = mutableListOf<String>()
+
+    if (width > 0 && height > 0) {
+      videoFilters.add("scale=$width:$height")
+    } else if (width > 0) {
+      videoFilters.add("scale=$width:-2")
+    } else if (height > 0) {
+      videoFilters.add("scale=-2:$height")
+    }
+
+    if (videoFilters.isNotEmpty()) {
+      cmds.addAll(listOf("-vf", videoFilters.joinToString(",")))
+    }
+
+    cmds.addAll(listOf("-c:v", "h264_mediacodec"))
+
+    if (bitrate > 0) {
+      cmds.addAll(listOf("-b:v", "${bitrate.toLong()}"))
+    } else {
+      val bv = when (quality) {
+        "low" -> "500K"
+        "high" -> "5M"
+        else -> "2M"
+      }
+      cmds.addAll(listOf("-b:v", bv))
+    }
+
+    if (frameRate > 0) {
+      cmds.addAll(listOf("-r", "$frameRate"))
+    }
+
+    if (removeAudio) {
+      cmds.add("-an")
+    } else {
+      cmds.addAll(listOf("-c:a", "aac"))
+    }
+
+    cmds.addAll(listOf("-y", outputFile))
+    Log.d(TAG, "compress command: ${cmds.joinToString(" ")}")
+
+    FFmpegKit.executeWithArgumentsAsync(cmds.toTypedArray(), { session ->
+      val returnCode = session.returnCode
+      UiThreadUtil.runOnUiThread {
+        if (ReturnCode.isSuccess(returnCode)) {
+          val result = Arguments.createMap()
+          result.putString("outputPath", outputFile)
+          promise.resolve(result)
+        } else {
+          val logs = session.allLogsAsString ?: ""
+          promise.reject(Exception("Compression failed: rc $returnCode\n$logs"))
+        }
+      }
+    }, null, null)
+  }
+
+  // Two-pass GIF conversion: pass 1 generates an optimal color palette (palettegen),
+  // pass 2 encodes the GIF using that palette (paletteuse) for better color accuracy.
+  fun toGif(url: String, options: ReadableMap?, promise: Promise) {
+    val startTime = options?.getDouble("startTime") ?: 0.0
+    val endTime = options?.getDouble("endTime") ?: -1.0
+    val fps = options?.getInt("fps") ?: 10
+    val width = options?.getInt("width") ?: -1
+
+    val timestamp = System.currentTimeMillis() / 1000
+    val paletteFile = File(reactApplicationContext.cacheDir, "${VideoTrimmerUtil.FILE_PREFIX}_palette_${timestamp}.png")
+    val outputFile = File(reactApplicationContext.cacheDir, "${VideoTrimmerUtil.FILE_PREFIX}_gif_${timestamp}.gif")
+
+    val scaleExpr = if (width > 0) "$width:-1" else "-1:-1"
+    val filterBase = "fps=$fps,scale=$scaleExpr:flags=lanczos"
+
+    val timeArgs = mutableListOf<String>()
+    if (startTime > 0) {
+      timeArgs.addAll(listOf("-ss", "${startTime}ms"))
+    }
+    if (endTime > 0) {
+      timeArgs.addAll(listOf("-to", "${endTime}ms"))
+    }
+
+    val pass1 = (timeArgs + listOf("-i", url, "-vf", "$filterBase,palettegen", "-y", paletteFile.absolutePath)).toTypedArray()
+    Log.d(TAG, "toGif pass1 command: ${pass1.joinToString(" ")}")
+
+    FFmpegKit.executeWithArgumentsAsync(pass1, { session ->
+      if (!ReturnCode.isSuccess(session.returnCode)) {
+        paletteFile.delete()
+        val logs = session.allLogsAsString ?: ""
+        UiThreadUtil.runOnUiThread { promise.reject(Exception("GIF palette generation failed\n$logs")) }
+        return@executeWithArgumentsAsync
+      }
+
+      val pass2 = (
+        timeArgs + listOf(
+          "-i", url, "-i", paletteFile.absolutePath, "-lavfi",
+          "$filterBase [x]; [x][1:v] paletteuse",
+          "-y",
+          outputFile.absolutePath
+        )
+        ).toTypedArray()
+      Log.d(TAG, "toGif pass2 command: ${pass2.joinToString(" ")}")
+
+      FFmpegKit.executeWithArgumentsAsync(pass2, { session2 ->
+        paletteFile.delete()
+        UiThreadUtil.runOnUiThread {
+          if (ReturnCode.isSuccess(session2.returnCode)) {
+            val result = Arguments.createMap()
+            result.putString("outputPath", outputFile.absolutePath)
+            promise.resolve(result)
+          } else {
+            val logs = session2.allLogsAsString ?: ""
+            promise.reject(Exception("GIF creation failed\n$logs"))
+          }
+        }
+      }, null, null)
+    }, null, null)
+  }
+
+  // Concatenates multiple local video files using FFmpeg's concat *filter* (not demuxer).
+  // Each input is normalized to the first clip's resolution via scale+pad+setsar+format
+  // before entering the concat, so clips with different dimensions, pixel formats, or SARs
+  // merge correctly (mismatched inputs get letterboxed/pillarboxed with black bars).
+  //
+  // Bitrate: probes all input videos via MediaMetadataRetriever and uses the highest
+  // detected bitrate as the output target so quality matches the best source clip.
+  // Falls back to 10 Mbps if no bitrate can be read.
+  //
+  // Limitation: only supports local file paths. Remote URLs are not supported because the
+  // default FFmpegKit build does not include OpenSSL (--disable-openssl).
+  fun merge(urls: ReadableArray, options: ReadableMap?, promise: Promise) {
+    val outputExt = options?.getString("outputExt") ?: "mp4"
+    val outputFile = StorageUtil.getCacheOutputPath(reactApplicationContext, outputExt)
+
+    val n = urls.size()
+    if (n == 0) {
+      promise.reject(Exception("No input URLs"))
+      return
+    }
+
+    val cmds = mutableListOf<String>()
+    var maxBitrate = 0L
+    for (i in 0 until n) {
+      val urlStr = urls.getString(i) ?: continue
+      cmds.addAll(listOf("-i", urlStr))
+      try {
+        val retriever = MediaMetadataRetriever()
+        retriever.setDataSource(reactApplicationContext, Uri.parse(urlStr))
+        val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toLongOrNull() ?: 0L
+        if (bitrate > maxBitrate) maxBitrate = bitrate
+        retriever.release()
+      } catch (_: Exception) {}
+    }
+    val bitrateStr = if (maxBitrate > 0) "$maxBitrate" else "10M"
+
+    // Use the first clip's dimensions and frame rate as the target for all inputs.
+    var targetW = 1280; var targetH = 720
+    var targetFps = 30
+    try {
+      val retriever = MediaMetadataRetriever()
+      retriever.setDataSource(reactApplicationContext, Uri.parse(urls.getString(0)))
+      targetW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
+      targetH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
+      val fpsStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+      val fps = fpsStr?.toDoubleOrNull()?.let { kotlin.math.ceil(it).toInt() } ?: 30
+      targetFps = fps.coerceIn(1, 30)
+      retriever.release()
+    } catch (_: Exception) {}
+
+    // Normalize each input to the same resolution, pixel format, SAR, and frame rate
+    // before concat. The fps filter prevents massive frame duplication when inputs have
+    // very different frame rates (e.g. 24fps + 60fps would cause thousands of dupes).
+    val scaleFilter = "scale=$targetW:$targetH:force_original_aspect_ratio=decrease,pad=$targetW:$targetH:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,fps=$targetFps"
+    val scaleParts = (0 until n).joinToString(";") { "[$it:v:0]${scaleFilter}[v$it]" }
+    val concatInputs = (0 until n).joinToString("") { "[v$it][$it:a:0]" }
+    val filterComplex = "$scaleParts;${concatInputs}concat=n=$n:v=1:a=1[outv][outa]"
+
+    cmds.addAll(listOf(
+      "-filter_complex", filterComplex,
+      "-map", "[outv]", "-map", "[outa]",
+      "-c:v", "h264_mediacodec", "-b:v", bitrateStr,
+      "-c:a", "aac",
+      "-y", outputFile
+    ))
+    Log.d(TAG, "merge command: ${cmds.joinToString(" ")}")
+
+    FFmpegKit.executeWithArgumentsAsync(cmds.toTypedArray(), { session ->
+      val returnCode = session.returnCode
+      UiThreadUtil.runOnUiThread {
+        if (ReturnCode.isSuccess(returnCode)) {
+          var duration = 0.0
+          try {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(outputFile)
+            duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull() ?: 0.0
+            retriever.release()
+          } catch (_: Exception) {
+          }
+
+          val result = Arguments.createMap()
+          result.putString("outputPath", outputFile)
+          result.putDouble("duration", duration)
+          promise.resolve(result)
+        } else {
+          val logs = session.allLogsAsString ?: ""
+          promise.reject(Exception("Merge failed: rc $returnCode\n$logs"))
+        }
+      }
+    }, null, null)
+  }
+
   private fun saveFileToExternalStorage(file: File) {
     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
     intent.addCategory(Intent.CATEGORY_OPENABLE)
@@ -724,6 +1099,84 @@ open class BaseVideoTrimModule internal constructor(
     reactApplicationContext.currentActivity?.startActivity(Intent.createChooser(shareIntent, "Share file"))
   }
 
+  // Saves a file to the device gallery. Delegates to StorageUtil.saveToGallery which
+  // detects image vs video by extension and uses the appropriate MediaStore collection.
+  fun saveToPhoto(filePath: String, promise: Promise) {
+    try {
+      val file = File(filePath)
+      if (!file.exists()) {
+        promise.reject(Exception("File does not exist at path: $filePath"))
+        return
+      }
+      StorageUtil.saveToGallery(reactApplicationContext, filePath)
+      val result = Arguments.createMap()
+      result.putBoolean("success", true)
+      promise.resolve(result)
+    } catch (e: Exception) {
+      promise.reject(Exception("Failed to save to photo library: ${e.message}"))
+    }
+  }
+
+  // Opens Android's SAF (Storage Access Framework) document picker via ACTION_CREATE_DOCUMENT
+  // so the user can choose where to save. The promise is stored and resolved in onActivityResult.
+  fun saveToDocuments(filePath: String, promise: Promise) {
+    val file = File(filePath)
+    if (!file.exists()) {
+      promise.reject(Exception("File does not exist at path: $filePath"))
+      return
+    }
+
+    val activity = reactApplicationContext.currentActivity
+    if (activity == null) {
+      promise.reject(Exception("No activity available"))
+      return
+    }
+
+    pendingSaveToDocumentsPromise = promise
+    pendingSaveToDocumentsFile = file
+
+    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+    intent.addCategory(Intent.CATEGORY_OPENABLE)
+    intent.type = "*/*"
+    intent.putExtra(Intent.EXTRA_TITLE, file.name)
+    activity.startActivityForResult(intent, REQUEST_CODE_SAVE_TO_DOCUMENTS)
+  }
+
+  // Opens the system share sheet via ACTION_SEND. Uses FileProvider to generate a
+  // content:// URI and grants read permission to all potential share targets.
+  fun share(filePath: String, promise: Promise) {
+    val file = File(filePath)
+    if (!file.exists()) {
+      promise.reject(Exception("File does not exist at path: $filePath"))
+      return
+    }
+
+    val activity = reactApplicationContext.currentActivity
+    if (activity == null) {
+      promise.reject(Exception("No activity available"))
+      return
+    }
+
+    val context: Context = reactApplicationContext
+    val fileUri = FileProvider.getUriForFile(context, context.packageName + ".provider", file)
+
+    val shareIntent = Intent(Intent.ACTION_SEND)
+    shareIntent.type = "*/*"
+    shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri)
+    shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+    for (resolveInfo in context.packageManager.queryIntentActivities(shareIntent, PackageManager.MATCH_DEFAULT_ONLY)) {
+      val packageName = resolveInfo.activityInfo.packageName
+      context.grantUriPermission(packageName, fileUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    activity.startActivity(Intent.createChooser(shareIntent, "Share file"))
+
+    val result = Arguments.createMap()
+    result.putBoolean("success", true)
+    promise.resolve(result)
+  }
+
   fun cleanup() {
     reactApplicationContext.removeLifecycleEventListener(this)
   }
@@ -732,5 +1185,6 @@ open class BaseVideoTrimModule internal constructor(
     const val NAME = "VideoTrim"
     const val TAG = "VideoTrimModule"
     const val REQUEST_CODE_SAVE_FILE = 1
+    const val REQUEST_CODE_SAVE_TO_DOCUMENTS = 2
   }
 }

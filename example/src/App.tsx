@@ -3,349 +3,531 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Modal,
+  ScrollView,
+  Alert,
   type EventSubscription,
+  ActivityIndicator,
 } from 'react-native';
 import NativeVideoTrim, {
   cleanFiles,
+  compress,
   deleteFile,
-  listFiles,
-  showEditor,
+  extractAudio,
+  getFrameAt,
   isValidFile,
-  // closeEditor,
+  listFiles,
+  merge,
+  saveToDocuments,
+  saveToPhoto,
+  share,
+  showEditor,
+  toGif,
   trim,
   type Spec,
 } from 'react-native-video-trim';
-import {
-  launchImageLibrary,
-  type ImagePickerResponse,
-} from 'react-native-image-picker';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { useEffect, useRef, useState } from 'react';
 
-export default function App() {
-  const [modalVisible, setModalVisible] = useState(false);
-  const [isTrimming, setIsTrimming] = useState(false);
-  const listenerSubscription = useRef<Record<string, EventSubscription>>({});
+type SectionProps = { title: string; children: React.ReactNode };
 
-  useEffect(() => {
-    console.log(1111112, (global as any)?.nativeFabricUIManager);
-
-    listenerSubscription.current.onLoad = (NativeVideoTrim as Spec).onLoad(
-      ({ duration }) => console.log('onLoad', duration)
-    );
-
-    listenerSubscription.current.onStartTrimming = (
-      NativeVideoTrim as Spec
-    ).onStartTrimming(() => console.log('onStartTrimming'));
-
-    listenerSubscription.current.onCancelTrimming = (
-      NativeVideoTrim as Spec
-    ).onCancelTrimming(() => console.log('onCancelTrimming'));
-    listenerSubscription.current.onCancel = (NativeVideoTrim as Spec).onCancel(
-      () => console.log('onCancel')
-    );
-    listenerSubscription.current.onHide = (NativeVideoTrim as Spec).onHide(() =>
-      console.log('onHide')
-    );
-    listenerSubscription.current.onShow = (NativeVideoTrim as Spec).onShow(() =>
-      console.log('onShow')
-    );
-    listenerSubscription.current.onFinishTrimming = (
-      NativeVideoTrim as Spec
-    ).onFinishTrimming(({ outputPath, startTime, endTime, duration }) =>
-      console.log(
-        'onFinishTrimming',
-        `outputPath: ${outputPath}, startTime: ${startTime}, endTime: ${endTime}, duration: ${duration}`
-      )
-    );
-    listenerSubscription.current.onLog = (NativeVideoTrim as Spec).onLog(
-      ({ level, message, sessionId }) =>
-        console.log(
-          'onLog',
-          `level: ${level}, message: ${message}, sessionId: ${sessionId}`
-        )
-    );
-    listenerSubscription.current.onStatistics = (
-      NativeVideoTrim as Spec
-    ).onStatistics(
-      ({
-        sessionId,
-        videoFrameNumber,
-        videoFps,
-        videoQuality,
-        size,
-        time,
-        bitrate,
-        speed,
-      }) =>
-        console.log(
-          'onStatistics',
-          `sessionId: ${sessionId}, videoFrameNumber: ${videoFrameNumber}, videoFps: ${videoFps}, videoQuality: ${videoQuality}, size: ${size}, time: ${time}, bitrate: ${bitrate}, speed: ${speed}`
-        )
-    );
-    listenerSubscription.current.onError = (NativeVideoTrim as Spec).onError(
-      ({ message, errorCode }) =>
-        console.log('onError', `message: ${message}, errorCode: ${errorCode}`)
-    );
-
-    return () => {
-      listenerSubscription.current.onLoad?.remove();
-      listenerSubscription.current.onStartTrimming?.remove();
-      listenerSubscription.current.onCancelTrimming?.remove();
-      listenerSubscription.current.onCancel?.remove();
-      listenerSubscription.current.onHide?.remove();
-      listenerSubscription.current.onShow?.remove();
-      listenerSubscription.current.onFinishTrimming?.remove();
-      listenerSubscription.current.onLog?.remove();
-      listenerSubscription.current.onStatistics?.remove();
-      listenerSubscription.current.onError?.remove();
-      listenerSubscription.current = {};
-    };
-  });
-
-  const onMediaLoaded = (response: ImagePickerResponse) => {
-    console.log('Response', response);
-  };
-
+function Section({ title, children }: SectionProps) {
   return (
-    <View style={styles.container}>
-      <TouchableOpacity
-        onPress={async () => {
-          try {
-            const result = await launchImageLibrary(
-              {
-                mediaType: 'video',
-                includeExtra: true,
-                assetRepresentationMode: 'current',
-              },
-              onMediaLoaded
-            );
-
-            console.log(result, 1111);
-
-            // const url =
-            //   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-
-            // const url1 =
-            //   'https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav';
-            // const url2 = 'https://example.com';
-            // isValidFile(url).then((res) => console.log('1isValidVideo:', res));
-            // isValidFile(url1).then((res) => console.log('2isValidVideo:', res));
-            // isValidFile(url2).then((res) => console.log('3isValidVideo:', res));
-            // const url3 =
-            //   'https://file-examples.com/storage/fe825adda4669e5de9419e0/2017/11/file_example_MP3_5MG.mp3';
-            // showEditor('https://drive.usercontent.google.com/download?id=1duTfDMYYEjDWsX0InDgw7szUk46erecg&export=download', {
-            showEditor(result.assets![0]?.uri || '', {
-              // theme: 'light',
-              // showEditor(url3, {
-              type: 'audio',
-              outputExt: 'wav',
-              // closeWhenFinish: false,
-              // minDuration: 50000,
-              maxDuration: 30000,
-              fullScreenModalIOS: true,
-              saveToPhoto: true,
-              removeAfterSavedToPhoto: true,
-              // enableHapticFeedback: false,
-              autoplay: true,
-              jumpToPositionOnLoad: 30000,
-              headerText: 'Bunny.wav',
-              headerTextSize: 20,
-              headerTextColor: '#FF0000',
-              // trimmerColor: 'red',
-              // handleIconColor: 'green',
-              // openDocumentsOnFinish: true,
-              // removeAfterSavedToDocuments: true,
-              // openShareSheetOnFinish: true,
-              // removeAfterShared: true,
-              // cancelButtonText: 'hello',
-              // saveButtonText: 'world',
-              // removeAfterSavedToPhoto: true,
-              // enableCancelDialog: false,
-              // cancelDialogTitle: '1111',
-              // cancelDialogMessage: '22222',
-              // cancelDialogCancelText: '3333',
-              // cancelDialogConfirmText: '4444',
-              // enableSaveDialog: false,
-              // saveDialogTitle: '5555',
-              // saveDialogMessage: '666666',
-              // saveDialogCancelText: '77777',
-              // saveDialogConfirmText: '888888',
-              trimmingText: 'Trimming Video...',
-              // changeStatusBarColorOnOpen: true
-            });
-          } catch (error) {
-            console.log(error);
-          }
-        }}
-        style={{ padding: 10, backgroundColor: 'red' }}
-      >
-        <Text style={{ color: 'white' }}>Launch Library</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => {
-          isValidFile(
-            '/storage/emulated/0/Android/data/com.videotrimexample/cache/trimmedVideo_20230910_111719.mp4'
-          ).then((res) => console.log(res));
-        }}
-        style={{
-          padding: 10,
-          backgroundColor: 'blue',
-          marginTop: 20,
-        }}
-      >
-        <Text style={{ color: 'white' }}>Check Video Valid</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => {
-          listFiles().then((res) => {
-            console.log(res);
-          });
-        }}
-        style={{
-          padding: 10,
-          backgroundColor: 'orange',
-          marginTop: 20,
-        }}
-      >
-        <Text style={{ color: 'white' }}>List Files</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => {
-          cleanFiles().then((res) => console.log(res));
-        }}
-        style={{
-          padding: 10,
-          backgroundColor: 'green',
-          marginTop: 20,
-        }}
-      >
-        <Text style={{ color: 'white' }}>Clean Files</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => {
-          listFiles().then((res) => {
-            console.log(res);
-
-            if (res.length) {
-              deleteFile(res[0]!).then((r) => console.log('DELETE:', r));
-            }
-          });
-        }}
-        style={{
-          padding: 10,
-          backgroundColor: 'purple',
-          marginTop: 20,
-        }}
-      >
-        <Text style={{ color: 'white' }}>Delete file</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={async () => {
-          // const result = await launchImageLibrary(
-          //   {
-          //     mediaType: 'video',
-          //     includeExtra: true,
-          //     assetRepresentationMode: 'current',
-          //   },
-          //   onMediaLoaded
-          // );
-
-          const url =
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-
-          setIsTrimming(true);
-          trim(url, {
-            startTime: 0,
-            endTime: 15000,
-            saveToPhoto: true,
-          })
-            .then((res) => {
-              console.log('Trimmed file:', res);
-            })
-            .catch((error) => {
-              console.error('Error trimming file:', error);
-            })
-            .finally(() => {
-              setIsTrimming(false);
-            });
-        }}
-        style={{
-          padding: 10,
-          backgroundColor: 'brown',
-          marginTop: 20,
-        }}
-      >
-        <Text style={{ color: 'white' }}>
-          {isTrimming ? 'Trimming...' : 'Trim Video'}
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => {
-          setModalVisible(true);
-        }}
-        style={{
-          padding: 10,
-          backgroundColor: 'blue',
-          marginTop: 20,
-        }}
-      >
-        <Text style={{ color: 'white' }}>Open Modal</Text>
-      </TouchableOpacity>
-
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => {
-          setModalVisible(!modalVisible);
-        }}
-      >
-        <View style={[styles.container, { backgroundColor: 'gray' }]}>
-          <TouchableOpacity
-            onPress={async () => {
-              const result = await launchImageLibrary({
-                mediaType: 'video',
-                assetRepresentationMode: 'current',
-              });
-
-              isValidFile(result.assets![0]?.uri || '').then((res) =>
-                console.log('isValidVideo:', res)
-              );
-
-              showEditor(result.assets![0]?.uri || '', {
-                maxDuration: 30000,
-                cancelButtonText: 'hello',
-                saveButtonText: 'world',
-              });
-            }}
-            style={{ padding: 10, backgroundColor: 'red' }}
-          >
-            <Text style={{ color: 'white' }}>Launch Library</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              setModalVisible(false);
-            }}
-            style={{
-              padding: 10,
-              backgroundColor: 'blue',
-              marginTop: 20,
-            }}
-          >
-            <Text style={{ color: 'white' }}>Close Modal</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
     </View>
   );
 }
 
+type BtnProps = {
+  label: string;
+  color: string;
+  onPress: () => void;
+  loading?: boolean;
+};
+
+function Btn({ label, color, onPress, loading }: BtnProps) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={loading}
+      style={[
+        styles.btn,
+        { backgroundColor: color, opacity: loading ? 0.6 : 1 },
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color="#fff" size="small" />
+      ) : (
+        <Text style={styles.btnText}>{label}</Text>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+async function pickVideo(): Promise<string | null> {
+  const result = await launchImageLibrary({
+    mediaType: 'video',
+    assetRepresentationMode: 'current',
+  });
+  return result.assets?.[0]?.uri ?? null;
+}
+
+const AUDIO_URL =
+  'https://drive.usercontent.google.com/download?id=1duTfDMYYEjDWsX0InDgw7szUk46erecg&export=download';
+
+export default function App() {
+  const listeners = useRef<Record<string, EventSubscription>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [lastOutput, _setLastOutput] = useState<string | null>(null);
+  const lastOutputRef = useRef<string | null>(null);
+  const setLastOutput = (v: string | null) => {
+    lastOutputRef.current = v;
+    _setLastOutput(v);
+  };
+
+  useEffect(() => {
+    listeners.current.onLoad = (NativeVideoTrim as Spec).onLoad(
+      ({ duration }) => console.log('onLoad', duration)
+    );
+    listeners.current.onShow = (NativeVideoTrim as Spec).onShow(() =>
+      console.log('onShow')
+    );
+    listeners.current.onHide = (NativeVideoTrim as Spec).onHide(() =>
+      console.log('onHide')
+    );
+    listeners.current.onCancel = (NativeVideoTrim as Spec).onCancel(() =>
+      console.log('onCancel')
+    );
+    listeners.current.onStartTrimming = (
+      NativeVideoTrim as Spec
+    ).onStartTrimming(() => console.log('onStartTrimming'));
+    listeners.current.onFinishTrimming = (
+      NativeVideoTrim as Spec
+    ).onFinishTrimming(({ outputPath, startTime, endTime, duration }) => {
+      console.log('onFinishTrimming', outputPath, startTime, endTime, duration);
+      setLastOutput(outputPath);
+    });
+    listeners.current.onCancelTrimming = (
+      NativeVideoTrim as Spec
+    ).onCancelTrimming(() => console.log('onCancelTrimming'));
+    listeners.current.onLog = (NativeVideoTrim as Spec).onLog(({ message }) =>
+      console.log('onLog', message)
+    );
+    listeners.current.onStatistics = (NativeVideoTrim as Spec).onStatistics(
+      (stats) => console.log('onStatistics', JSON.stringify(stats))
+    );
+    listeners.current.onError = (NativeVideoTrim as Spec).onError(
+      ({ message, errorCode }) => console.log('onError', message, errorCode)
+    );
+
+    return () => {
+      Object.values(listeners.current).forEach((s) => s?.remove());
+      listeners.current = {};
+    };
+  }, []);
+
+  const run = async (key: string, fn: () => Promise<void>) => {
+    setBusy(key);
+    try {
+      await fn();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? String(e));
+      console.log(11111, e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
+      <Text style={styles.heading}>react-native-video-trim</Text>
+
+      {lastOutput ? (
+        <View style={styles.outputBar}>
+          <Text style={styles.outputLabel} numberOfLines={1}>
+            Last output: {lastOutput}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* ── Editor ── */}
+      <Section title="Editor">
+        <Btn
+          label="Open Video Editor"
+          color="#007AFF"
+          onPress={async () => {
+            const uri = await pickVideo();
+            if (!uri) return;
+            showEditor(uri, {
+              maxDuration: 60000,
+              autoplay: true,
+              fullScreenModalIOS: true,
+              saveToPhoto: true,
+              removeAfterSavedToPhoto: true,
+            });
+          }}
+        />
+        <Btn
+          label="Open Audio Editor"
+          color="#5856D6"
+          onPress={async () => {
+            showEditor(AUDIO_URL, {
+              type: 'audio',
+              outputExt: 'wav',
+              maxDuration: 30000,
+              autoplay: true,
+              fullScreenModalIOS: true,
+            });
+          }}
+        />
+        <Btn
+          label="Editor with Speed 2x + Muted"
+          color="#34C759"
+          onPress={async () => {
+            const uri = await pickVideo();
+            if (!uri) return;
+            showEditor(uri, {
+              speed: 2.0,
+              removeAudio: true,
+              autoplay: true,
+              fullScreenModalIOS: true,
+            });
+          }}
+        />
+      </Section>
+
+      {/* ── Headless Trim ── */}
+      <Section title="Headless Trim">
+        <Btn
+          label="Trim (0-15s)"
+          color="#FF9500"
+          loading={busy === 'trim'}
+          onPress={() =>
+            run('trim', async () => {
+              const uri = await pickVideo();
+              if (!uri) return;
+              const result = await trim(uri, {
+                startTime: 0,
+                endTime: 15000,
+              });
+              setLastOutput(result.outputPath);
+              Alert.alert('Trimmed', `Duration: ${result.duration}ms`);
+            })
+          }
+        />
+        <Btn
+          label="Trim with Speed 0.5x"
+          color="#FF9500"
+          loading={busy === 'trim-speed'}
+          onPress={() =>
+            run('trim-speed', async () => {
+              const uri = await pickVideo();
+              if (!uri) return;
+              const result = await trim(uri, {
+                startTime: 0,
+                endTime: 10000,
+                speed: 0.5,
+              });
+              setLastOutput(result.outputPath);
+              Alert.alert('Trimmed (0.5x)', `Duration: ${result.duration}ms`);
+            })
+          }
+        />
+      </Section>
+
+      {/* ── New Headless APIs ── */}
+      <Section title="Frame Extraction">
+        <Btn
+          label="Extract Frame at 3s"
+          color="#AF52DE"
+          loading={busy === 'frame'}
+          onPress={() =>
+            run('frame', async () => {
+              const uri = await pickVideo();
+              if (!uri) return;
+              const result = await getFrameAt(uri, {
+                time: 3000,
+                format: 'jpeg',
+                quality: 90,
+              });
+              setLastOutput(result.outputPath);
+              Alert.alert('Frame Extracted', result.outputPath);
+            })
+          }
+        />
+      </Section>
+
+      <Section title="Extract Audio">
+        <Btn
+          label="Extract Audio (M4A)"
+          color="#FF2D55"
+          loading={busy === 'extract-audio'}
+          onPress={() =>
+            run('extract-audio', async () => {
+              const uri = await pickVideo();
+              if (!uri) return;
+              const result = await extractAudio(uri, { outputExt: 'm4a' });
+              setLastOutput(result.outputPath);
+              Alert.alert('Audio Extracted', `Duration: ${result.duration}ms`);
+            })
+          }
+        />
+      </Section>
+
+      <Section title="Compress">
+        <Btn
+          label="Compress (Medium)"
+          color="#FF3B30"
+          loading={busy === 'compress'}
+          onPress={() =>
+            run('compress', async () => {
+              const uri = await pickVideo();
+              if (!uri) return;
+              const result = await compress(uri, {
+                quality: 'medium',
+              });
+              setLastOutput(result.outputPath);
+              Alert.alert('Compressed', result.outputPath);
+            })
+          }
+        />
+        <Btn
+          label="Compress (Low, 480p, No Audio)"
+          color="#FF3B30"
+          loading={busy === 'compress-custom'}
+          onPress={() =>
+            run('compress-custom', async () => {
+              const uri = await pickVideo();
+              if (!uri) return;
+              const result = await compress(uri, {
+                quality: 'low',
+                width: 480,
+                removeAudio: true,
+              });
+              setLastOutput(result.outputPath);
+              Alert.alert('Compressed (custom)', result.outputPath);
+            })
+          }
+        />
+      </Section>
+
+      <Section title="GIF Conversion">
+        <Btn
+          label="Convert to GIF (0-5s)"
+          color="#5AC8FA"
+          loading={busy === 'gif'}
+          onPress={() =>
+            run('gif', async () => {
+              const uri = await pickVideo();
+              if (!uri) return;
+              const result = await toGif(uri, {
+                startTime: 0,
+                endTime: 5000,
+                fps: 10,
+                width: 320,
+              });
+              setLastOutput(result.outputPath);
+              Alert.alert('GIF Created', result.outputPath);
+            })
+          }
+        />
+      </Section>
+
+      <Section title="Merge">
+        <Btn
+          label="Pick 2 Videos & Merge"
+          color="#30B0C7"
+          loading={busy === 'merge'}
+          onPress={() =>
+            run('merge', async () => {
+              Alert.alert('Pick First Video', 'Select the first clip');
+              const uri1 = await pickVideo();
+              if (!uri1) return;
+              Alert.alert('Pick Second Video', 'Select the second clip');
+              const uri2 = await pickVideo();
+              if (!uri2) return;
+              const result = await merge([uri1, uri2]);
+              setLastOutput(result.outputPath);
+              Alert.alert('Merged', `Duration: ${result.duration}ms`);
+            })
+          }
+        />
+      </Section>
+
+      {/* ── Utility Functions ── */}
+      <Section title="Utility Functions">
+        <Btn
+          label="Save Last Output to Photo"
+          color="#34C759"
+          loading={busy === 'save-photo'}
+          onPress={() =>
+            run('save-photo', async () => {
+              const path = lastOutputRef.current;
+              if (!path) {
+                Alert.alert('No Output', 'Run an operation first');
+                return;
+              }
+              console.log('saveToPhoto:', path);
+              const result = await saveToPhoto(path);
+              Alert.alert(
+                'Save to Photo',
+                result.success ? `Saved!\n${path}` : 'Cancelled'
+              );
+            })
+          }
+        />
+        <Btn
+          label="Save Last Output to Documents"
+          color="#007AFF"
+          loading={busy === 'save-docs'}
+          onPress={() =>
+            run('save-docs', async () => {
+              const path = lastOutputRef.current;
+              if (!path) {
+                Alert.alert('No Output', 'Run an operation first');
+                return;
+              }
+              console.log('saveToDocuments:', path);
+              const result = await saveToDocuments(path);
+              Alert.alert(
+                'Save to Documents',
+                result.success ? `Saved!\n${path}` : 'Cancelled'
+              );
+            })
+          }
+        />
+        <Btn
+          label="Share Last Output"
+          color="#5856D6"
+          loading={busy === 'share'}
+          onPress={() =>
+            run('share', async () => {
+              const path = lastOutputRef.current;
+              if (!path) {
+                Alert.alert('No Output', 'Run an operation first');
+                return;
+              }
+              console.log('share:', path);
+              const result = await share(path);
+              Alert.alert(
+                'Share',
+                result.success ? `Shared!\n${path}` : 'Cancelled'
+              );
+            })
+          }
+        />
+      </Section>
+
+      {/* ── File Management ── */}
+      <Section title="File Management">
+        <Btn
+          label="Validate File"
+          color="#8E8E93"
+          loading={busy === 'validate'}
+          onPress={() =>
+            run('validate', async () => {
+              const uri = await pickVideo();
+              if (!uri) return;
+              const result = await isValidFile(uri);
+              Alert.alert(
+                'File Validation',
+                `Valid: ${result.isValid}\nType: ${result.fileType}\nDuration: ${result.duration}ms`
+              );
+            })
+          }
+        />
+        <Btn
+          label="List Files"
+          color="#8E8E93"
+          onPress={async () => {
+            const files = await listFiles();
+            Alert.alert(
+              'Files',
+              files.length ? files.join('\n\n') : 'No files'
+            );
+          }}
+        />
+        <Btn
+          label="Clean All Files"
+          color="#FF3B30"
+          onPress={async () => {
+            const count = await cleanFiles();
+            setLastOutput(null);
+            Alert.alert('Cleaned', `Deleted ${count} files`);
+          }}
+        />
+        <Btn
+          label="Delete Last Output"
+          color="#FF9500"
+          onPress={async () => {
+            const path = lastOutputRef.current;
+            if (!path) {
+              Alert.alert('No Output', 'Nothing to delete');
+              return;
+            }
+            const ok = await deleteFile(path);
+            Alert.alert('Delete', ok ? 'Deleted!' : 'Failed');
+            if (ok) setLastOutput(null);
+          }}
+        />
+      </Section>
+
+      <View style={{ height: 60 }} />
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
+    backgroundColor: '#F2F2F7',
+  },
+  content: {
+    padding: 16,
+    paddingTop: 60,
+  },
+  heading: {
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+    color: '#000',
+  },
+  outputBar: {
+    backgroundColor: '#E8E8ED',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 16,
+  },
+  outputLabel: {
+    fontSize: 11,
+    color: '#666',
+    fontFamily: 'monospace',
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  btn: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginBottom: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
+  },
+  btnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

@@ -79,6 +79,28 @@
         android:tint="#80FFFFFF"
         android:scaleType="fitCenter"
         android:contentDescription="Crop" />
+
+      <ImageView
+        android:id="@+id/muteBtn"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:src="@drawable/speaker_wave_2_fill"
+        android:tint="@android:color/white"
+        android:scaleType="fitCenter"
+        android:layout_marginStart="12dp"
+        android:contentDescription="Mute" />
+
+      <TextView
+        android:id="@+id/speedBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="22dp"
+        android:text="1x"
+        android:textColor="@android:color/white"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginStart="12dp"
+        android:contentDescription="Speed" />
     </LinearLayout>
 
     <View
