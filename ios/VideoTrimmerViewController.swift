@@ -10,22 +10,26 @@ import AVKit
 import React
 
 extension CMTime {
-    var displayString: String {
-        let offset = TimeInterval(seconds)
-        let numberOfNanosecondsFloat = (offset - TimeInterval(Int(offset))) * 100.0
-        let nanoseconds = Int(numberOfNanosecondsFloat)
-        
-        let formatter = CMTime.dateFormatter
-        return String(format: "%@.%02d", formatter.string(from: offset) ?? "00:00", nanoseconds)
+    func displayString(format: String) -> String {
+        let totalSeconds = max(0, seconds.isFinite ? seconds : 0)
+        let totalMs = Int((totalSeconds * 1000).rounded())
+        let h = totalMs / 3_600_000
+        let m = (totalMs / 60_000) % 60
+        let s = (totalMs / 1000) % 60
+        let ms = totalMs % 1000
+        switch format {
+        case "mm:ss":
+            return String(format: "%02d:%02d", m + h * 60, s)
+        case "mm:ss.SS":
+            return String(format: "%02d:%02d.%02d", m + h * 60, s, ms / 10)
+        case "hh:mm:ss":
+            return String(format: "%02d:%02d:%02d", h, m, s)
+        case "hh:mm:ss.SSS":
+            return String(format: "%02d:%02d:%02d.%03d", h, m, s, ms)
+        default:
+            return String(format: "%02d:%02d.%03d", m + h * 60, s, ms)
+        }
     }
-    
-    private static var dateFormatter: DateComponentsFormatter = {
-        let formatter = DateComponentsFormatter()
-        formatter.unitsStyle = .positional
-        formatter.zeroFormattingBehavior = .pad
-        formatter.allowedUnits = [.minute, .second]
-        return formatter
-    }()
 }
 
 @available(iOS 13.0, *)
@@ -52,6 +56,7 @@ class VideoTrimmerViewController: UIViewController {
     private var trimmerColor: UIColor = UIColor.systemYellow
     private var handleIconColor: UIColor = UIColor.black
     private var isLightTheme = false
+    private var durationFormat: String = "mm:ss.SSS"
     private var waveformBarColor: UIColor = .white
     private var waveformBgColor: UIColor = UIColor(red: 0.204, green: 0.471, blue: 0.965, alpha: 1)
     private var waveformBarWidth: CGFloat = 3
@@ -196,9 +201,9 @@ class VideoTrimmerViewController: UIViewController {
     
     // MARK: - Private
     private func updateLabels() {
-        leadingTrimLabel.text = trimmer.selectedRange.start.displayString
-        currentTimeLabel.text = trimmer.progress.displayString
-        trailingTrimLabel.text = trimmer.selectedRange.end.displayString
+        leadingTrimLabel.text = trimmer.selectedRange.start.displayString(format: durationFormat)
+        currentTimeLabel.text = trimmer.progress.displayString(format: durationFormat)
+        trailingTrimLabel.text = trimmer.selectedRange.end.displayString(format: durationFormat)
     }
     
     private func handleBeforeProgressChange() {
@@ -382,12 +387,13 @@ class VideoTrimmerViewController: UIViewController {
     
     private func setupTimeLabels() {
         let labelColor = isLightTheme ? UIColor.black : UIColor.white
+        let placeholder = CMTime.zero.displayString(format: durationFormat)
         leadingTrimLabel = UILabel.createLabel(textAlignment: .left, textColor: labelColor)
-        leadingTrimLabel.text = "00:00.000"
+        leadingTrimLabel.text = placeholder
         currentTimeLabel = UILabel.createLabel(textAlignment: .center, textColor: labelColor)
-        currentTimeLabel.text = "00:00.000"
+        currentTimeLabel.text = placeholder
         trailingTrimLabel = UILabel.createLabel(textAlignment: .right, textColor: labelColor)
-        trailingTrimLabel.text = "00:00.000"
+        trailingTrimLabel.text = placeholder
         
         timingStackView = UIStackView(arrangedSubviews: [leadingTrimLabel, currentTimeLabel, trailingTrimLabel])
         timingStackView.axis = .horizontal
@@ -1004,7 +1010,7 @@ class VideoTrimmerViewController: UIViewController {
                 self.seek(to: trimmer.selectedRange.end)
             }
             
-            currentTimeLabel.text = trimmer.progress.displayString
+            currentTimeLabel.text = trimmer.progress.displayString(format: durationFormat)
             
             self.setPlayBtnIcon()
         }
@@ -1059,6 +1065,7 @@ class VideoTrimmerViewController: UIViewController {
     }
     
     isLightTheme = (config["theme"] as? String) == "light"
+    durationFormat = (config["durationFormat"] as? String) ?? "mm:ss.SSS"
     
     cancelButtonText = config["cancelButtonText"] as? String ?? "Cancel"
     saveButtonText = config["saveButtonText"] as? String ?? "Save"
@@ -1122,7 +1129,7 @@ class VideoTrimmerViewController: UIViewController {
             
             self.seek(to: cmtime)
             self.trimmer.progress = cmtime
-            self.currentTimeLabel.text = self.trimmer.progress.displayString
+            self.currentTimeLabel.text = self.trimmer.progress.displayString(format: durationFormat)
         }
         
         if autoplay {
@@ -1157,7 +1164,8 @@ private extension UIButton {
 private extension UILabel {
     static func createLabel(textAlignment: NSTextAlignment, textColor: UIColor) -> UILabel {
         let label = UILabel()
-        label.font = UIFont.preferredFont(forTextStyle: .caption1)
+        let baseFont = UIFont.preferredFont(forTextStyle: .caption1)
+        label.font = UIFont.monospacedDigitSystemFont(ofSize: baseFont.pointSize, weight: .regular)
         label.textAlignment = textAlignment
         label.textColor = textColor
         return label

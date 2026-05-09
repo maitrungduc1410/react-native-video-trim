@@ -158,6 +158,7 @@ export default function App() {
               // saveDialogConfirmText: '888888',
               trimmingText: 'Trimming Video...',
               // changeStatusBarColorOnOpen: true
+              // durationFormat: 'mm:ss', // 'mm:ss' | 'mm:ss.SS' | 'mm:ss.SSS' (default) | 'hh:mm:ss' | 'hh:mm:ss.SSS'
             });
           } catch (error) {
             console.log(error);

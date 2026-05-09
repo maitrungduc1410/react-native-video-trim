@@ -195,6 +195,32 @@ export default function App() {
             });
           }}
         />
+        <Btn
+          label="Editor (durationFormat mm:ss)"
+          color="#FF9500"
+          onPress={async () => {
+            const uri = await pickVideo();
+            if (!uri) return;
+            showEditor(uri, {
+              durationFormat: 'mm:ss',
+              autoplay: true,
+              fullScreenModalIOS: true,
+            });
+          }}
+        />
+        <Btn
+          label="Editor (durationFormat hh:mm:ss)"
+          color="#FF9500"
+          onPress={async () => {
+            const uri = await pickVideo();
+            if (!uri) return;
+            showEditor(uri, {
+              durationFormat: 'hh:mm:ss',
+              autoplay: true,
+              fullScreenModalIOS: true,
+            });
+          }}
+        />
       </Section>
 
       {/* ── Headless Trim ── */}

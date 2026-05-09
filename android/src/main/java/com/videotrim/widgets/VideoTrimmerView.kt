@@ -219,6 +219,7 @@ class VideoTrimmerView(
   private var trimmerColor = context.getString(R.string.trim_color).toColorInt()
   private var handleIconColor = Color.BLACK
   private var isLightTheme = false
+  private var durationFormat: String = "mm:ss.SSS"
   private val iconColor: Int get() = if (isLightTheme) Color.BLACK else Color.WHITE
   private val dimmedIconColor: Int get() = if (isLightTheme) Color.argb(128, 0, 0, 0) else Color.argb(128, 255, 255, 255)
   private lateinit var leadingChevron: ImageView
@@ -805,6 +806,7 @@ class VideoTrimmerView(
     }
 
     isLightTheme = config.hasKey("theme") && config.getString("theme") == "light"
+    durationFormat = if (config.hasKey("durationFormat")) config.getString("durationFormat") ?: "mm:ss.SSS" else "mm:ss.SSS"
 
     cancelBtn.text = config.getString("cancelButtonText")
     saveBtn.text = config.getString("saveButtonText")
@@ -1013,11 +1015,19 @@ class VideoTrimmerView(
   }
 
   private fun formatTime(milliseconds: Int): String {
-    val totalSeconds = milliseconds / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    val millis = milliseconds % 1000
-    return String.format(Locale.getDefault(), "%d:%02d.%03d", minutes, seconds, millis)
+    val totalMs = if (milliseconds < 0) 0 else milliseconds
+    val h = totalMs / 3_600_000
+    val m = (totalMs / 60_000) % 60
+    val s = (totalMs / 1000) % 60
+    val ms = totalMs % 1000
+    val locale = Locale.getDefault()
+    return when (durationFormat) {
+      "mm:ss" -> String.format(locale, "%02d:%02d", m + h * 60, s)
+      "mm:ss.SS" -> String.format(locale, "%02d:%02d.%02d", m + h * 60, s, ms / 10)
+      "hh:mm:ss" -> String.format(locale, "%02d:%02d:%02d", h, m, s)
+      "hh:mm:ss.SSS" -> String.format(locale, "%02d:%02d:%02d.%03d", h, m, s, ms)
+      else -> String.format(locale, "%02d:%02d.%03d", m + h * 60, s, ms)
+    }
   }
 
   @Suppress("ClickableViewAccessibility")

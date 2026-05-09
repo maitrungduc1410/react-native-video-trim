@@ -123,6 +123,22 @@ Three standalone utility functions handle saving/sharing output files from any A
 
 `listFiles()` and `cleanFiles()` scan **both** directories. `deleteFile()` validates paths against both allowed directories before deletion.
 
+### Editor Time Labels
+
+The editor's start / current / end time labels share a single token-based formatter on each platform, controlled by the `durationFormat` option on `EditorConfig`:
+
+| Token | Example | Notes |
+|-------|---------|-------|
+| `mm:ss` | `01:23` | No fractional seconds |
+| `mm:ss.SS` | `01:23.45` | Centiseconds (2 fractional digits) |
+| `mm:ss.SSS` | `01:23.456` | Milliseconds — **default** |
+| `hh:mm:ss` | `00:01:23` | Hours-padded, no fractional |
+| `hh:mm:ss.SSS` | `00:01:23.456` | Hours + ms |
+
+Default is `mm:ss.SSS` on both platforms. Unknown tokens fall back to the default. To add a new token: extend the JSDoc enum in `src/NativeVideoTrim.ts`, the `switch` in iOS `CMTime.displayString(format:)`, and the `when` in Android `VideoTrimmerView.formatTime`.
+
+**iOS-specific**: time labels use `UIFont.monospacedDigitSystemFont(...)` (in `UILabel.createLabel(...)` extension) so digit width is constant — without this the label width changes as digits change and the surrounding stack view re-lays out, making the label appear to "shake" while scrubbing. Android's default font already uses tabular figures so no equivalent fix is needed there.
+
 ### Audio Waveform Visualization
 
 When the editor opens an audio file (`type: "audio"`), the thumbnail track is replaced with a waveform bar visualization. Both platforms follow the same strategy:
@@ -170,6 +186,19 @@ Colors are passed through `processColor()` in `src/index.tsx` before reaching na
 6. **Export from `src/index.tsx`** — add the public function with input validation.
 7. **Choose output directory**: persistent (documents/filesDir) for editor-produced files, cache (cachesDirectory/cacheDir) for headless API outputs.
 8. **Test both architectures** on iOS and Android via the `example/` app.
+
+## Adding a new `EditorConfig` field
+
+Editor options take a different path than method arguments — they're delivered as a config struct/dict, and on **iOS New Arch** the codegen-generated C++ struct is destructured field-by-field into an `NSDictionary` before reaching Swift. **Forgetting this step is the most common reason a new option silently does nothing on iOS New Arch only**, while Android (both archs) and iOS Old Arch work fine because they pass the dict-like config through unchanged.
+
+Checklist for any new field on `EditorConfig`:
+
+1. **Define** the field in `EditorConfig` in `src/NativeVideoTrim.ts` with a JSDoc comment describing allowed values.
+2. **Default** the field in `createEditorConfig` in `src/index.tsx`.
+3. **iOS New Arch — copy into the dict** in `ios/VideoTrim.mm` inside `showEditor:config:`. Required strings: `dict[@"foo"] = config.foo();`. Optional strings: nil-check first (mirrors `theme` / `durationFormat`). Optional numbers: use the `has_value()` pattern (mirrors `trimmerColor`, `zoomOnWaitingDuration`).
+4. **iOS — read in Swift** inside `VideoTrimmerViewController.configure(config:)` via `config["foo"] as? Type ?? default`. Store on a private property if the value is needed at multiple call sites.
+5. **Android — read** inside `VideoTrimmerView.configure(...)` via `config.hasKey("foo")` + `config.getString/getInt/...`. No bridge step needed — `ReadableMap` reflects the JS dict directly.
+6. **Test on iOS New Arch specifically** — Old Arch will work even if step 3 is skipped, hiding the bug.
 
 ## Code Style & Conventions
 
@@ -254,6 +283,7 @@ Caching: Yarn deps, Gradle, CocoaPods, Turborepo outputs.
 
 - **Podspec**: `VideoTrim.podspec` at repo root. FFmpegKit package variant is configurable via `ENV['FFMPEGKIT_PACKAGE']` (defaults to `min`). Version via `ENV['FFMPEGKIT_PACKAGE_VERSION']` (defaults to `~> 6.0`).
 - **Bridge pattern**: `VideoTrim.mm` is Obj-C++ — under New Arch it subclasses `NativeVideoTrimSpecBase` and holds a `VideoTrimSwift` instance; under Old Arch it uses `RCT_EXTERN_REMAP_MODULE`. Swift class `VideoTrim` (exposed as `VideoTrimSwift` to Obj-C) is the real implementation.
+- **Config dict (New Arch)**: `showEditor:config:` in `VideoTrim.mm` destructures the codegen `JS::NativeVideoTrim::EditorConfig` struct field-by-field into an `NSMutableDictionary` before handing it to Swift. Old Arch passes the dict through unchanged via `RCT_EXTERN_METHOD`. **Any new `EditorConfig` field must be added to this dict-copy block** or it will silently default on iOS New Arch only — see "Adding a new `EditorConfig` field" above.
 - **Event forwarding (New Arch)**: Swift calls `delegate?.emitEventToJS(eventName:body:)` → Obj-C `VideoTrim` dispatches to codegen `emitOn*` methods.
 - **Frameworks**: `AVFoundation`, `AVKit`, `UIKit`, `Photos`.
 - **Theming**: `VideoTrimmerViewController` reads the `theme` prop from config and propagates `isLightTheme` to `VideoTrimmer`, `CropOverlayView`, and all alert dialogs. Light theme uses white background, black icons/text, and black crop overlay brackets/grid.

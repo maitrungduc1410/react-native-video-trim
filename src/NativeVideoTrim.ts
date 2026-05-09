@@ -137,6 +137,19 @@ export interface EditorConfig extends BaseOptions {
    * `"light"` uses a white background with black icons/text and white trimmer-handle chevrons.
    */
   theme?: string;
+  /**
+   * Format token for the editor's start / current / end time labels.
+   * Allowed values:
+   * - `"mm:ss"` — minutes:seconds (e.g. `01:23`)
+   * - `"mm:ss.SS"` — centiseconds (e.g. `01:23.45`)
+   * - `"mm:ss.SSS"` — milliseconds (e.g. `01:23.456`) — **default**
+   * - `"hh:mm:ss"` — hours:minutes:seconds (e.g. `00:01:23`)
+   * - `"hh:mm:ss.SSS"` — hours:minutes:seconds.milliseconds (e.g. `00:01:23.456`)
+   *
+   * Unknown values fall back to the default. Only affects on-screen labels;
+   * `onLoad` / `onFinishTrimming` payloads continue to report raw milliseconds.
+   */
+  durationFormat?: string;
   /** Color of the audio waveform bars as a `processColor` value. */
   waveformColor?: number;
   /** Background color behind the audio waveform bars as a `processColor` value. */

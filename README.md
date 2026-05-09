@@ -488,6 +488,7 @@ All configuration options are optional. Here are the most commonly used ones:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `theme` | `'dark' \| 'light'` | `'dark'` | Editor color theme (see [Theming](#theming)) |
+| `durationFormat` | `'mm:ss' \| 'mm:ss.SS' \| 'mm:ss.SSS' \| 'hh:mm:ss' \| 'hh:mm:ss.SSS'` | `'mm:ss.SSS'` | Format of the start / current / end time labels in the editor. Use `'mm:ss'` to hide milliseconds. Unknown values fall back to the default. Only affects on-screen labels; event payloads still report raw milliseconds. |
 | `cancelButtonText` | `string` | `"Cancel"` | Cancel button text |
 | `saveButtonText` | `string` | `"Save"` | Save button text |
 | `trimmingText` | `string` | `"Trimming video..."` | Progress dialog text |

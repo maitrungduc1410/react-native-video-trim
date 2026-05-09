@@ -194,6 +194,11 @@ RCT_EXPORT_MODULE()
     dict[@"theme"] = theme;
   }
   
+  NSString *durationFormat = config.durationFormat();
+  if (durationFormat != nil) {
+    dict[@"durationFormat"] = durationFormat;
+  }
+  
   [self->videoTrim showEditor:filePath withConfig:dict];
 }
 

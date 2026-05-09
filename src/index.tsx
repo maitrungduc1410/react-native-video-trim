@@ -149,6 +149,7 @@ function createEditorConfig(
     waveformBarWidth: 3,
     waveformBarGap: 2,
     waveformBarCornerRadius: 1.5,
+    durationFormat: 'mm:ss.SSS',
     ...createBaseOptions(overrides),
     ...overrides,
   };
