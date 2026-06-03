@@ -567,6 +567,7 @@ These options only apply when `type: 'audio'`. The waveform replaces the thumbna
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enableHapticFeedback` | `boolean` | `true` | Enable haptic feedback |
+| `enableEditTools` | `boolean` | `true` | Show the top toolbar of edit tools (flip, rotate, crop, mute, speed, undo, redo). Set to `false` to hide the entire toolbar. Video only |
 | `closeWhenFinish` | `boolean` | `true` | Close editor when done |
 | `enablePreciseTrimming` | `boolean` | `false` | Re-encode for frame-accurate cuts (slower, see [Precise Frame Trimming](#precise-frame-trimming)) |
 | `changeStatusBarColorOnOpen` | `boolean` | `false` | Change status bar color (Android only) |
