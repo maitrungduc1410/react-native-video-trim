@@ -165,6 +165,7 @@ export default function App() {
               fullScreenModalIOS: true,
               saveToPhoto: true,
               removeAfterSavedToPhoto: true,
+              // enableEditTools: false
             });
           }}
         />

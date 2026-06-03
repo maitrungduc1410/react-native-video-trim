@@ -111,6 +111,7 @@ RCT_EXPORT_MODULE()
   dict[@"removeAfterShared"] = @(config.removeAfterShared());
   dict[@"removeAfterFailedToShare"] = @(config.removeAfterFailedToShare());
   dict[@"enableHapticFeedback"] = @(config.enableHapticFeedback());
+  dict[@"enableEditTools"] = @(config.enableEditTools());
   dict[@"maxDuration"] = @(config.maxDuration());
   dict[@"minDuration"] = @(config.minDuration());
   dict[@"cancelButtonText"] = config.cancelButtonText();

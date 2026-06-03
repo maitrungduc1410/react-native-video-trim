@@ -101,6 +101,7 @@ function createEditorConfig(
 ): EditorConfig {
   return {
     enableHapticFeedback: true,
+    enableEditTools: true,
     maxDuration: -1,
     minDuration: -1,
     openDocumentsOnFinish: false,

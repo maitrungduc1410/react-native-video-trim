@@ -167,6 +167,7 @@ class VideoTrimmerView(
   private var mOutputExt = "mp4"
   private var enableHapticFeedback = true
   private var enablePreciseTrimming = false
+  private var enableEditTools = true
   private var autoplay = false
   private var jumpToPositionOnLoad = 0L
   private lateinit var headerView: FrameLayout
@@ -523,13 +524,23 @@ class VideoTrimmerView(
     }
 
     mediaPlayer?.setVolume(if (isMuted) 0f else 1f, if (isMuted) 0f else 1f)
-    applyPlaybackSpeed()
+    // Do NOT call applyPlaybackSpeed() here. On Android, MediaPlayer.setPlaybackParams()
+    // with non-zero speed on a prepared player is equivalent to start(), which would
+    // silently begin playback even when autoplay=false. The configured speed is applied
+    // by playOrPause() after the explicit start() call instead.
 
     if (isVideoType) {
-      transformRow.alpha = 0f
-      transformRow.visibility = View.VISIBLE
-      transformRow.animate().alpha(1f).setDuration(250).start()
-      updateUndoRedoButtons()
+      if (enableEditTools) {
+        transformRow.alpha = 0f
+        transformRow.visibility = View.VISIBLE
+        transformRow.animate().alpha(1f).setDuration(250).start()
+        updateUndoRedoButtons()
+      } else {
+        // Hide the entire top toolbar (flip/rotate/crop/mute/speed/undo/redo).
+        // The layout already defaults transformRow to gone, but set it explicitly
+        // in case the value changed across editor sessions.
+        transformRow.visibility = View.GONE
+      }
     } else {
       // Fade the waveform in to match the trimmer container animation.
       waveformView?.animate()?.alpha(1f)?.setDuration(250)?.start()
@@ -624,9 +635,13 @@ class VideoTrimmerView(
   private fun setSpeed(newSpeed: Double) {
     speed = newSpeed
     speedBtn.text = if (newSpeed == 1.0) "1x" else "${newSpeed}x"
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      mediaPlayer?.playbackParams = mediaPlayer?.playbackParams?.setSpeed(newSpeed.toFloat())
-        ?: PlaybackParams().setSpeed(newSpeed.toFloat())
+    // Only apply playbackParams when actively playing. Calling setPlaybackParams() on a
+    // prepared-but-paused MediaPlayer implicitly starts playback (Android docs), which
+    // would silently resume the video when the user just wanted to pick a future speed.
+    // When paused, the new speed is picked up by playOrPause() on the next play.
+    val player = mediaPlayer
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && player != null && player.isPlaying) {
+      player.playbackParams = player.playbackParams.setSpeed(newSpeed.toFloat())
     }
     if (enableHapticFeedback) {
       performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
@@ -819,6 +834,7 @@ class VideoTrimmerView(
     }
     enableHapticFeedback = config.hasKey("enableHapticFeedback") && config.getBoolean("enableHapticFeedback")
     enablePreciseTrimming = config.hasKey("enablePreciseTrimming") && config.getBoolean("enablePreciseTrimming")
+    enableEditTools = if (config.hasKey("enableEditTools")) config.getBoolean("enableEditTools") else true
     autoplay = config.hasKey("autoplay") && config.getBoolean("autoplay")
 
     if (config.hasKey("removeAudio")) {

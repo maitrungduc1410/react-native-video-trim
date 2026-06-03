@@ -42,6 +42,12 @@ export interface BaseOptions {
 export interface EditorConfig extends BaseOptions {
   /** Whether to enable haptic feedback when interacting with the trimmer. */
   enableHapticFeedback: boolean;
+  /**
+   * Whether to show the top toolbar of edit tools (flip, rotate, crop, mute,
+   * speed, undo, redo). Set to `false` to hide the entire toolbar. Default `true`.
+   * Video only — the toolbar never appears for audio files.
+   */
+  enableEditTools: boolean;
   /** Maximum allowed duration for the trimmed clip in milliseconds. Set to `-1` for no limit. */
   maxDuration: number;
   /** Minimum allowed duration for the trimmed clip in milliseconds. Set to `-1` for no limit. */

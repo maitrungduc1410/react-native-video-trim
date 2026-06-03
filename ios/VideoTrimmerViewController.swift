@@ -51,6 +51,7 @@ class VideoTrimmerViewController: UIViewController {
     var cancelBtnClicked: (() -> Void)?
     var saveBtnClicked: ((CMTimeRange) -> Void)?
     private var enableHapticFeedback = true
+    private var enableEditTools = true
     private var zoomOnWaitingDuration: Double = 5.0 // Default: 5 seconds
     
     private var trimmerColor: UIColor = UIColor.systemYellow
@@ -533,7 +534,7 @@ class VideoTrimmerViewController: UIViewController {
     
     // MARK: - Transform (Rotation/Flip/Crop) + Undo/Redo
     private func setupTransformButtons() {
-        guard isVideoType else { return }
+        guard isVideoType, enableEditTools else { return }
         
         let flipBtn = UIButton(type: .system)
         flipBtn.setImage(UIImage(systemName: "arrow.trianglehead.left.and.right.righttriangle.left.righttriangle.right", withConfiguration: symbolConfig), for: .normal)
@@ -1071,6 +1072,7 @@ class VideoTrimmerViewController: UIViewController {
     saveButtonText = config["saveButtonText"] as? String ?? "Save"
     jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Double ?? 0
     enableHapticFeedback = config["enableHapticFeedback"] as? Bool ?? true
+    enableEditTools = config["enableEditTools"] as? Bool ?? true
     zoomOnWaitingDuration = (config["zoomOnWaitingDuration"] as? Double ?? 5.0) / 1000.0 // convert ms to s
     autoplay = config["autoplay"] as? Bool ?? false
     isVideoType = (config["type"] as? String ?? "video") == "video"

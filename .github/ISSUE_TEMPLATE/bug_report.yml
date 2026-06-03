@@ -39,6 +39,14 @@ body:
       placeholder: "x.x.x"
     validations:
       required: true
+  - type: input
+    id: logs
+    attributes:
+      label: What do you get from onLog event?
+      description: Required if you encounter issues related to trimming functionality.
+      placeholder: "Log output"
+    validations:
+      required: true
   - type: textarea
     id: react-native-info
     attributes:
@@ -56,13 +64,5 @@ body:
       value: |
         1. …
         2. …
-    validations:
-      required: true
-  - type: textarea
-    id: reproducible-example
-    attributes:
-      label: Reproducible example repository 
-      description: Please provide a link to a repository on GitHub with a reproducible example.
-      render: js
     validations:
       required: true
