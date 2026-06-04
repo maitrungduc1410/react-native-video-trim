@@ -297,7 +297,8 @@ object VideoTrimmerUtil {
     if (!needsReEncode) {
       // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
       // No encoder is opened so the fallback chain doesn't apply — single attempt.
-      val cmds = mutableListOf("-ss", "${startMs}ms", "-to", "${endMs}ms", "-i", inputFile)
+      // -y overwrites any pre-existing output file without prompting.
+      val cmds = mutableListOf("-y", "-ss", "${startMs}ms", "-to", "${endMs}ms", "-i", inputFile)
       if (removeAudio) {
         cmds.addAll(listOf("-c:v", "copy", "-an"))
       } else {
@@ -354,7 +355,11 @@ object VideoTrimmerUtil {
     // Note: Android FFmpegKit auto-rotates by default, so no -noautorotate is needed.
     // The transpose filters above only handle user-initiated rotation, not source metadata.
     val buildCommand: (List<String>) -> Array<String> = { encoderArgs ->
-      val cmds = mutableListOf("-ss", "${startMs}ms", "-to", "${endMs}ms", "-i", inputFile)
+      // -y overwrites the output file without prompting. This is critical for the
+      // encoder fallback chain: the first (hardware) attempt opens/creates the output
+      // file before MediaCodec fails, so the software retry reuses the same path and
+      // would otherwise hit FFmpeg's interactive "Overwrite? [y/N]" prompt and abort.
+      val cmds = mutableListOf("-y", "-ss", "${startMs}ms", "-to", "${endMs}ms", "-i", inputFile)
       // When enablePreciseTrimming is the only reason for re-encode (no transforms),
       // videoFilters is empty — skip -vf entirely to avoid FFmpeg error on empty filter.
       if (filterString.isNotEmpty()) {

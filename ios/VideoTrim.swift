@@ -359,7 +359,11 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       root.present(progressAlert, animated: true, completion: nil)
     }
     
+    // -y overwrites any pre-existing output file without prompting, so FFmpeg never
+    // blocks on an interactive "Overwrite? [y/N]" prompt (hardening; also keeps the
+    // command symmetric with Android, where -y is required by the encoder fallback chain).
     var cmds = [
+      "-y",
       "-ss",
       "\(startTime * 1000)ms",
       "-to",
@@ -648,7 +652,9 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     
     let startTime = config["startTime"] as? Double ?? 0
     let endTime = config["endTime"] as? Double ?? 0
+    // -y overwrites any pre-existing output file without prompting (hardening).
     var cmds = [
+      "-y",
       "-ss",
       "\(startTime)ms",
       "-to",

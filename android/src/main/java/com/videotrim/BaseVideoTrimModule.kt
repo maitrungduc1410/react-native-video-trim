@@ -690,7 +690,9 @@ open class BaseVideoTrimModule internal constructor(
 
     if (!needsReEncode) {
       // Stream copy: no encoder is opened so the fallback chain doesn't apply.
+      // -y overwrites any pre-existing output file without prompting.
       val cmds = mutableListOf(
+        "-y",
         "-ss", "${startTime}ms",
         "-to", "${endTime}ms",
         "-i", url,
@@ -721,7 +723,11 @@ open class BaseVideoTrimModule internal constructor(
     } catch (_: Exception) {}
 
     val buildCommand: (List<String>) -> Array<String> = { encoderArgs ->
+      // -y overwrites the output file without prompting, so the encoder fallback
+      // chain's software retry can reuse the same output path left behind by the
+      // failed hardware attempt instead of aborting on FFmpeg's overwrite prompt.
       val cmds = mutableListOf(
+        "-y",
         "-ss", "${startTime}ms",
         "-to", "${endTime}ms",
         "-i", url,
