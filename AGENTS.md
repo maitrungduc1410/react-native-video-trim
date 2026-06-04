@@ -123,6 +123,29 @@ Three standalone utility functions handle saving/sharing output files from any A
 
 `listFiles()` and `cleanFiles()` scan **both** directories. `deleteFile()` validates paths against both allowed directories before deletion.
 
+### Trim Encoder Fallback Chain (Android only)
+
+The Android re-encode path uses an encoder fallback chain in `VideoTrimmerUtil.executeWithEncoderFallback`:
+
+1. **`h264_mediacodec`** — hardware H.264, fast, default.
+2. **`mpeg4 -q:v 3`** — software MPEG-4 Part 2, always present in every FFmpegKit build, lower quality.
+
+When attempt 1 fails, `VideoTrimmerUtil.classifyFFmpegError` scans the session's `allLogsAsString` for `MediaCodec configure failed` / `Error initializing output stream` + `mediacodec`. If matched, the helper silently retries with attempt 2 and emits a notice through the existing `onLog` event (no new event was added — keeps the JS surface minimal). If every attempt fails, `onError` fires with the new `ErrorCode.HARDWARE_ENCODER_FAILED`.
+
+Both Android trim entry points use the same helper:
+
+- `VideoTrimmerUtil.trim` (editor save) — wraps the chain in a `TrimSession` handle so `VideoTrimmerView` can cancel across attempts via a single `trimSession.cancel()` call.
+- `BaseVideoTrimModule.trim` (headless `trim()` API) — uses the same helper but discards the handle (headless trim is not user-cancellable).
+
+**Why this is Android-only:**
+
+- Android's `h264_mediacodec` goes through OMX / MediaCodec → vendor IL → vendor hardware. Every chipset vendor (Qualcomm, MediaTek, Samsung, Huawei, Unisoc, …) ships their own implementation with their own quirks; configure-time rejection of valid H.264 inputs is real and reproducible on devices like the LG G8 ThinQ (Snapdragon 855).
+- iOS's `h264_videotoolbox` goes through VideoToolbox → Apple's media driver → Apple silicon. One vendor end-to-end, one curated device matrix that Apple regression-tests. No known reproducible configure-time failure on supported iOS devices.
+
+iOS still adopts the `HARDWARE_ENCODER_FAILED` error code in `ErrorCode.swift` and `VideoTrim.classifyFFmpegError` so the cross-platform JS contract is symmetric — if the rare VideoToolbox failure does occur, consumers get the same specific `errorCode` rather than a generic `TRIMMING_FAILED`. But there is no fallback chain on iOS; the iOS classifier only re-labels the error.
+
+If a real iOS-device failure is ever reported, add a two-step chain (`h264_videotoolbox` → `mpeg4`) mirroring the Android shape — the classifier already returns the right code, so only the retry plumbing would be new.
+
 ### Editor Time Labels
 
 The editor's start / current / end time labels share a single token-based formatter on each platform, controlled by the `durationFormat` option on `EditorConfig`:

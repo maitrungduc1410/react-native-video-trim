@@ -571,7 +571,8 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
         self.emitEventToJS("onCancelTrimming", eventData: nil)
       } else {
         // FAILURE
-        self.onError(message: "Command failed with state \(String(describing: FFmpegKitConfig.sessionState(toString: state ?? .failed))) and rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))", code: .trimmingFailed)
+        let classified = VideoTrim.classifyFFmpegError(session: session)
+        self.onError(message: "Command failed with state \(String(describing: FFmpegKitConfig.sessionState(toString: state ?? .failed))) and rc \(String(describing: returnCode)).\(String(describing: session?.getFailStackTrace()))", code: classified)
         shouldCloseEditor = self.closeWhenFinish
       }
       
@@ -903,6 +904,32 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       "errorCode": code.rawValue
     ]
     self.emitEventToJS("onError", eventData: eventPayload)
+  }
+
+  /// Scan an FFmpeg session's log for signatures that indicate the hardware
+  /// video encoder (`h264_videotoolbox`) refused to configure on this device.
+  /// VideoToolbox failures are extremely rare on supported iOS hardware — Apple
+  /// controls the entire stack and regression-tests it — but the classifier
+  /// exists for API parity with Android (where the same hardware-encoder bug is
+  /// common and reproducible) and to give consumers a more actionable
+  /// `errorCode` than the generic `TRIMMING_FAILED` if it ever happens.
+  ///
+  /// Detected signals:
+  ///   - `VTCompressionSession` errors
+  ///   - `Error initializing output stream` / `Error while opening encoder`
+  ///     combined with a `videotoolbox` mention in the same session log
+  static func classifyFFmpegError(session: FFmpegSession?) -> ErrorCode {
+    let logs = session?.getAllLogsAsString() ?? ""
+    let hardwareEncoderSignals = [
+      "VTCompressionSession",
+      "Error initializing output stream",
+      "Error while opening encoder",
+    ]
+    let matchedHardwareSignal = hardwareEncoderSignals.contains { logs.contains($0) }
+    if matchedHardwareSignal && logs.localizedCaseInsensitiveContains("videotoolbox") {
+      return .hardwareEncoderFailed
+    }
+    return .trimmingFailed
   }
 }
 

@@ -761,6 +761,21 @@ The editor includes built-in transform controls — horizontal flip, 90° left r
 
 When any transform is applied, FFmpeg automatically re-encodes the video using the platform's hardware encoder (`h264_videotoolbox` on iOS, `h264_mediacodec` on Android) at the source bitrate to preserve quality. No additional configuration is needed.
 
+### Android encoder compatibility (auto fallback)
+
+On Android, a small number of devices ship a hardware H.264 encoder (`h264_mediacodec`) that refuses to configure for valid H.264 inputs — typically with `MediaCodec configure failed, Generic error in an external library` (e.g. LG G8 ThinQ on Snapdragon 855, and other older Qualcomm/MediaTek chipsets). This affects only the re-encode path (transform / crop / `enablePreciseTrimming` / non-`1.0` speed); plain trims use stream copy and never touch an encoder.
+
+The library handles this automatically with a two-step encoder fallback chain:
+
+1. `h264_mediacodec` — hardware H.264, fast, default. Used on every device first.
+2. `mpeg4 -q:v 3` — software MPEG-4 Part 2, always available. Only used if attempt 1 fails at `configure()` with a hardware-encoder signature. Lower visual quality and larger files than H.264, but guaranteed to work.
+
+No configuration is needed — the fallback is transparent. When a retry happens, a notice is emitted via the existing `onLog` event (`Hardware encoder failed; retrying with software encoder fallback`) so you can observe quality degradation if you want to log it.
+
+If every attempt in the chain fails, `onError` is emitted with `errorCode: "HARDWARE_ENCODER_FAILED"` (instead of the generic `"TRIMMING_FAILED"`) so apps can present a more specific message or telemetry.
+
+> iOS does not need this fallback — `h264_videotoolbox` runs against Apple's single-vendor stack and has no known reproducible configure-time failures on supported devices. The `HARDWARE_ENCODER_FAILED` `errorCode` is still emitted on iOS as a defensive measure if the rare VideoToolbox failure does occur.
+
 ### Precise Frame Trimming
 
 By default, trimming uses FFmpeg's stream copy (`-c copy`), which is very fast but can only cut at keyframes. The actual start/end points may drift by several seconds from what the user selected.

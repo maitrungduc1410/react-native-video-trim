@@ -2,6 +2,7 @@ package com.videotrim.enums
 
 enum class ErrorCode {
   TRIMMING_FAILED,
+  HARDWARE_ENCODER_FAILED,
   FAIL_TO_GET_VIDEO_INFO,
   FAIL_TO_INITIALIZE_AUDIO_PLAYER,
   FAIL_TO_LOAD_MEDIA,

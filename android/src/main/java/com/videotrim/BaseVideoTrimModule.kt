@@ -634,111 +634,117 @@ open class BaseVideoTrimModule internal constructor(
       options.getBoolean("enablePreciseTrimming")
     val needsReEncode = enablePrecise || speed != 1.0
 
-    val cmds = mutableListOf(
-      "-ss",
-      "${startTime}ms",
-      "-to",
-      "${endTime}ms",
+    // Headless trim still benefits from the encoder fallback chain whenever it
+    // re-encodes (hardware encoder failures are device-specific, not path-specific).
+    // No-op log/stats/progress callbacks because headless trim returns via Promise
+    // rather than emitting events.
+    val onSuccess: () -> Unit = {
+      val duration = endTime - startTime
+      val result = Arguments.createMap()
+      result.putString("outputPath", resolvedOutputFile)
+      result.putDouble("startTime", startTime)
+      result.putDouble("endTime", endTime)
+      result.putDouble("duration", duration)
+      result.putBoolean("success", true)
+
+      if (options?.getBoolean("saveToPhoto") == true && options.getString("type") == "video") {
+        Log.d(TAG, "Android trim: saveToPhoto is true, attempting to save to gallery")
+        try {
+          StorageUtil.saveToGallery(reactApplicationContext, resolvedOutputFile)
+          Log.d(TAG, "Edited video saved to Photo Library successfully.")
+          if (options.getBoolean("removeAfterSavedToPhoto")) {
+            Log.d(TAG, "Removing file after successful save to photo")
+            StorageUtil.deleteFile(resolvedOutputFile)
+          }
+          promise.resolve(result)
+        } catch (e: IOException) {
+          e.printStackTrace()
+          if (options.getBoolean("removeAfterFailedToSavePhoto")) {
+            Log.d(TAG, "Removing file after failed save to photo")
+            StorageUtil.deleteFile(resolvedOutputFile)
+          }
+          promise.reject(
+            Exception("Failed to save edited video to Photo Library: " + e.localizedMessage)
+          )
+        }
+      } else {
+        Log.d(TAG, "Android trim: saveToPhoto is false or not video type, resolving with structured result")
+        promise.resolve(result)
+      }
+    }
+
+    val callbacks = VideoTrimmerUtil.TrimCallbacks(
+      onLog = { msg -> msg.getString("message")?.let { Log.d(TAG, it) } },
+      onStatistics = { /* headless trim does not surface statistics */ },
+      onProgress = { /* headless trim does not surface progress */ },
+      onSuccess = onSuccess,
+      onCancel = {
+        println("FFmpeg command was cancelled")
+        promise.reject(Exception("FFmpeg command was cancelled"))
+      },
+      onError = { errorMessage, _ ->
+        Log.d(TAG, errorMessage)
+        promise.reject(Exception(errorMessage))
+      },
     )
 
-    if (needsReEncode) {
-      var bitrateStr = "10M"
-      try {
-        val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(reactApplicationContext, Uri.parse(url))
-        val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
-          ?.toLongOrNull() ?: 0L
-        if (bitrate > 0) bitrateStr = "$bitrate"
-        retriever.release()
-      } catch (_: Exception) {}
-
-      cmds.addAll(listOf("-i", url))
-      if (speed != 1.0) {
-        cmds.addAll(listOf("-vf", "setpts=${1.0 / speed}*PTS"))
-      }
-      cmds.addAll(listOf("-c:v", "h264_mediacodec", "-b:v", bitrateStr))
-      when {
-        removeAudio -> cmds.add("-an")
-        speed != 1.0 -> cmds.addAll(listOf("-af", VideoTrimmerUtil.buildAtempoChain(speed)))
-        else -> cmds.addAll(listOf("-c:a", "copy"))
-      }
-      cmds.addAll(listOf("-metadata", "creation_time=$formattedDateTime", resolvedOutputFile))
-    } else {
-      cmds.addAll(listOf("-i", url))
+    if (!needsReEncode) {
+      // Stream copy: no encoder is opened so the fallback chain doesn't apply.
+      val cmds = mutableListOf(
+        "-ss", "${startTime}ms",
+        "-to", "${endTime}ms",
+        "-i", url,
+      )
       if (removeAudio) {
         cmds.addAll(listOf("-c:v", "copy", "-an"))
       } else {
         cmds.addAll(listOf("-c", "copy"))
       }
       cmds.addAll(listOf("-metadata", "creation_time=$formattedDateTime", resolvedOutputFile))
+      VideoTrimmerUtil.executeWithEncoderFallback(
+        encoderConfigs = listOf(emptyList()),
+        buildCommand = { cmds.toTypedArray() },
+        videoDurationMs = 0,
+        callbacks = callbacks,
+      )
+      return
     }
 
-    Log.d(TAG, "Command: ${cmds.joinToString(" ")}")
+    var bitrateStr = "10M"
+    try {
+      val retriever = MediaMetadataRetriever()
+      retriever.setDataSource(reactApplicationContext, Uri.parse(url))
+      val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+        ?.toLongOrNull() ?: 0L
+      if (bitrate > 0) bitrateStr = "$bitrate"
+      retriever.release()
+    } catch (_: Exception) {}
 
-    FFmpegKit.executeWithArgumentsAsync(cmds.toTypedArray(), { session ->
-      val state = session.state
-      val returnCode = session.returnCode
-      UiThreadUtil.runOnUiThread {
-        when {
-          ReturnCode.isSuccess(returnCode) -> {
-            val duration = endTime - startTime
-            val result = Arguments.createMap()
-
-            result.putString("outputPath", resolvedOutputFile)
-            result.putDouble("startTime", startTime)
-            result.putDouble("endTime", endTime)
-            result.putDouble("duration", duration)
-            result.putBoolean("success", true)
-
-            if (options?.getBoolean("saveToPhoto") == true && options.getString("type") == "video") {
-              Log.d(TAG, "Android trim: saveToPhoto is true, attempting to save to gallery")
-              try {
-                StorageUtil.saveToGallery(reactApplicationContext, resolvedOutputFile)
-                Log.d(TAG, "Edited video saved to Photo Library successfully.")
-                if (options.getBoolean("removeAfterSavedToPhoto")) {
-                  Log.d(TAG, "Removing file after successful save to photo")
-                  StorageUtil.deleteFile(resolvedOutputFile)
-                }
-
-                promise.resolve(result)
-              } catch (e: IOException) {
-                e.printStackTrace()
-
-                if (options.getBoolean("removeAfterFailedToSavePhoto")) {
-                  Log.d(TAG, "Removing file after failed save to photo")
-                  StorageUtil.deleteFile(resolvedOutputFile)
-                }
-
-                promise.reject(
-                  Exception("Failed to save edited video to Photo Library: " + e.localizedMessage)
-                )
-              }
-            } else {
-              Log.d(TAG, "Android trim: saveToPhoto is false or not video type, resolving with structured result")
-
-              promise.resolve(result)
-            }
-          }
-          ReturnCode.isCancel(returnCode) -> {
-            println("FFmpeg command was cancelled")
-            promise.reject(
-              Exception("FFmpeg command was cancelled with code $returnCode")
-            )
-          }
-          else -> {
-            val errorMessage = String.format("Command failed with state %s and rc %s.%s", state, returnCode, session.getFailStackTrace())
-            Log.d(TAG, errorMessage)
-            promise.reject(
-              Exception(errorMessage)
-            )
-          }
-        }
+    val buildCommand: (List<String>) -> Array<String> = { encoderArgs ->
+      val cmds = mutableListOf(
+        "-ss", "${startTime}ms",
+        "-to", "${endTime}ms",
+        "-i", url,
+      )
+      if (speed != 1.0) {
+        cmds.addAll(listOf("-vf", "setpts=${1.0 / speed}*PTS"))
       }
-    }, { log ->
-      Log.d(TAG, "FFmpeg process started with log ${log.message}")
-    }, { statistics ->
-      // Handle statistics if needed
-    })
+      cmds.addAll(encoderArgs)
+      when {
+        removeAudio -> cmds.add("-an")
+        speed != 1.0 -> cmds.addAll(listOf("-af", VideoTrimmerUtil.buildAtempoChain(speed)))
+        else -> cmds.addAll(listOf("-c:a", "copy"))
+      }
+      cmds.addAll(listOf("-metadata", "creation_time=$formattedDateTime", resolvedOutputFile))
+      cmds.toTypedArray()
+    }
+
+    VideoTrimmerUtil.executeWithEncoderFallback(
+      encoderConfigs = VideoTrimmerUtil.reEncodeEncoderConfigs(bitrateStr),
+      buildCommand = buildCommand,
+      videoDurationMs = 0,
+      callbacks = callbacks,
+    )
   }
 
   // Extracts a single video frame as JPEG/PNG. Output goes to the cache directory.

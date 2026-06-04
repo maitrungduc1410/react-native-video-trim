@@ -39,7 +39,6 @@ import android.widget.TextView
 
 import androidx.appcompat.app.AlertDialog
 
-import com.arthenica.ffmpegkit.FFmpegSession
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.UiThreadUtil.runOnUiThread
@@ -172,7 +171,7 @@ class VideoTrimmerView(
   private var jumpToPositionOnLoad = 0L
   private lateinit var headerView: FrameLayout
   private lateinit var headerText: TextView
-  private var ffmpegSession: FFmpegSession? = null
+  private var trimSession: com.videotrim.utils.TrimSession? = null
   private var alertOnFailToLoad = true
   private var alertOnFailTitle = "Error"
   private var alertOnFailMessage = "Fail to load media. Possibly invalid file or no network connection"
@@ -692,7 +691,7 @@ class VideoTrimmerView(
         ?.toLongOrNull() ?: 0L
     }
     val effectiveRemoveAudio = isMuted || configRemoveAudio
-    ffmpegSession = VideoTrimmerUtil.trim(
+    trimSession = VideoTrimmerUtil.trim(
       mSourceUri.toString(),
       StorageUtil.getOutputPath(mContext, mOutputExt),
       mDuration,
@@ -712,8 +711,8 @@ class VideoTrimmerView(
   }
 
   fun onCancelTrimClicked() {
-    if (ffmpegSession != null) {
-      ffmpegSession!!.cancel()
+    if (trimSession != null) {
+      trimSession!!.cancel()
     } else {
       mOnTrimVideoListener.onCancelTrim()
     }
