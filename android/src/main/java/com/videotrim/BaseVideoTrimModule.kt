@@ -682,7 +682,7 @@ open class BaseVideoTrimModule internal constructor(
         println("FFmpeg command was cancelled")
         promise.reject(Exception("FFmpeg command was cancelled"))
       },
-      onError = { errorMessage, _ ->
+      onError = { errorMessage, _, _ ->
         Log.d(TAG, errorMessage)
         promise.reject(Exception(errorMessage))
       },
@@ -863,6 +863,9 @@ open class BaseVideoTrimModule internal constructor(
   // Re-encodes video with h264_mediacodec (hardware) at the requested quality/bitrate.
   // Uses preset bitrate tiers for quality levels since Android's MediaCodec does not
   // support CRF-style quality control like VideoToolbox's -global_quality on iOS.
+  // Routed through VideoTrimmerUtil.executeWithEncoderFallback so the encoder
+  // fallback chain (h264_mediacodec → mpeg4) covers this path too — see README's
+  // "Android encoder compatibility" section.
   fun compress(url: String, options: ReadableMap?, promise: Promise) {
     val quality = options?.getString("quality") ?: "medium"
     val bitrate = options?.getDouble("bitrate") ?: -1.0
@@ -874,9 +877,7 @@ open class BaseVideoTrimModule internal constructor(
 
     val outputFile = StorageUtil.getCacheOutputPath(reactApplicationContext, outputExt)
 
-    val cmds = mutableListOf("-i", url)
     val videoFilters = mutableListOf<String>()
-
     if (width > 0 && height > 0) {
       videoFilters.add("scale=$width:$height")
     } else if (width > 0) {
@@ -884,50 +885,57 @@ open class BaseVideoTrimModule internal constructor(
     } else if (height > 0) {
       videoFilters.add("scale=-2:$height")
     }
+    val filterString = videoFilters.joinToString(",")
 
-    if (videoFilters.isNotEmpty()) {
-      cmds.addAll(listOf("-vf", videoFilters.joinToString(",")))
+    val bitrateStr = if (bitrate > 0) "${bitrate.toLong()}" else when (quality) {
+      "low" -> "500K"
+      "high" -> "5M"
+      else -> "2M"
     }
 
-    cmds.addAll(listOf("-c:v", "h264_mediacodec"))
-
-    if (bitrate > 0) {
-      cmds.addAll(listOf("-b:v", "${bitrate.toLong()}"))
-    } else {
-      val bv = when (quality) {
-        "low" -> "500K"
-        "high" -> "5M"
-        else -> "2M"
+    val buildCommand: (List<String>) -> Array<String> = { encoderArgs ->
+      val cmds = mutableListOf("-i", url)
+      if (filterString.isNotEmpty()) {
+        cmds.addAll(listOf("-vf", filterString))
       }
-      cmds.addAll(listOf("-b:v", bv))
-    }
-
-    if (frameRate > 0) {
-      cmds.addAll(listOf("-r", "$frameRate"))
-    }
-
-    if (removeAudio) {
-      cmds.add("-an")
-    } else {
-      cmds.addAll(listOf("-c:a", "aac"))
-    }
-
-    cmds.addAll(listOf("-y", outputFile))
-    Log.d(TAG, "compress command: ${cmds.joinToString(" ")}")
-
-    FFmpegKit.executeWithArgumentsAsync(cmds.toTypedArray(), { session ->
-      val returnCode = session.returnCode
-      UiThreadUtil.runOnUiThread {
-        if (ReturnCode.isSuccess(returnCode)) {
-          val result = Arguments.createMap()
-          result.putString("outputPath", outputFile)
-          promise.resolve(result)
-        } else {
-          val logs = session.allLogsAsString ?: ""
-          promise.reject(Exception("Compression failed: rc $returnCode\n$logs"))
-        }
+      cmds.addAll(encoderArgs)
+      if (frameRate > 0) {
+        cmds.addAll(listOf("-r", "$frameRate"))
       }
-    }, null, null)
+      if (removeAudio) {
+        cmds.add("-an")
+      } else {
+        cmds.addAll(listOf("-c:a", "aac"))
+      }
+      cmds.addAll(listOf("-y", outputFile))
+      cmds.toTypedArray()
+    }
+
+    val callbacks = VideoTrimmerUtil.TrimCallbacks(
+      onLog = { msg -> msg.getString("message")?.let { Log.d(TAG, "compress: $it") } },
+      onStatistics = { /* compress does not surface statistics */ },
+      onProgress = { /* compress does not surface progress */ },
+      onSuccess = {
+        val result = Arguments.createMap()
+        result.putString("outputPath", outputFile)
+        promise.resolve(result)
+      },
+      onCancel = { promise.reject(Exception("Compression was cancelled")) },
+      onError = { _, _, session ->
+        // Preserve the original error message shape: "Compression failed: rc N\n<full logs>"
+        // so consumers matching on this prefix continue to work.
+        val returnCode = session?.returnCode
+        val logs = session?.allLogsAsString ?: ""
+        promise.reject(Exception("Compression failed: rc $returnCode\n$logs"))
+      },
+    )
+
+    VideoTrimmerUtil.executeWithEncoderFallback(
+      encoderConfigs = VideoTrimmerUtil.reEncodeEncoderConfigs(bitrateStr),
+      buildCommand = buildCommand,
+      videoDurationMs = 0,
+      callbacks = callbacks,
+    )
   }
 
   // Two-pass GIF conversion: pass 1 generates an optimal color palette (palettegen),
@@ -999,6 +1007,10 @@ open class BaseVideoTrimModule internal constructor(
   // detected bitrate as the output target so quality matches the best source clip.
   // Falls back to 10 Mbps if no bitrate can be read.
   //
+  // Routed through VideoTrimmerUtil.executeWithEncoderFallback so the encoder
+  // fallback chain (h264_mediacodec → mpeg4) covers this path too — see README's
+  // "Android encoder compatibility" section.
+  //
   // Limitation: only supports local file paths. Remote URLs are not supported because the
   // default FFmpegKit build does not include OpenSSL (--disable-openssl).
   fun merge(urls: ReadableArray, options: ReadableMap?, promise: Promise) {
@@ -1011,11 +1023,11 @@ open class BaseVideoTrimModule internal constructor(
       return
     }
 
-    val cmds = mutableListOf<String>()
+    val inputArgs = mutableListOf<String>()
     var maxBitrate = 0L
     for (i in 0 until n) {
       val urlStr = urls.getString(i) ?: continue
-      cmds.addAll(listOf("-i", urlStr))
+      inputArgs.addAll(listOf("-i", urlStr))
       try {
         val retriever = MediaMetadataRetriever()
         retriever.setDataSource(reactApplicationContext, Uri.parse(urlStr))
@@ -1048,38 +1060,55 @@ open class BaseVideoTrimModule internal constructor(
     val concatInputs = (0 until n).joinToString("") { "[v$it][$it:a:0]" }
     val filterComplex = "$scaleParts;${concatInputs}concat=n=$n:v=1:a=1[outv][outa]"
 
-    cmds.addAll(listOf(
-      "-filter_complex", filterComplex,
-      "-map", "[outv]", "-map", "[outa]",
-      "-c:v", "h264_mediacodec", "-b:v", bitrateStr,
-      "-c:a", "aac",
-      "-y", outputFile
-    ))
-    Log.d(TAG, "merge command: ${cmds.joinToString(" ")}")
+    val buildCommand: (List<String>) -> Array<String> = { encoderArgs ->
+      val cmds = mutableListOf<String>()
+      cmds.addAll(inputArgs)
+      cmds.addAll(listOf(
+        "-filter_complex", filterComplex,
+        "-map", "[outv]", "-map", "[outa]",
+      ))
+      cmds.addAll(encoderArgs)
+      cmds.addAll(listOf(
+        "-c:a", "aac",
+        "-y", outputFile,
+      ))
+      cmds.toTypedArray()
+    }
 
-    FFmpegKit.executeWithArgumentsAsync(cmds.toTypedArray(), { session ->
-      val returnCode = session.returnCode
-      UiThreadUtil.runOnUiThread {
-        if (ReturnCode.isSuccess(returnCode)) {
-          var duration = 0.0
-          try {
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(outputFile)
-            duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull() ?: 0.0
-            retriever.release()
-          } catch (_: Exception) {
-          }
-
-          val result = Arguments.createMap()
-          result.putString("outputPath", outputFile)
-          result.putDouble("duration", duration)
-          promise.resolve(result)
-        } else {
-          val logs = session.allLogsAsString ?: ""
-          promise.reject(Exception("Merge failed: rc $returnCode\n$logs"))
+    val callbacks = VideoTrimmerUtil.TrimCallbacks(
+      onLog = { msg -> msg.getString("message")?.let { Log.d(TAG, "merge: $it") } },
+      onStatistics = { /* merge does not surface statistics */ },
+      onProgress = { /* merge does not surface progress */ },
+      onSuccess = {
+        var duration = 0.0
+        try {
+          val retriever = MediaMetadataRetriever()
+          retriever.setDataSource(outputFile)
+          duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull() ?: 0.0
+          retriever.release()
+        } catch (_: Exception) {
         }
-      }
-    }, null, null)
+        val result = Arguments.createMap()
+        result.putString("outputPath", outputFile)
+        result.putDouble("duration", duration)
+        promise.resolve(result)
+      },
+      onCancel = { promise.reject(Exception("Merge was cancelled")) },
+      onError = { _, _, session ->
+        // Preserve the original error message shape: "Merge failed: rc N\n<full logs>"
+        // so consumers matching on this prefix continue to work.
+        val returnCode = session?.returnCode
+        val logs = session?.allLogsAsString ?: ""
+        promise.reject(Exception("Merge failed: rc $returnCode\n$logs"))
+      },
+    )
+
+    VideoTrimmerUtil.executeWithEncoderFallback(
+      encoderConfigs = VideoTrimmerUtil.reEncodeEncoderConfigs(bitrateStr),
+      buildCommand = buildCommand,
+      videoDurationMs = 0,
+      callbacks = callbacks,
+    )
   }
 
   private fun saveFileToExternalStorage(file: File) {

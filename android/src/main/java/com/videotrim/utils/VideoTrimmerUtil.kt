@@ -126,6 +126,13 @@ object VideoTrimmerUtil {
    * statistics are forwarded as-is; the success/cancel/error callbacks fire
    * exactly once for the overall trim request after the fallback chain
    * settles.
+   *
+   * The error callback receives a default message ("Command failed with
+   * state ... and rc ...") plus the final attempt's [FFmpegSession] so
+   * callers that surface custom error formats (e.g. headless APIs that
+   * include `allLogsAsString` in the Promise rejection) can build their
+   * own message instead. Pass `null`-safe access since the session may be
+   * unavailable in edge cases.
    */
   internal class TrimCallbacks(
     val onLog: (WritableMap) -> Unit,
@@ -133,7 +140,7 @@ object VideoTrimmerUtil {
     val onProgress: (Int) -> Unit,
     val onSuccess: () -> Unit,
     val onCancel: () -> Unit,
-    val onError: (String, ErrorCode) -> Unit,
+    val onError: (message: String, code: ErrorCode, session: FFmpegSession?) -> Unit,
   )
 
   /**
@@ -178,7 +185,7 @@ object VideoTrimmerUtil {
       // Should be unreachable because we only retry on HARDWARE_ENCODER_FAILED;
       // any non-retryable error is surfaced before exhausting the iterator.
       UiThreadUtil.runOnUiThread {
-        callbacks.onError("Encoder fallback chain exhausted", ErrorCode.TRIMMING_FAILED)
+        callbacks.onError("Encoder fallback chain exhausted", ErrorCode.TRIMMING_FAILED, null)
       }
       return
     }
@@ -213,7 +220,7 @@ object VideoTrimmerUtil {
             } else {
               val errorMessage =
                 "Command failed with state $state and rc $returnCode.${session.failStackTrace}"
-              callbacks.onError(errorMessage, classified)
+              callbacks.onError(errorMessage, classified, session)
             }
           }
         }
@@ -291,7 +298,7 @@ object VideoTrimmerUtil {
       onProgress = { callback.onTrimmingProgress(it) },
       onSuccess = { callback.onFinishTrim(outputFile, startMs, endMs, videoDuration) },
       onCancel = { callback.onCancelTrim() },
-      onError = { msg, code -> callback.onError(msg, code) },
+      onError = { msg, code, _ -> callback.onError(msg, code) },
     )
 
     if (!needsReEncode) {

@@ -763,16 +763,32 @@ When any transform is applied, FFmpeg automatically re-encodes the video using t
 
 ### Android encoder compatibility (auto fallback)
 
-On Android, a small number of devices ship a hardware H.264 encoder (`h264_mediacodec`) that refuses to configure for valid H.264 inputs — typically with `MediaCodec configure failed, Generic error in an external library` (e.g. LG G8 ThinQ on Snapdragon 855, and other older Qualcomm/MediaTek chipsets). This affects only the re-encode path (transform / crop / `enablePreciseTrimming` / non-`1.0` speed); plain trims use stream copy and never touch an encoder.
+On Android, a small number of devices ship a hardware H.264 encoder (`h264_mediacodec`) that refuses to configure for valid H.264 inputs — typically with `MediaCodec configure failed, Generic error in an external library` (e.g. LG G8 ThinQ on Snapdragon 855, certain Samsung Galaxy models, and other older Qualcomm/MediaTek chipsets). This affects every code path that re-encodes video.
 
 The library handles this automatically with a two-step encoder fallback chain:
 
 1. `h264_mediacodec` — hardware H.264, fast, default. Used on every device first.
 2. `mpeg4 -q:v 3` — software MPEG-4 Part 2, always available. Only used if attempt 1 fails at `configure()` with a hardware-encoder signature. Lower visual quality and larger files than H.264, but guaranteed to work.
 
+The fallback is wired into every Android API that opens a video encoder:
+
+| API | Goes through fallback? |
+|-----|------------------------|
+| `showEditor` save (when transform / crop / `enablePreciseTrimming` / speed) | Yes |
+| `trim` (when `enablePreciseTrimming` or `speed != 1.0`) | Yes |
+| `trim` (plain — stream copy `-c copy`) | N/A, no encoder is opened |
+| `compress` | Yes (always re-encodes) |
+| `merge` | Yes (always re-encodes) |
+| `extractAudio` | N/A, no video encoder (`-vn`) |
+| `getFrameAt` | N/A, uses `MediaMetadataRetriever` |
+| `toGif` | N/A, uses the GIF encoder, not `h264_mediacodec` |
+
 No configuration is needed — the fallback is transparent. When a retry happens, a notice is emitted via the existing `onLog` event (`Hardware encoder failed; retrying with software encoder fallback`) so you can observe quality degradation if you want to log it.
 
-If every attempt in the chain fails, `onError` is emitted with `errorCode: "HARDWARE_ENCODER_FAILED"` (instead of the generic `"TRIMMING_FAILED"`) so apps can present a more specific message or telemetry.
+If every attempt in the chain fails:
+
+- **Editor save**: `onError` is emitted with `errorCode: "HARDWARE_ENCODER_FAILED"` (instead of the generic `"TRIMMING_FAILED"`).
+- **Headless APIs (`trim` / `compress` / `merge`)**: the Promise rejects with the original error message format (`"Compression failed: rc N\n<logs>"` etc.) including the full FFmpeg log of the final attempt for debugging.
 
 > iOS does not need this fallback — `h264_videotoolbox` runs against Apple's single-vendor stack and has no known reproducible configure-time failures on supported devices. The `HARDWARE_ENCODER_FAILED` `errorCode` is still emitted on iOS as a defensive measure if the rare VideoToolbox failure does occur.
 

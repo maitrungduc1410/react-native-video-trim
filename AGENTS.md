@@ -123,26 +123,47 @@ Three standalone utility functions handle saving/sharing output files from any A
 
 `listFiles()` and `cleanFiles()` scan **both** directories. `deleteFile()` validates paths against both allowed directories before deletion.
 
-### Trim Encoder Fallback Chain (Android only)
+### Encoder Fallback Chain (Android only)
 
 The Android re-encode path uses an encoder fallback chain in `VideoTrimmerUtil.executeWithEncoderFallback`:
 
 1. **`h264_mediacodec`** — hardware H.264, fast, default.
 2. **`mpeg4 -q:v 3`** — software MPEG-4 Part 2, always present in every FFmpegKit build, lower quality.
 
-When attempt 1 fails, `VideoTrimmerUtil.classifyFFmpegError` scans the session's `allLogsAsString` for `MediaCodec configure failed` / `Error initializing output stream` + `mediacodec`. If matched, the helper silently retries with attempt 2 and emits a notice through the existing `onLog` event (no new event was added — keeps the JS surface minimal). If every attempt fails, `onError` fires with the new `ErrorCode.HARDWARE_ENCODER_FAILED`.
+When attempt 1 fails, `VideoTrimmerUtil.classifyFFmpegError` scans the session's `allLogsAsString` for `MediaCodec configure failed` / `Error initializing output stream` + `mediacodec`. If matched, the helper silently retries with attempt 2 and emits a notice through the existing `onLog` event (no new event was added — keeps the JS surface minimal). If every attempt fails, the editor path emits `onError` with `ErrorCode.HARDWARE_ENCODER_FAILED`; the headless paths reject the Promise with their original error message format (`"Compression failed: rc N\n<logs>"` etc.).
 
-Both Android trim entry points use the same helper:
+Every Android entry point that opens a video encoder routes through the helper:
 
-- `VideoTrimmerUtil.trim` (editor save) — wraps the chain in a `TrimSession` handle so `VideoTrimmerView` can cancel across attempts via a single `trimSession.cancel()` call.
-- `BaseVideoTrimModule.trim` (headless `trim()` API) — uses the same helper but discards the handle (headless trim is not user-cancellable).
+| Entry point | File | Cancellation |
+|-------------|------|--------------|
+| `VideoTrimmerUtil.trim` (editor save) | `utils/VideoTrimmerUtil.kt` | Returns `TrimSession` handle so `VideoTrimmerView` can cancel across attempts via `trimSession.cancel()` |
+| `BaseVideoTrimModule.trim` (headless) | `BaseVideoTrimModule.kt` | Discards handle — headless trim is not user-cancellable |
+| `BaseVideoTrimModule.compress` | `BaseVideoTrimModule.kt` | Same as headless trim |
+| `BaseVideoTrimModule.merge` | `BaseVideoTrimModule.kt` | Same as headless trim |
+
+`TrimCallbacks.onError` has signature `(message: String, code: ErrorCode, session: FFmpegSession?) -> Unit`. Callers can use the default `message` (editor save, headless trim) or extract `session.allLogsAsString` / `session.returnCode` to build a custom message (compress, merge — which preserve their pre-existing `"<X> failed: rc N\n<full logs>"` rejection format so consumers matching on that prefix don't break).
 
 **Why this is Android-only:**
 
-- Android's `h264_mediacodec` goes through OMX / MediaCodec → vendor IL → vendor hardware. Every chipset vendor (Qualcomm, MediaTek, Samsung, Huawei, Unisoc, …) ships their own implementation with their own quirks; configure-time rejection of valid H.264 inputs is real and reproducible on devices like the LG G8 ThinQ (Snapdragon 855).
+- Android's `h264_mediacodec` goes through OMX / MediaCodec → vendor IL → vendor hardware. Every chipset vendor (Qualcomm, MediaTek, Samsung, Huawei, Unisoc, …) ships their own implementation with their own quirks; configure-time rejection of valid H.264 inputs is real and reproducible (LG G8 ThinQ on Snapdragon 855, certain Samsung Galaxy models on HEVC inputs, etc.). The failure can hit any encode path — the bug is encoder-specific, not API-specific.
 - iOS's `h264_videotoolbox` goes through VideoToolbox → Apple's media driver → Apple silicon. One vendor end-to-end, one curated device matrix that Apple regression-tests. No known reproducible configure-time failure on supported iOS devices.
 
 iOS still adopts the `HARDWARE_ENCODER_FAILED` error code in `ErrorCode.swift` and `VideoTrim.classifyFFmpegError` so the cross-platform JS contract is symmetric — if the rare VideoToolbox failure does occur, consumers get the same specific `errorCode` rather than a generic `TRIMMING_FAILED`. But there is no fallback chain on iOS; the iOS classifier only re-labels the error.
+
+**Adding a new Android API that re-encodes:** thread it through `VideoTrimmerUtil.executeWithEncoderFallback`. Don't call `FFmpegKit.executeWithArgumentsAsync` directly with `-c:v h264_mediacodec` — that bypasses the fallback and will fail on the affected devices. Pattern:
+
+```kotlin
+val buildCommand: (List<String>) -> Array<String> = { encoderArgs ->
+  // Build the full FFmpeg argv with `encoderArgs` inserted in place of
+  // the encoder portion (`-c:v h264_mediacodec -b:v <bitrate>` would have gone).
+}
+VideoTrimmerUtil.executeWithEncoderFallback(
+  encoderConfigs = VideoTrimmerUtil.reEncodeEncoderConfigs(bitrateStr),
+  buildCommand = buildCommand,
+  videoDurationMs = 0,
+  callbacks = VideoTrimmerUtil.TrimCallbacks(...),
+)
+```
 
 If a real iOS-device failure is ever reported, add a two-step chain (`h264_videotoolbox` → `mpeg4`) mirroring the Android shape — the classifier already returns the right code, so only the retry plumbing would be new.
 
