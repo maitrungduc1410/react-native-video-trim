@@ -382,22 +382,13 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     let needsReEncode = hasUserTransform || cropNorm != nil || enablePreciseTrimming || needsSpeed
     
     if needsReEncode, let vc = vc {
-      // -noautorotate disables FFmpeg's automatic rotation, so we must manually
-      // compensate for the source video's rotation metadata via transpose filters.
-      if let asset = vc.asset,
-         let videoTrack = asset.tracks(withMediaType: .video).first {
-        let t = videoTrack.preferredTransform
-        let sourceAngle = atan2(t.b, t.a)
-        if abs(sourceAngle - .pi / 2) < 0.1 {
-          videoFilters.append("transpose=1")
-        } else if abs(sourceAngle + .pi / 2) < 0.1 {
-          videoFilters.append("transpose=2")
-        } else if abs(abs(sourceAngle) - .pi) < 0.1 {
-          videoFilters.append("transpose=1")
-          videoFilters.append("transpose=1")
-        }
-      }
-      
+      // Let FFmpeg autorotate the source (note: NO -noautorotate below). Autorotate bakes
+      // the source rotation matrix into upright, display-orientation pixels AND strips the
+      // matrix from the output. The previous approach (-noautorotate + a manual source-
+      // compensation transpose) baked the pixels but left the source rotation matrix on the
+      // output, so on ffmpeg-kit 6 every rotation-tagged portrait clip came out
+      // double-rotated (sideways). User rotate/flip and crop below operate on the already-
+      // upright autorotated frame, so their math is unchanged.
       switch vc.rotationCount {
       case 1: videoFilters.append("transpose=2")
       case 2:
@@ -464,9 +455,9 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
         }
       }
       
-      // -noautorotate: we handle rotation via explicit transpose filters above,
-      // so FFmpeg must not auto-rotate or the output will be double-rotated.
-      cmds.append("-noautorotate")
+      // NOTE: intentionally NO -noautorotate. FFmpeg autorotates the input so the source
+      // rotation is baked into the pixels and the output carries no stale rotation matrix
+      // (otherwise rotation-tagged portrait clips are double-rotated -> sideways on ffmpeg-kit 6).
       cmds.append(contentsOf: ["-i", inputFile.path])
       // When enablePreciseTrimming is the only reason for re-encode (no transforms),
       // videoFilters is empty — skip -vf entirely to avoid FFmpeg error on empty filter.
