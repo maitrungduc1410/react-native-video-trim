@@ -68,7 +68,6 @@ open class BaseVideoTrimModule internal constructor(
   private val sendEvent: (eventName: String, params: WritableMap?) -> Unit
 ) : VideoTrimListener, LifecycleEventListener {
 
-  private var isInit: Boolean = false
   private var trimmerView: VideoTrimmerView? = null
   private var alertDialog: AlertDialog? = null
   private var mProgressDialog: AlertDialog? = null
@@ -84,6 +83,10 @@ open class BaseVideoTrimModule internal constructor(
   private var pendingSaveToDocumentsFile: File? = null
 
   init {
+    // Initialize BaseUtils eagerly so DeviceUtil / VideoTrimmerUtil static
+    // fields resolve correctly even when a headless API (compress, toGif,
+    // merge, …) is called before showEditor has ever been opened.
+    BaseUtils.init(reactApplicationContext)
     reactApplicationContext.addLifecycleEventListener(this)
 
     val mActivityEventListener = object : BaseActivityEventListener() {
@@ -190,11 +193,6 @@ open class BaseVideoTrimModule internal constructor(
       onError("Activity is not available", ErrorCode.UNKNOWN)
       return
     }
-    if (!isInit) {
-      init()
-      isInit = true
-    }
-
     // here is NOT main thread, we need to create VideoTrimmerView on UI thread, so that later we can update it using same thread
     UiThreadUtil.runOnUiThread {
       trimmerView = VideoTrimmerView(reactApplicationContext, editorConfig, null)
@@ -288,12 +286,6 @@ open class BaseVideoTrimModule internal constructor(
       }
       ViewCompat.requestApplyInsets(decorView)
     }
-  }
-
-  private fun init() {
-    isInit = true
-    // we have to init this before create videoTrimmerView
-    BaseUtils.init(reactApplicationContext)
   }
 
   override fun onHostResume() {
@@ -741,7 +733,9 @@ open class BaseVideoTrimModule internal constructor(
         speed != 1.0 -> cmds.addAll(listOf("-af", VideoTrimmerUtil.buildAtempoChain(speed)))
         else -> cmds.addAll(listOf("-c:a", "copy"))
       }
-      cmds.addAll(listOf("-metadata", "creation_time=$formattedDateTime", resolvedOutputFile))
+      // Same high-tbr fix as compress: prevents duplicate DTS on sources like Pixel 7
+      // recordings (45k tbr) when re-encoding with h264_mediacodec.
+      cmds.addAll(listOf("-fps_mode", "vfr", "-metadata", "creation_time=$formattedDateTime", resolvedOutputFile))
       cmds.toTypedArray()
     }
 
@@ -907,7 +901,11 @@ open class BaseVideoTrimModule internal constructor(
       } else {
         cmds.addAll(listOf("-c:a", "aac"))
       }
-      cmds.addAll(listOf("-y", outputFile))
+      // -fps_mode vfr prevents frame duplication / non-monotonic DTS errors that
+      // occur when the source has an unusually high time-base (e.g. Pixel 7 recordings
+      // with 45k tbr). Without this, h264_mediacodec tries to encode at the tbr rate,
+      // producing hundreds of duplicate frames and then a fatal muxer DTS collision.
+      cmds.addAll(listOf("-fps_mode", "vfr", "-y", outputFile))
       cmds.toTypedArray()
     }
 
