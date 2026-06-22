@@ -77,25 +77,114 @@ object VideoTrimmerUtil {
   }
 
   /**
+   * Largest dimension (in pixels) we allow on the long side of the frame when
+   * falling back to the software `mpeg4` encoder.
+   *
+   * MPEG-4 Part 2 *encoding* succeeds at any resolution, but Android only ships
+   * a software MPEG-4 Part 2 *decoder* (e.g. `OMX.qti.video.decoder.mpeg4sw`)
+   * whose capabilities top out well below modern phone-capture resolutions.
+   * A full-resolution `mpeg4` file (e.g. 1080x2336) therefore encodes fine and
+   * even plays back on a desktop, but is rejected on-device and in ExoPlayer/
+   * Expo with `format_supported=NO_EXCEEDS_CAPABILITIES` / `Decoder init
+   * failed`. Capping the long side to 1280 keeps the macroblock count inside
+   * what these software decoders accept (≈720p territory) so the fallback
+   * output is actually playable on the device that produced it.
+   *
+   * This cap is ONLY applied on the `mpeg4` attempt. The hardware
+   * `h264_mediacodec` attempt — the common case — keeps the native resolution.
+   */
+  const val MPEG4_FALLBACK_MAX_LONG_SIDE = 1280
+
+  /**
+   * A single attempt in the encoder fallback chain: the encoder argv fragment
+   * (e.g. `-c:v h264_mediacodec -b:v 8000000`) plus an optional resolution cap.
+   *
+   * When [maxLongSide] is non-null, the call site must downscale so the frame's
+   * longer edge does not exceed it (see [capLongSideFilter] for `-vf` paths and
+   * [capDimensionsToLongSide] for `-filter_complex` paths). When null, the
+   * attempt keeps the source resolution.
+   */
+  internal data class EncoderConfig(
+    val args: List<String>,
+    val maxLongSide: Int? = null,
+  ) {
+    /**
+     * Human-readable name of the video encoder this attempt uses, parsed from
+     * the `-c:v <encoder>` pair. Returns `"copy"` for the stream-copy path
+     * (empty [args]). Used purely for logging which path was selected.
+     */
+    val videoEncoder: String
+      get() {
+        val idx = args.indexOf("-c:v")
+        return if (idx >= 0 && idx + 1 < args.size) args[idx + 1] else "copy"
+      }
+  }
+
+  /**
    * Encoder fallback chain used when a re-encode is required. Tried in order
    * until one succeeds at FFmpeg's configure() step.
    *
    *  1. `h264_mediacodec` — Android's hardware H.264 encoder. Fastest and the
-   *     default. Fails on some quirky Qualcomm/MediaTek implementations with
-   *     `MediaCodec configure failed` (see "Android encoder compatibility" in
-   *     README).
-   *  2. `mpeg4` — software MPEG-4 Part 2 (Simple Profile). Always available in
-   *     every FFmpegKit build, succeeds on every device. Produces larger files
-   *     at lower visual quality than H.264, used only as a last resort when
-   *     the hardware encoder rejects the configuration.
+   *     default. Keeps native resolution. Fails on some quirky Qualcomm/MediaTek
+   *     implementations with `MediaCodec configure failed` (see "Android encoder
+   *     compatibility" in README).
+   *  2. `hevc_mediacodec` — Android's hardware H.265/HEVC encoder. Lives in a
+   *     different MediaCodec/OMX component than the H.264 one, so on devices
+   *     whose H.264 encoder is broken (e.g. LG G8 ThinQ) the HEVC encoder often
+   *     still configures. Hardware-fast, keeps native resolution, and HEVC is
+   *     hardware-decodable on modern Android *and* iOS (AVPlayer). `-tag:v hvc1`
+   *     is set so the MP4 plays on Apple players (which reject the default
+   *     `hev1` tag). Available in every FFmpegKit build (MediaCodec is a system
+   *     library — no external lib needed).
+   *  3. `mpeg4` — software MPEG-4 Part 2 (Simple Profile). Always available in
+   *     every FFmpegKit build, succeeds on every device. Used only as a last
+   *     resort when both hardware encoders reject the configuration. Downscaled
+   *     to [MPEG4_FALLBACK_MAX_LONG_SIDE] on the long side so Android's software
+   *     MPEG-4 decoder can actually play it back (see that constant's docs).
    *
    * The chain only matters for the re-encode branch (transform/crop/precise/
    * speed); the default stream-copy path doesn't open an encoder at all.
    */
-  internal fun reEncodeEncoderConfigs(bitrateStr: String): List<List<String>> = listOf(
-    listOf("-c:v", "h264_mediacodec", "-b:v", bitrateStr),
-    listOf("-c:v", "mpeg4", "-q:v", "3")
+  internal fun reEncodeEncoderConfigs(bitrateStr: String): List<EncoderConfig> = listOf(
+    EncoderConfig(listOf("-c:v", "h264_mediacodec", "-b:v", bitrateStr)),
+    EncoderConfig(listOf("-c:v", "hevc_mediacodec", "-b:v", bitrateStr, "-tag:v", "hvc1")),
+    EncoderConfig(
+      args = listOf("-c:v", "mpeg4", "-q:v", "3", "-pix_fmt", "yuv420p"),
+      maxLongSide = MPEG4_FALLBACK_MAX_LONG_SIDE,
+    ),
   )
+
+  /**
+   * Build an FFmpeg `scale` filter (for `-vf` chains) that downscales so the
+   * frame's longer edge is at most [maxLongSide], preserving aspect ratio and
+   * never upscaling. Both output dimensions are forced even (`-2`) as required
+   * by the `mpeg4`/H.264 encoders.
+   *
+   * The conditional handles either orientation: for landscape (`iw > ih`) the
+   * width is clamped and the height auto-computed; for portrait/square the
+   * height is clamped and the width auto-computed.
+   */
+  internal fun capLongSideFilter(maxLongSide: Int): String =
+    "scale='if(gt(iw,ih),min($maxLongSide,iw),-2)':'if(gt(iw,ih),-2,min($maxLongSide,ih))'"
+
+  /**
+   * Clamp explicit pixel [width]/[height] so the longer side is at most
+   * [maxLongSide], preserving aspect ratio, never upscaling, and keeping both
+   * dimensions even. Used by paths that scale via `-filter_complex` with fixed
+   * target dimensions (e.g. [BaseVideoTrimModule.merge]) where a `-vf` cap can't
+   * be appended.
+   */
+  internal fun capDimensionsToLongSide(width: Int, height: Int, maxLongSide: Int): Pair<Int, Int> {
+    if (width <= 0 || height <= 0) return width to height
+    val longSide = maxOf(width, height)
+    if (longSide <= maxLongSide) {
+      return (width and 1.inv()) to (height and 1.inv())
+    }
+    val scale = maxLongSide.toDouble() / longSide
+    val w = ((width * scale).roundToInt() and 1.inv()).coerceAtLeast(2)
+    val h = ((height * scale).roundToInt() and 1.inv()).coerceAtLeast(2)
+    return w to h
+  }
 
   /**
    * Scan an FFmpeg session's log for signatures that indicate the hardware
@@ -160,8 +249,8 @@ object VideoTrimmerUtil {
    * currently running attempt and prevents any further attempts.
    */
   internal fun executeWithEncoderFallback(
-    encoderConfigs: List<List<String>>,
-    buildCommand: (encoderArgs: List<String>) -> Array<String>,
+    encoderConfigs: List<EncoderConfig>,
+    buildCommand: (config: EncoderConfig) -> Array<String>,
     videoDurationMs: Int,
     callbacks: TrimCallbacks,
   ): TrimSession {
@@ -172,8 +261,8 @@ object VideoTrimmerUtil {
 
   private fun runAttempt(
     trimSession: TrimSession,
-    encoderIterator: Iterator<List<String>>,
-    buildCommand: (encoderArgs: List<String>) -> Array<String>,
+    encoderIterator: Iterator<EncoderConfig>,
+    buildCommand: (config: EncoderConfig) -> Array<String>,
     videoDurationMs: Int,
     callbacks: TrimCallbacks,
   ) {
@@ -182,16 +271,29 @@ object VideoTrimmerUtil {
       return
     }
     if (!encoderIterator.hasNext()) {
-      // Should be unreachable because we only retry on HARDWARE_ENCODER_FAILED;
-      // any non-retryable error is surfaced before exhausting the iterator.
+      // Should be unreachable: a non-retryable error (or the last rung's failure)
+      // is surfaced via onError below before the iterator is exhausted here.
       UiThreadUtil.runOnUiThread {
         callbacks.onError("Encoder fallback chain exhausted", ErrorCode.TRIMMING_FAILED, null)
       }
       return
     }
 
-    val encoderArgs = encoderIterator.next()
-    val command = buildCommand(encoderArgs)
+    val encoderConfig = encoderIterator.next()
+    val selectedEncoder = encoderConfig.videoEncoder
+    val command = buildCommand(encoderConfig)
+
+    // Log which encoder path was selected for this attempt. Emitted through both
+    // logcat (TAG) and the onLog channel so it shows up in `adb logcat` and in
+    // JS (Metro) for the editor/trim paths — useful for debugging which encoder a
+    // given device actually used (h264_mediacodec / hevc_mediacodec / mpeg4 / copy).
+    val capNote = encoderConfig.maxLongSide?.let { " (downscaled to ${it}px long side)" } ?: ""
+    val selectionMsg = "Encoder selected: $selectedEncoder$capNote"
+    Log.d(TAG, selectionMsg)
+    val selMap = Arguments.createMap()
+    selMap.putString("message", selectionMsg)
+    callbacks.onLog(selMap)
+
     val cmdStr = "Command: ${command.joinToString(" ")}"
     Log.d(TAG, cmdStr)
     val cmdMap = Arguments.createMap()
@@ -203,23 +305,41 @@ object VideoTrimmerUtil {
       val returnCode = session.returnCode
       UiThreadUtil.runOnUiThread {
         when {
-          ReturnCode.isSuccess(returnCode) -> callbacks.onSuccess()
+          ReturnCode.isSuccess(returnCode) -> {
+            val successMsg = "Encoder succeeded: $selectedEncoder$capNote"
+            Log.d(TAG, successMsg)
+            val okMap = Arguments.createMap()
+            okMap.putString("message", successMsg)
+            callbacks.onLog(okMap)
+            callbacks.onSuccess()
+          }
           ReturnCode.isCancel(returnCode) -> callbacks.onCancel()
           else -> {
             val classified = classifyFFmpegError(session)
-            if (classified == ErrorCode.HARDWARE_ENCODER_FAILED && encoderIterator.hasNext()) {
-              // Log fallback decision via the existing onLog channel so consumers
-              // can observe quality degradation without a new dedicated event.
+            // Retry the next rung when either (a) the log carries a hardware-encoder
+            // signature, or (b) this attempt used a hardware MediaCodec encoder at all
+            // — the latter guarantees we still reach the software `mpeg4` floor on
+            // devices whose failure log doesn't match a known signature (e.g. a device
+            // with no HEVC encoder). Software `mpeg4` failures are never retried.
+            val hardwareAttempt = selectedEncoder.endsWith("_mediacodec")
+            val shouldFallback =
+              (classified == ErrorCode.HARDWARE_ENCODER_FAILED || hardwareAttempt) &&
+                encoderIterator.hasNext()
+            if (shouldFallback) {
+              // Log the fallback decision via the existing onLog channel (and logcat)
+              // so consumers can observe which encoder failed and that a fallback —
+              // with possible quality/resolution degradation — is being attempted.
+              val noticeMsg =
+                "Encoder '$selectedEncoder' failed to configure; falling back to next encoder in chain"
+              Log.d(TAG, noticeMsg)
               val notice = Arguments.createMap()
-              notice.putString(
-                "message",
-                "Hardware encoder failed; retrying with software encoder fallback"
-              )
+              notice.putString("message", noticeMsg)
               callbacks.onLog(notice)
               runAttempt(trimSession, encoderIterator, buildCommand, videoDurationMs, callbacks)
             } else {
               val errorMessage =
                 "Command failed with state $state and rc $returnCode.${session.failStackTrace}"
+              Log.d(TAG, "Encoder '$selectedEncoder' failed (no further fallback): $errorMessage")
               callbacks.onError(errorMessage, classified, session)
             }
           }
@@ -313,7 +433,7 @@ object VideoTrimmerUtil {
       }
       cmds.addAll(listOf("-metadata", "creation_time=$formattedDateTime", outputFile))
       return executeWithEncoderFallback(
-        encoderConfigs = listOf(emptyList()),
+        encoderConfigs = listOf(EncoderConfig(emptyList())),
         buildCommand = { cmds.toTypedArray() },
         videoDurationMs = videoDuration,
         callbacks = callbacks,
@@ -354,25 +474,29 @@ object VideoTrimmerUtil {
     if (speed != 1.0) {
       videoFilters.add("setpts=${1.0 / speed}*PTS")
     }
-    val filterString = videoFilters.joinToString(",")
 
     // Preserve source quality by matching the original bitrate. Falls back to 10 Mbps.
     val bitrateStr = if (videoBitrate > 0) "$videoBitrate" else "10M"
 
     // Note: Android FFmpegKit auto-rotates by default, so no -noautorotate is needed.
     // The transpose filters above only handle user-initiated rotation, not source metadata.
-    val buildCommand: (List<String>) -> Array<String> = { encoderArgs ->
+    val buildCommand: (EncoderConfig) -> Array<String> = { config ->
       // -y overwrites the output file without prompting. This is critical for the
       // encoder fallback chain: the first (hardware) attempt opens/creates the output
       // file before MediaCodec fails, so the software retry reuses the same path and
       // would otherwise hit FFmpeg's interactive "Overwrite? [y/N]" prompt and abort.
       val cmds = mutableListOf("-y", "-ss", "${startMs}ms", "-to", "${endMs}ms", "-i", inputFile)
-      // When enablePreciseTrimming is the only reason for re-encode (no transforms),
-      // videoFilters is empty — skip -vf entirely to avoid FFmpeg error on empty filter.
-      if (filterString.isNotEmpty()) {
-        cmds.addAll(listOf("-vf", filterString))
+      // Per-attempt filter chain: the source-driven transforms plus, on the mpeg4
+      // software fallback only, a resolution cap so the output is decodable on-device.
+      val attemptFilters = videoFilters.toMutableList()
+      config.maxLongSide?.let { attemptFilters.add(capLongSideFilter(it)) }
+      // When enablePreciseTrimming is the only reason for re-encode (no transforms)
+      // and no cap applies, attemptFilters is empty — skip -vf entirely to avoid
+      // an FFmpeg error on an empty filter.
+      if (attemptFilters.isNotEmpty()) {
+        cmds.addAll(listOf("-vf", attemptFilters.joinToString(",")))
       }
-      cmds.addAll(encoderArgs)
+      cmds.addAll(config.args)
       when {
         removeAudio -> cmds.add("-an")
         speed != 1.0 -> cmds.addAll(listOf("-af", buildAtempoChain(speed)))

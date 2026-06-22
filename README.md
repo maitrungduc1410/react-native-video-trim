@@ -765,10 +765,15 @@ When any transform is applied, FFmpeg automatically re-encodes the video using t
 
 On Android, a small number of devices ship a hardware H.264 encoder (`h264_mediacodec`) that refuses to configure for valid H.264 inputs — typically with `MediaCodec configure failed, Generic error in an external library` (e.g. LG G8 ThinQ on Snapdragon 855, certain Samsung Galaxy models, and other older Qualcomm/MediaTek chipsets). This affects every code path that re-encodes video.
 
-The library handles this automatically with a two-step encoder fallback chain:
+The library handles this automatically with a three-step encoder fallback chain:
 
-1. `h264_mediacodec` — hardware H.264, fast, default. Used on every device first.
-2. `mpeg4 -q:v 3` — software MPEG-4 Part 2, always available. Only used if attempt 1 fails at `configure()` with a hardware-encoder signature. Lower visual quality and larger files than H.264, but guaranteed to work.
+1. `h264_mediacodec` — hardware H.264, fast, default. Used on every device first. Keeps the source resolution.
+2. `hevc_mediacodec` — hardware H.265/HEVC. The HEVC encoder lives in a different MediaCodec component than the H.264 one, so on devices whose H.264 encoder is broken (e.g. LG G8 ThinQ) HEVC often still configures. Hardware-fast, keeps full resolution, and HEVC is hardware-decodable on modern Android **and** iOS. `-tag:v hvc1` is set so the MP4 plays on Apple players (which reject FFmpeg's default `hev1` tag). Available in every FFmpegKit build (MediaCodec is a system library — no GPL/external lib needed).
+3. `mpeg4 -q:v 3` — software MPEG-4 Part 2, always available. Used only if both hardware encoders fail to `configure()`. Lower visual quality and larger files than H.264/HEVC, but guaranteed to work.
+
+   **Resolution cap on the software fallback:** when this attempt runs, the output is downscaled so its long side is at most `1280px` (aspect ratio preserved, never upscaled). MPEG-4 Part 2 *encoding* succeeds at any size, but Android only ships a *software* MPEG-4 Part 2 decoder (e.g. `OMX.qti.video.decoder.mpeg4sw`) whose capabilities top out around 720p. A full-resolution `mpeg4` file (e.g. `1080x2336`) encodes fine and plays on desktop, but is rejected on-device and in ExoPlayer/Expo with `format_supported=NO_EXCEEDS_CAPABILITIES` / `Decoder init failed`. The cap keeps the macroblock count inside what these decoders accept so the fallback output is actually playable on the device that produced it. The hardware paths (the common case) are unaffected and keep full resolution.
+
+Which encoder a device actually used is logged (via logcat tag `VideoTrimmerUtil` and the `onLog` event) as `Encoder selected: <name>`, `Encoder succeeded: <name>`, and `Encoder '<name>' failed to configure; falling back…` — handy for diagnosing device-specific encoder issues.
 
 The fallback is wired into every Android API that opens a video encoder:
 

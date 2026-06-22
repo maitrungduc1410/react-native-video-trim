@@ -127,10 +127,11 @@ Three standalone utility functions handle saving/sharing output files from any A
 
 The Android re-encode path uses an encoder fallback chain in `VideoTrimmerUtil.executeWithEncoderFallback`:
 
-1. **`h264_mediacodec`** — hardware H.264, fast, default.
-2. **`mpeg4 -q:v 3`** — software MPEG-4 Part 2, always present in every FFmpegKit build, lower quality.
+1. **`h264_mediacodec`** — hardware H.264, fast, default. Keeps the source resolution.
+2. **`hevc_mediacodec`** — hardware H.265/HEVC (`-tag:v hvc1` for Apple-player compatibility). Different MediaCodec component than the H.264 encoder, so it often configures on devices whose H.264 encoder is broken (LG G8 ThinQ). Hardware-fast, full resolution, decodable on modern Android + iOS. No external lib needed (MediaCodec is a system library, present in every build incl. `min`).
+3. **`mpeg4 -q:v 3`** — software MPEG-4 Part 2, always present in every FFmpegKit build, lower quality. Downscaled so the long side ≤ `VideoTrimmerUtil.MPEG4_FALLBACK_MAX_LONG_SIDE` (1280px) because Android's software MPEG-4 decoder rejects full-res mpeg4 (`NO_EXCEEDS_CAPABILITIES`) — the file would otherwise encode fine but fail to play back on-device / in ExoPlayer. The cap is carried on `EncoderConfig.maxLongSide` and applied per call site (see the pattern snippet below).
 
-When attempt 1 fails, `VideoTrimmerUtil.classifyFFmpegError` scans the session's `allLogsAsString` for `MediaCodec configure failed` / `Error initializing output stream` + `mediacodec`. If matched, the helper silently retries with attempt 2 and emits a notice through the existing `onLog` event (no new event was added — keeps the JS surface minimal). If every attempt fails, the editor path emits `onError` with `ErrorCode.HARDWARE_ENCODER_FAILED`; the headless paths reject the Promise with their original error message format (`"Compression failed: rc N\n<logs>"` etc.).
+When an attempt fails, `runAttempt` retries the next rung if either `VideoTrimmerUtil.classifyFFmpegError` matched a hardware signature (`MediaCodec configure failed` / `Error initializing output stream` + `mediacodec`) **or** the failing attempt used any `*_mediacodec` encoder (so a hardware failure with an unrecognized log still reaches the software `mpeg4` floor). A software `mpeg4` failure is never retried. Each transition emits a notice through the existing `onLog` event and logcat (no new event — keeps the JS surface minimal). The selected/succeeded/failed encoder is logged as `Encoder selected: <name>` / `Encoder succeeded: <name>` / `Encoder '<name>' failed to configure…` via both logcat (`VideoTrimmerUtil` tag) and `onLog`. If every attempt fails, the editor path emits `onError` with `ErrorCode.HARDWARE_ENCODER_FAILED`; the headless paths reject the Promise with their original error message format (`"Compression failed: rc N\n<logs>"` etc.).
 
 Every Android entry point that opens a video encoder routes through the helper:
 
@@ -153,9 +154,16 @@ iOS still adopts the `HARDWARE_ENCODER_FAILED` error code in `ErrorCode.swift` a
 **Adding a new Android API that re-encodes:** thread it through `VideoTrimmerUtil.executeWithEncoderFallback`. Don't call `FFmpegKit.executeWithArgumentsAsync` directly with `-c:v h264_mediacodec` — that bypasses the fallback and will fail on the affected devices. Pattern:
 
 ```kotlin
-val buildCommand: (List<String>) -> Array<String> = { encoderArgs ->
-  // Build the full FFmpeg argv with `encoderArgs` inserted in place of
-  // the encoder portion (`-c:v h264_mediacodec -b:v <bitrate>` would have gone).
+val buildCommand: (VideoTrimmerUtil.EncoderConfig) -> Array<String> = { config ->
+  // Insert `config.args` in place of the encoder portion
+  // (`-c:v h264_mediacodec -b:v <bitrate>` would have gone).
+  //
+  // If `config.maxLongSide != null` (set on the mpeg4 software-fallback attempt),
+  // you MUST downscale so the frame's long side stays within it — otherwise the
+  // mpeg4 output is undecodable on-device (Android's software MPEG-4 decoder
+  // rejects full-res mpeg4 with NO_EXCEEDS_CAPABILITIES). For `-vf` chains append
+  // `VideoTrimmerUtil.capLongSideFilter(it)`; for `-filter_complex` paths with
+  // fixed target dimensions use `VideoTrimmerUtil.capDimensionsToLongSide(...)`.
 }
 VideoTrimmerUtil.executeWithEncoderFallback(
   encoderConfigs = VideoTrimmerUtil.reEncodeEncoderConfigs(bitrateStr),
