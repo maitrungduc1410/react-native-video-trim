@@ -57,6 +57,11 @@ object VideoTrimmerUtil {
   const val DEFAULT_AUDIO_EXTENSION = ".wav"
   @JvmField var VIDEO_FRAMES_WIDTH = SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2
   @JvmField var mThumbWidth = 0
+  // Actual rendered thumbnail height (the trimmer row height minus its top/bottom
+  // padding), set per video. iOS sizes thumbnails by this real height rather than the
+  // nominal row height; mirroring that keeps Android's thumbnails the same size as iOS.
+  // Falls back to THUMB_HEIGHT when unset.
+  @JvmField var mThumbHeight = 0
   @JvmField val THUMB_HEIGHT = UnitConverter.dpToPx(50)
   @JvmField val THUMB_WIDTH = UnitConverter.dpToPx(25)
   private const val THUMB_RESOLUTION_RES = 2
@@ -524,7 +529,10 @@ object VideoTrimmerUtil {
     BackgroundExecutor.execute(object : BackgroundExecutor.Task("initial_thumbs", 0L, "") {
       override fun execute() {
         try {
-          val interval = (endPosition - startPosition) / (totalThumbsCount - 1)
+          // Guard against a single-thumbnail strip (possible for very wide/landscape
+          // clips now that the count is aspect-ratio driven) which would otherwise
+          // divide by zero.
+          val interval = (endPosition - startPosition) / maxOf(1, totalThumbsCount - 1)
           for (i in 0 until totalThumbsCount) {
             val frameTime = startPosition + interval * i
 
@@ -536,8 +544,11 @@ object VideoTrimmerUtil {
             }
 
             if (bitmap == null) continue
+            // Scale to the real display height so the bitmap's aspect ratio matches its
+            // ImageView (mThumbWidth x mThumbHeight) and CENTER_CROP performs no crop.
+            val targetHeight = if (mThumbHeight > 0) mThumbHeight else THUMB_HEIGHT
             val scaledBitmap = try {
-              Bitmap.createScaledBitmap(bitmap, mThumbWidth * THUMB_RESOLUTION_RES, THUMB_HEIGHT * THUMB_RESOLUTION_RES, false)
+              Bitmap.createScaledBitmap(bitmap, mThumbWidth * THUMB_RESOLUTION_RES, targetHeight * THUMB_RESOLUTION_RES, false)
             } catch (t: Throwable) {
               t.printStackTrace()
               bitmap

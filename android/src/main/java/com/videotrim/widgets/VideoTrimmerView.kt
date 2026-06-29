@@ -429,10 +429,29 @@ class VideoTrimmerView(
 
     val containerContentWidth = mThumbnailContainer.width - mThumbnailContainer.paddingLeft - mThumbnailContainer.paddingRight
     val effectiveWidth = if (containerContentWidth > 0) containerContentWidth else VideoTrimmerUtil.VIDEO_FRAMES_WIDTH
-    val baseThumbWidth = effectiveWidth / totalThumbsCount
-    val remainder = effectiveWidth % totalThumbsCount
+    val naturalThumbWidth = VideoTrimmerUtil.mThumbWidth
 
-    VideoTrimmerUtil.shootVideoThumbInBackground(mediaMetadataRetriever!!, totalThumbsCount, startPosition, endPosition) { bitmap, interval ->
+    // When the aspect-correct thumb width is known, lay each thumbnail out at that
+    // natural width and generate exactly enough to cover the strip (ceil), mirroring
+    // iOS (numberOfThumbnails = ceil(trackWidth / thumbWidth)). The trailing thumbnail
+    // that overflows the fixed-width container is clipped by the LinearLayout, just like
+    // iOS's partially-visible last thumbnail. Wide landscape clips therefore show a few
+    // wide, uncropped frames instead of many center-cropped slivers. Falls back to evenly
+    // splitting the strip when the per-video thumb width is unavailable.
+    val thumbsCount: Int
+    val baseThumbWidth: Int
+    val remainder: Int
+    if (naturalThumbWidth > 0) {
+      thumbsCount = maxOf(1, (effectiveWidth + naturalThumbWidth - 1) / naturalThumbWidth)
+      baseThumbWidth = naturalThumbWidth
+      remainder = 0
+    } else {
+      thumbsCount = totalThumbsCount
+      baseThumbWidth = effectiveWidth / totalThumbsCount
+      remainder = effectiveWidth % totalThumbsCount
+    }
+
+    VideoTrimmerUtil.shootVideoThumbInBackground(mediaMetadataRetriever!!, thumbsCount, startPosition, endPosition) { bitmap, interval ->
       if (bitmap != null) {
         runOnUiThread {
           val index = mThumbnailContainer.childCount
@@ -473,13 +492,29 @@ class VideoTrimmerView(
       if (bitmap != null) {
         val bitmapHeight = if (bitmap.height > 0) bitmap.height else VideoTrimmerUtil.THUMB_HEIGHT
         val bitmapWidth = if (bitmap.width > 0) bitmap.width else VideoTrimmerUtil.THUMB_WIDTH
-        VideoTrimmerUtil.mThumbWidth = VideoTrimmerUtil.THUMB_HEIGHT * bitmapWidth / bitmapHeight
+        // Match iOS, which sizes each thumbnail from the ACTUAL rendered strip height
+        // (height = trackHeight - 2 * edgeInset) rather than the nominal row height. The
+        // Android strip renders at THUMB_HEIGHT minus the container's top/bottom padding,
+        // so basing the aspect-correct width on that real height makes thumbnails the same
+        // size as iOS (instead of ~19% too wide) and removes the vertical center-crop.
+        val verticalPadding = mThumbnailContainer.paddingTop + mThumbnailContainer.paddingBottom
+        val measuredHeight = mThumbnailContainer.height - verticalPadding
+        val thumbRenderHeight = (if (measuredHeight > 0) measuredHeight
+          else VideoTrimmerUtil.THUMB_HEIGHT - verticalPadding).coerceAtLeast(1)
+        VideoTrimmerUtil.mThumbHeight = thumbRenderHeight
+        VideoTrimmerUtil.mThumbWidth = thumbRenderHeight * bitmapWidth / bitmapHeight
       }
 
       VideoTrimmerUtil.SCREEN_WIDTH_FULL = getScreenWidthInPortraitMode()
       VideoTrimmerUtil.VIDEO_FRAMES_WIDTH = VideoTrimmerUtil.SCREEN_WIDTH_FULL - RECYCLER_VIEW_PADDING * 2
-      VideoTrimmerUtil.MAX_COUNT_RANGE = if (VideoTrimmerUtil.mThumbWidth != 0)
-        maxOf(VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.mThumbWidth, VideoTrimmerUtil.MAX_COUNT_RANGE)
+      // Derive the thumbnail count purely from the video's aspect ratio, mirroring iOS
+      // (numberOfThumbnails = ceil(trackWidth / thumbWidth)). mThumbWidth already encodes
+      // the aspect ratio (renderedThumbHeight * videoWidth / videoHeight), so a wide
+      // (landscape) clip yields a few wide thumbnails while a tall (portrait) clip yields
+      // many narrow ones. Recomputed fresh per video (no maxOf against the previous value)
+      // so the count can't leak across clips opened in the same session. Integer ceil div.
+      VideoTrimmerUtil.MAX_COUNT_RANGE = if (VideoTrimmerUtil.mThumbWidth > 0)
+        maxOf(1, (VIDEO_FRAMES_WIDTH + VideoTrimmerUtil.mThumbWidth - 1) / VideoTrimmerUtil.mThumbWidth)
       else
         VideoTrimmerUtil.MAX_COUNT_RANGE
 
@@ -1445,10 +1480,17 @@ class VideoTrimmerView(
 
       val containerContentWidth = mThumbnailContainer.width - mThumbnailContainer.paddingLeft - mThumbnailContainer.paddingRight
       val effectiveWidth = if (containerContentWidth > 0) containerContentWidth else VideoTrimmerUtil.VIDEO_FRAMES_WIDTH
-      val thumbWidth = VideoTrimmerUtil.VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.MAX_COUNT_RANGE
-      val numberOfThumbnails = maxOf(8, effectiveWidth / maxOf(1, thumbWidth))
-      val baseWidth = effectiveWidth / numberOfThumbnails
-      val remainder = effectiveWidth % numberOfThumbnails
+      // Same aspect-ratio-driven sizing as the full-range strip: lay each thumbnail out
+      // at its natural width and cover the strip with ceil(width / thumbWidth) of them,
+      // rather than forcing a minimum count and center-cropping. Zooming changes the
+      // visible time range, not the per-frame aspect ratio, so mThumbWidth still applies.
+      val thumbWidth = if (VideoTrimmerUtil.mThumbWidth > 0)
+        VideoTrimmerUtil.mThumbWidth
+      else
+        maxOf(1, VideoTrimmerUtil.VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.MAX_COUNT_RANGE)
+      val numberOfThumbnails = maxOf(1, (effectiveWidth + thumbWidth - 1) / thumbWidth)
+      val baseWidth = thumbWidth
+      val remainder = 0
 
       for (i in 0 until numberOfThumbnails) {
         val placeholder = ImageView(context)
@@ -1464,8 +1506,16 @@ class VideoTrimmerView(
     BackgroundExecutor.execute(object : BackgroundExecutor.Task("progressive_thumbs", 0L, "") {
       override fun execute() {
         try {
-          val thumbnailWidth = VideoTrimmerUtil.VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.MAX_COUNT_RANGE
-          val numberOfThumbnails = maxOf(8, mThumbnailContainer.width / thumbnailWidth)
+          // Mirror the placeholder count computed on the UI thread above so every
+          // generated frame maps to exactly one placeholder view (aspect-driven, no
+          // forced minimum, natural thumb width).
+          val thumbnailWidth = if (VideoTrimmerUtil.mThumbWidth > 0)
+            VideoTrimmerUtil.mThumbWidth
+          else
+            maxOf(1, VideoTrimmerUtil.VIDEO_FRAMES_WIDTH / VideoTrimmerUtil.MAX_COUNT_RANGE)
+          val containerContentWidth = mThumbnailContainer.width - mThumbnailContainer.paddingLeft - mThumbnailContainer.paddingRight
+          val effectiveWidth = if (containerContentWidth > 0) containerContentWidth else VideoTrimmerUtil.VIDEO_FRAMES_WIDTH
+          val numberOfThumbnails = maxOf(1, (effectiveWidth + thumbnailWidth - 1) / thumbnailWidth)
           val visibleDuration = if (isZoomedIn) zoomedInRangeDuration else mDuration.toLong()
           val visibleStart = if (isZoomedIn) zoomedInRangeStart else 0L
           val interval = if (visibleDuration > 0) visibleDuration / numberOfThumbnails else 0L
