@@ -1542,6 +1542,99 @@ extension VideoTrim {
     })
   }
 
+  // MARK: - Headless API: mixAudio
+  // Mixes an external audio track (background music / voice-over) into a video.
+  // The video stream is copied unchanged (-c:v copy), so only the audio is
+  // re-encoded (to AAC): fast and quality-preserving.
+  //
+  // The original audio and the background audio are combined via the amix filter
+  // with independent volume control (normalize=0 so each keeps its set volume).
+  // Set originalAudioVolume to 0 to effectively replace the original audio.
+  // loopAudio loops the background track (-stream_loop) so it spans the whole
+  // video; -shortest trims the mix to the video length either way. audioStartTime
+  // delays the background track by the given milliseconds (adelay).
+  //
+  // If the source video has no audio track, the background becomes the sole audio
+  // and the [0:a] leg is skipped (referencing a missing stream aborts FFmpeg).
+  //
+  // Limitation: only supports local file paths. Remote URLs are not supported
+  // because the default FFmpegKit build does not include OpenSSL.
+  @objc
+  public static func mixAudio(_ videoPath: String, audioPath: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
+    let videoURL = URL(string: videoPath) ?? URL(fileURLWithPath: videoPath)
+    let audioURL = URL(string: audioPath) ?? URL(fileURLWithPath: audioPath)
+
+    let originalAudioVolume = options["originalAudioVolume"] as? Double ?? 1.0
+    let backgroundAudioVolume = options["backgroundAudioVolume"] as? Double ?? 1.0
+    let audioStartTime = options["audioStartTime"] as? Double ?? 0
+    let loopAudio = options["loopAudio"] as? Bool ?? false
+    let outputExt = options["outputExt"] as? String ?? "mp4"
+
+    let timestamp = Int(Date().timeIntervalSince1970)
+    let outputName = "\(FILE_PREFIX)_mixed_\(timestamp).\(outputExt)"
+    let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+    let outputFile = cacheDirectory.appendingPathComponent(outputName)
+
+    let hasOriginalAudio = !AVURLAsset(url: videoURL).tracks(withMediaType: .audio).isEmpty
+
+    var cmds: [String] = ["-i", videoURL.path]
+    if loopAudio {
+      cmds.append(contentsOf: ["-stream_loop", "-1"])
+    }
+    cmds.append(contentsOf: ["-i", audioURL.path])
+
+    // Background leg: optional delay, resample to a common format, apply volume.
+    let delayMs = max(Int(audioStartTime), 0)
+    let bgOutLabel = hasOriginalAudio ? "a1" : "aout"
+    var bgFilter = "[1:a]"
+    if delayMs > 0 {
+      bgFilter += "adelay=\(delayMs)|\(delayMs),"
+    }
+    bgFilter += "aresample=async=1,volume=\(backgroundAudioVolume)[\(bgOutLabel)]"
+
+    let filterComplex: String
+    if hasOriginalAudio {
+      filterComplex = "[0:a]volume=\(originalAudioVolume)[a0];\(bgFilter);[a0][a1]amix=inputs=2:duration=first:normalize=0[aout]"
+    } else {
+      filterComplex = bgFilter
+    }
+
+    cmds.append(contentsOf: [
+      "-filter_complex", filterComplex,
+      "-map", "0:v", "-c:v", "copy",
+      "-map", "[aout]", "-c:a", "aac",
+      "-shortest", "-y", outputFile.path
+    ])
+    print("mixAudio command:", cmds.joined(separator: " "))
+
+    FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
+      let returnCode = session?.getReturnCode()
+      if ReturnCode.isSuccess(returnCode) {
+        let asset = AVURLAsset(url: outputFile)
+        let duration = CMTimeGetSeconds(asset.duration) * 1000
+        completion([
+          "outputPath": outputFile.absoluteString,
+          "duration": duration.rounded()
+        ])
+      } else {
+        let logs = session?.getAllLogsAsString() ?? ""
+        completion(["error": "Mix audio failed: rc \(String(describing: returnCode))\n\(logs)"])
+      }
+    }, withLogCallback: nil, withStatisticsCallback: nil)
+  }
+
+  // Old Arch
+  @objc(mixAudio:withAudioPath:withOptions:withResolver:withRejecter:)
+  func mixAudio(_ videoPath: String, withAudioPath audioPath: String, withOptions options: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    VideoTrim.mixAudio(videoPath, audioPath: audioPath, options: options, completion: { payload in
+      if let error = payload["error"] as? String {
+        reject("ERR_MIX_AUDIO", error, NSError(domain: "", code: 200, userInfo: nil))
+      } else {
+        resolve(payload)
+      }
+    })
+  }
+
   // MARK: - Utility: saveToPhoto
   // Saves a file to the Photo Library. Detects whether the file is an image or video by
   // extension, then calls the appropriate PHAssetChangeRequest factory method. Using the

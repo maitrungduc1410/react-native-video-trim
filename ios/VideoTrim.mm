@@ -296,6 +296,27 @@ RCT_EXPORT_MODULE()
   }];
 }
 
+- (void)mixAudio:(nonnull NSString *)videoPath
+       audioPath:(nonnull NSString *)audioPath
+         options:(JS::NativeVideoTrim::MixAudioOptions &)options
+         resolve:(nonnull RCTPromiseResolveBlock)resolve
+          reject:(nonnull RCTPromiseRejectBlock)reject {
+  NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+  dict[@"originalAudioVolume"] = @(options.originalAudioVolume());
+  dict[@"backgroundAudioVolume"] = @(options.backgroundAudioVolume());
+  dict[@"audioStartTime"] = @(options.audioStartTime());
+  dict[@"loopAudio"] = @(options.loopAudio());
+  dict[@"outputExt"] = options.outputExt();
+
+  [VideoTrimSwift mixAudio:videoPath audioPath:audioPath options:dict completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
+    if (result[@"error"]) {
+      reject(@"ERR_MIX_AUDIO", result[@"error"], [NSError errorWithDomain:@"" code:200 userInfo:nil]);
+    } else {
+      resolve(result);
+    }
+  }];
+}
+
 - (void)saveToPhoto:(nonnull NSString *)filePath
             resolve:(nonnull RCTPromiseResolveBlock)resolve
              reject:(nonnull RCTPromiseRejectBlock)reject {
@@ -405,6 +426,9 @@ RCT_EXTERN_METHOD(toGif:(NSString*)url withOptions:(NSDictionary *)options
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(merge:(NSArray *)urls withOptions:(NSDictionary *)options
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(mixAudio:(NSString*)videoPath withAudioPath:(NSString*)audioPath withOptions:(NSDictionary *)options
                   withResolver:(RCTPromiseResolveBlock)resolve
                   withRejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(saveToPhoto:(NSString*)filePath withResolver:(RCTPromiseResolveBlock)resolve

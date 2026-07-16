@@ -90,6 +90,10 @@ class VideoTrimModule(
     base.merge(urls, options, promise)
   }
 
+  override fun mixAudio(videoPath: String, audioPath: String, options: ReadableMap, promise: Promise) {
+    base.mixAudio(videoPath, audioPath, options, promise)
+  }
+
   override fun saveToPhoto(filePath: String, promise: Promise) {
     base.saveToPhoto(filePath, promise)
   }

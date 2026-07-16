@@ -1128,6 +1128,99 @@ open class BaseVideoTrimModule internal constructor(
     )
   }
 
+  // Mixes an external audio track (background music / voice-over) into a video.
+  // The video stream is copied unchanged (-c:v copy), so only the audio is
+  // re-encoded (to AAC). This keeps the operation fast, preserves video quality,
+  // and avoids the hardware-encoder fallback chain that compress/merge require.
+  //
+  // The original audio and the background audio are combined via the amix filter
+  // with independent volume control (normalize=0 so each keeps its set volume).
+  // Set originalAudioVolume to 0 to effectively replace the original audio.
+  // loopAudio loops the background track (via -stream_loop) so it spans the whole
+  // video; -shortest trims the mix to the video length either way. audioStartTime
+  // delays the background track by the given milliseconds (adelay).
+  //
+  // If the source video has no audio track, the background becomes the sole audio
+  // and the [0:a] leg is skipped (referencing a missing stream aborts FFmpeg).
+  //
+  // Limitation: only supports local file paths. Remote URLs are not supported
+  // because the default FFmpegKit build does not include OpenSSL.
+  fun mixAudio(videoPath: String, audioPath: String, options: ReadableMap?, promise: Promise) {
+    val originalAudioVolume = options?.getDouble("originalAudioVolume") ?: 1.0
+    val backgroundAudioVolume = options?.getDouble("backgroundAudioVolume") ?: 1.0
+    val audioStartTime = options?.getDouble("audioStartTime") ?: 0.0
+    val loopAudio = options?.hasKey("loopAudio") == true && options.getBoolean("loopAudio")
+    val outputExt = options?.getString("outputExt") ?: "mp4"
+
+    val outputFile = StorageUtil.getCacheOutputPath(reactApplicationContext, outputExt)
+
+    val hasOriginalAudio = try {
+      val retriever = MediaMetadataRetriever()
+      retriever.setDataSource(videoPath)
+      val has = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
+      retriever.release()
+      has
+    } catch (_: Exception) {
+      false
+    }
+
+    val inputArgs = mutableListOf("-i", videoPath)
+    if (loopAudio) {
+      inputArgs.addAll(listOf("-stream_loop", "-1"))
+    }
+    inputArgs.addAll(listOf("-i", audioPath))
+
+    // Background leg: optional delay, resample to a common format, apply volume.
+    val delayMs = audioStartTime.toLong().coerceAtLeast(0)
+    val bgOutLabel = if (hasOriginalAudio) "a1" else "aout"
+    val bgFilter = buildString {
+      append("[1:a]")
+      if (delayMs > 0) append("adelay=$delayMs|$delayMs,")
+      append("aresample=async=1,")
+      append("volume=$backgroundAudioVolume[$bgOutLabel]")
+    }
+
+    val filterComplex = if (hasOriginalAudio) {
+      "[0:a]volume=$originalAudioVolume[a0];$bgFilter;[a0][a1]amix=inputs=2:duration=first:normalize=0[aout]"
+    } else {
+      bgFilter
+    }
+
+    val cmds = mutableListOf<String>()
+    cmds.addAll(inputArgs)
+    cmds.addAll(listOf(
+      "-filter_complex", filterComplex,
+      "-map", "0:v", "-c:v", "copy",
+      "-map", "[aout]", "-c:a", "aac",
+      "-shortest", "-y", outputFile,
+    ))
+    Log.d(TAG, "mixAudio command: ${cmds.joinToString(" ")}")
+
+    FFmpegKit.executeWithArgumentsAsync(cmds.toTypedArray(), { session ->
+      val returnCode = session.returnCode
+      UiThreadUtil.runOnUiThread {
+        if (ReturnCode.isSuccess(returnCode)) {
+          var duration = 0.0
+          try {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(outputFile)
+            duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull() ?: 0.0
+            retriever.release()
+          } catch (_: Exception) {
+          }
+          val result = Arguments.createMap()
+          result.putString("outputPath", outputFile)
+          result.putDouble("duration", duration)
+          promise.resolve(result)
+        } else {
+          // Preserve the shared error message shape: "Mix audio failed: rc N\n<full logs>".
+          val logs = session.allLogsAsString ?: ""
+          promise.reject(Exception("Mix audio failed: rc $returnCode\n$logs"))
+        }
+      }
+    }, null, null)
+  }
+
   private fun saveFileToExternalStorage(file: File) {
     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
     intent.addCategory(Intent.CATEGORY_OPENABLE)

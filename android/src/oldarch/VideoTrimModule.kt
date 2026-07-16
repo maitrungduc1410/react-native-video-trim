@@ -96,6 +96,11 @@ class VideoTrimModule internal constructor(context: ReactApplicationContext) : V
   }
 
   @ReactMethod
+  override fun mixAudio(videoPath: String, audioPath: String, options: ReadableMap?, promise: Promise) {
+    base.mixAudio(videoPath, audioPath, options, promise)
+  }
+
+  @ReactMethod
   override fun saveToPhoto(filePath: String, promise: Promise) {
     base.saveToPhoto(filePath, promise)
   }

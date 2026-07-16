@@ -320,6 +320,45 @@ export interface MergeResult {
 }
 
 /**
+ * Options for mixing an external audio track (background music / voice-over)
+ * into a video.
+ */
+export interface MixAudioOptions {
+  /**
+   * Volume multiplier applied to the video's original audio track. `1.0` keeps
+   * it unchanged, `0` effectively removes it (replace mode). Default `1.0`.
+   */
+  originalAudioVolume: number;
+  /**
+   * Volume multiplier applied to the background audio track. `1.0` is the
+   * original level. Default `1.0`.
+   */
+  backgroundAudioVolume: number;
+  /**
+   * Delay in milliseconds before the background audio starts, relative to the
+   * beginning of the video. Default `0`.
+   */
+  audioStartTime: number;
+  /**
+   * When `true`, the background audio is looped to span the full video length.
+   * When `false`, the mix ends when the shorter stream ends. Default `false`.
+   */
+  loopAudio: boolean;
+  /** Output file extension (e.g. `"mp4"`). Default `"mp4"`. */
+  outputExt: string;
+}
+
+/**
+ * Result returned by {@link Spec.mixAudio}.
+ */
+export interface MixAudioResult {
+  /** Absolute path to the output video file. */
+  outputPath: string;
+  /** Duration of the output video in milliseconds. */
+  duration: number;
+}
+
+/**
  * Result returned by {@link Spec.saveToPhoto}.
  */
 export interface SaveToPhotoResult {
@@ -380,6 +419,15 @@ export interface Spec extends TurboModule {
     urls: ReadonlyArray<string>,
     options: MergeOptions
   ): Promise<MergeResult>;
+  /**
+   * Mix (or replace) an external audio track into a video. Headless only, no
+   * editor UI. The video stream is copied unchanged; only audio is re-encoded.
+   */
+  mixAudio(
+    videoPath: string,
+    audioPath: string,
+    options: MixAudioOptions
+  ): Promise<MixAudioResult>;
   /** Save a file to the device's photo library. Requires photo library permission. */
   saveToPhoto(filePath: string): Promise<SaveToPhotoResult>;
   /** Present the system document picker to save a file to the user's chosen location. */

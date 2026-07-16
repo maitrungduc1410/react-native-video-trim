@@ -10,6 +10,7 @@
   * [compress()](#compress)
   * [toGif()](#togif)
   * [merge()](#merge)
+  * [mixAudio()](#mixaudio)
   * [Utility Functions](#utility-functions)
   * [File Management](#file-management)
 - [Configuration Options](#configuration-options)
@@ -58,6 +59,7 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 - **🎵 Extract Audio** - Pull the audio track out of a video file
 - **🎞️ GIF Conversion** - Convert a video segment to an animated GIF
 - **🔗 Video Merge** - Concatenate multiple clips into a single file (headless)
+- **🎚️ Background Audio** - Mix or replace a video's audio with external music/voice-over (headless)
 - **🌐 Local & Remote Files** - Support for local storage and HTTPS URLs
 - **💾 Multiple Save Options** - Photos, Documents, or Share to other apps
 - **✅ File Validation** - Built-in validation for media files
@@ -79,6 +81,7 @@ A powerful, easy-to-use video and audio trimming library for React Native applic
 | **Audio Extraction** | Extract the audio track from a video into a separate file |
 | **GIF Conversion** | Convert a video segment to an animated GIF with palette optimization |
 | **Video Merge** | Concatenate multiple clips into one file (headless API) |
+| **Background Audio** | Mix or replace a video's audio with external music/voice-over, with independent volume, delay, and looping (headless API) |
 | **Validation** | Check if files are valid video/audio before processing |
 | **Save Options** | Photos, Documents, Share sheet integration |
 | **File Management** | Complete file lifecycle management |
@@ -402,6 +405,54 @@ const { outputPath, duration } = await merge([
 ]);
 ```
 
+### mixAudio()
+
+Mix (or replace) an external audio track — such as background music or a voice-over — into a video. Headless only (no editor UI).
+
+```typescript
+mixAudio(videoPath: string, audioPath: string, options?: Partial<MixAudioOptions>): Promise<MixAudioResult>
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `originalAudioVolume` | `number` | `1.0` | Volume multiplier for the video's original audio. Set to `0` to replace it. |
+| `backgroundAudioVolume` | `number` | `1.0` | Volume multiplier for the background audio track. |
+| `audioStartTime` | `number` | `0` | Delay in milliseconds before the background audio starts. |
+| `loopAudio` | `boolean` | `false` | Loop the background audio so it spans the full video length. |
+| `outputExt` | `string` | `"mp4"` | Output file extension. |
+
+**Returns:** `{ outputPath: string, duration: number }` (duration in milliseconds)
+
+> **Note:** The **video stream is copied unchanged** (`-c:v copy`) — only the audio is re-encoded (to AAC), so the operation is fast and preserves video quality. The original and background tracks are combined via FFmpeg's `amix` filter with independent volume control. The output is trimmed to the video length (`-shortest`); enable `loopAudio` so a shorter background track repeats to fill the whole video. If the source video has no audio track, the background track becomes the sole audio.
+>
+> **Limitation:** Only **local file paths** are supported. Remote URLs are not supported because the default FFmpegKit build does not include OpenSSL.
+
+**Example:**
+```javascript
+import { mixAudio } from 'react-native-video-trim';
+
+// Mix background music at half the original video volume, looped to fill the video
+const { outputPath, duration } = await mixAudio(
+  '/path/to/video.mp4',
+  '/path/to/music.mp3',
+  {
+    originalAudioVolume: 0.5,
+    backgroundAudioVolume: 1,
+    audioStartTime: 0,
+    loopAudio: true,
+  }
+);
+
+// Replace the original audio entirely with a voice-over
+const { outputPath: dubbed } = await mixAudio(
+  '/path/to/video.mp4',
+  '/path/to/voiceover.m4a',
+  { originalAudioVolume: 0 }
+);
+```
+
 ### Utility Functions
 
 Standalone functions for saving, sharing, or exporting any output file. These work with output from any API (`compress`, `toGif`, `merge`, `trim`, etc.).
@@ -426,7 +477,7 @@ const { outputPath: merged } = await merge(['/clip1.mp4', '/clip2.mp4']);
 await share(merged);
 ```
 
-> **Note:** Headless API outputs (`getFrameAt`, `extractAudio`, `compress`, `toGif`, `merge`) are written to the **cache directory**, which the OS may purge under storage pressure when your app is not running. Files from `showEditor` and `trim` are written to the persistent documents directory. For all outputs, call `deleteFile(outputPath)` when you are done with the file, or use `cleanFiles()` periodically to free space.
+> **Note:** Headless API outputs (`getFrameAt`, `extractAudio`, `compress`, `toGif`, `merge`, `mixAudio`) are written to the **cache directory**, which the OS may purge under storage pressure when your app is not running. Files from `showEditor` and `trim` are written to the persistent documents directory. For all outputs, call `deleteFile(outputPath)` when you are done with the file, or use `cleanFiles()` periodically to free space.
 
 ### File Management
 

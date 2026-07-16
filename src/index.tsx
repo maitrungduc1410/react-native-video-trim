@@ -14,6 +14,8 @@ import type {
   GifResult,
   MergeOptions,
   MergeResult,
+  MixAudioOptions,
+  MixAudioResult,
   SaveToDocumentsResult,
   SaveToPhotoResult,
   ShareResult,
@@ -91,6 +93,19 @@ function createMergeOptions(
   overrides: Partial<MergeOptions> = {}
 ): MergeOptions {
   return {
+    outputExt: 'mp4',
+    ...overrides,
+  };
+}
+
+function createMixAudioOptions(
+  overrides: Partial<MixAudioOptions> = {}
+): MixAudioOptions {
+  return {
+    originalAudioVolume: 1.0,
+    backgroundAudioVolume: 1.0,
+    audioStartTime: 0,
+    loopAudio: false,
     outputExt: 'mp4',
     ...overrides,
   };
@@ -358,6 +373,34 @@ export function merge(
     throw new Error('URLs array cannot be empty!');
   }
   return VideoTrim.merge(urls, createMergeOptions(options));
+}
+
+/**
+ * Mix (or replace) an external audio track, such as background music or a
+ * voice-over, into a video (headless, no UI). The video stream is copied
+ * unchanged, so only the audio is re-encoded.
+ *
+ * @param {string} videoPath: absolute non-empty path to the source video
+ * @param {string} audioPath: absolute non-empty path to the audio to mix in
+ * @param {Partial<MixAudioOptions>} options: mixing options
+ * @returns {Promise<MixAudioResult>} A **Promise** which resolves to the result
+ */
+export function mixAudio(
+  videoPath: string,
+  audioPath: string,
+  options: Partial<MixAudioOptions> = {}
+): Promise<MixAudioResult> {
+  if (!videoPath?.trim().length) {
+    throw new Error('Video path cannot be empty!');
+  }
+  if (!audioPath?.trim().length) {
+    throw new Error('Audio path cannot be empty!');
+  }
+  return VideoTrim.mixAudio(
+    videoPath,
+    audioPath,
+    createMixAudioOptions(options)
+  );
 }
 
 /**

@@ -33,6 +33,8 @@ abstract class VideoTrimSpec internal constructor(context: ReactApplicationConte
 
   abstract fun merge(urls: ReadableArray, options: ReadableMap?, promise: Promise)
 
+  abstract fun mixAudio(videoPath: String, audioPath: String, options: ReadableMap?, promise: Promise)
+
   abstract fun saveToPhoto(filePath: String, promise: Promise)
 
   abstract fun saveToDocuments(filePath: String, promise: Promise)

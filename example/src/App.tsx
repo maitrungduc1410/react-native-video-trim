@@ -17,6 +17,7 @@ import NativeVideoTrim, {
   isValidFile,
   listFiles,
   merge,
+  mixAudio,
   saveToDocuments,
   saveToPhoto,
   share,
@@ -377,6 +378,34 @@ export default function App() {
               const result = await merge([uri1, uri2]);
               setLastOutput(result.outputPath);
               Alert.alert('Merged', `Duration: ${result.duration}ms`);
+            })
+          }
+        />
+      </Section>
+
+      <Section title="Mix Audio">
+        <Btn
+          label="Pick Video + Audio & Mix"
+          color="#A2845E"
+          loading={busy === 'mix-audio'}
+          onPress={() =>
+            run('mix-audio', async () => {
+              Alert.alert('Pick Video', 'Select the base video');
+              const videoUri = await pickVideo();
+              if (!videoUri) return;
+              Alert.alert(
+                'Pick Audio Source',
+                'Select a video whose audio will be mixed in as background'
+              );
+              const audioUri = await pickVideo();
+              if (!audioUri) return;
+              const result = await mixAudio(videoUri, audioUri, {
+                originalAudioVolume: 0.5,
+                backgroundAudioVolume: 1,
+                loopAudio: true,
+              });
+              setLastOutput(result.outputPath);
+              Alert.alert('Mixed', `Duration: ${result.duration}ms`);
             })
           }
         />
