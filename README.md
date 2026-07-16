@@ -876,6 +876,8 @@ const result = await trim(videoUrl, {
 
 **Note:** When transforms (flip/rotate/crop) are applied, re-encoding already happens regardless of this flag, so precise trimming comes for free in that case.
 
+**Source compatibility (iOS):** for HDR / 10-bit sources (e.g. iPhone HDR, HEVC 10-bit Dolby Vision) the re-encode path normalizes the video to 8-bit 4:2:0 (`format=yuv420p`) so it can feed the `h264_videotoolbox` hardware encoder instead of failing to open on FFmpeg builds where the encoder accepts a 10-bit input. SDR sources are left untouched (FFmpeg already negotiates them to 8-bit). Audio passthrough (`-c:a copy` / `-c copy`) is preserved for MP4-compatible codecs (AAC family, ALAC); container-incompatible audio (e.g. Opus) is transcoded to AAC automatically while keeping the fast video passthrough. If an output can still not be produced because of a container/codec mismatch, `onError` reports `errorCode: "OUTPUT_FORMAT_INCOMPATIBLE"` (distinct from `HARDWARE_ENCODER_FAILED`).
+
 ### Trimming Progress & Cancellation
 
 <div align="center">

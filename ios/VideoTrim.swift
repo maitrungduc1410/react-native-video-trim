@@ -282,7 +282,83 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     filters.append("atempo=\(remaining)")
     return filters.joined(separator: ",")
   }
-  
+
+  /// Snapshot of a source's stream codecs, used to decide whether we can
+  /// stream-copy (fast, lossless) or must transcode for container compatibility.
+  private struct SourceMediaInfo {
+    let hasAudio: Bool
+    /// True when the source audio codec can live in an MP4 container as-is
+    /// (AAC family / ALAC). Non-MP4 codecs (e.g. Opus, Vorbis) must be
+    /// transcoded, otherwise FFmpeg fails with "Error initializing output stream".
+    let audioIsMP4Compatible: Bool
+    /// True for HDR / 10-bit video (e.g. iPhone HDR, HEVC 10-bit Dolby Vision).
+    /// Such sources may need an explicit pixel-format normalization before
+    /// h264_videotoolbox: on FFmpeg builds where the encoder advertises a 10-bit
+    /// input format, the 10-bit frames reach the encoder and VTCompressionSession
+    /// fails to open. On builds that auto-negotiate down to 8-bit it is a no-op,
+    /// so we only add the filter when the source is actually HDR/10-bit.
+    let videoIsHDR: Bool
+  }
+
+  /// MP4-safe audio codecs. The AAC family covers the vast majority of real
+  /// inputs (iPhone recordings, most downloads); ALAC is also legal in MP4.
+  /// Anything not listed here is transcoded to AAC on export.
+  private static let mp4CompatibleAudioFormats: Set<AudioFormatID> = [
+    kAudioFormatMPEG4AAC,
+    kAudioFormatMPEG4AAC_HE,
+    kAudioFormatMPEG4AAC_HE_V2,
+    kAudioFormatMPEG4AAC_LD,
+    kAudioFormatMPEG4AAC_ELD,
+    kAudioFormatAppleLossless,
+  ]
+
+  /// Inspect a source asset's audio and video tracks to decide passthrough vs
+  /// transcode and whether HDR pixel-format normalization is needed. Runs
+  /// synchronously against already-local files, so it is cheap. When a codec
+  /// can't be determined, we assume audio is compatible so we don't force an
+  /// unnecessary re-encode on the common case.
+  private func probeSourceMedia(_ asset: AVAsset) -> SourceMediaInfo {
+    var hasAudio = false
+    var audioIsMP4Compatible = true
+    if let audioTrack = asset.tracks(withMediaType: .audio).first,
+       let formatDescriptions = audioTrack.formatDescriptions as? [CMFormatDescription],
+       let firstDesc = formatDescriptions.first {
+      hasAudio = true
+      let subType = CMFormatDescriptionGetMediaSubType(firstDesc)
+      audioIsMP4Compatible = VideoTrim.mp4CompatibleAudioFormats.contains(subType)
+    }
+
+    var videoIsHDR = false
+    if let videoTrack = asset.tracks(withMediaType: .video).first,
+       #available(iOS 14.0, *) {
+      videoIsHDR = videoTrack.hasMediaCharacteristic(.containsHDRVideo)
+    }
+
+    return SourceMediaInfo(
+      hasAudio: hasAudio,
+      audioIsMP4Compatible: audioIsMP4Compatible,
+      videoIsHDR: videoIsHDR
+    )
+  }
+
+  /// Builds the audio portion of an FFmpeg command for the re-encode path.
+  /// Preserves the fast, lossless `-c:a copy` passthrough whenever the source
+  /// audio is already MP4-compatible; only transcodes to AAC when it must — a
+  /// speed change (retimed audio), or a container-incompatible codec like Opus.
+  private func audioArgs(stripAudio: Bool, needsSpeed: Bool, speed: Double, info: SourceMediaInfo) -> [String] {
+    if stripAudio {
+      return ["-an"]
+    }
+    if needsSpeed {
+      return ["-af", buildAtempoChain(speed), "-c:a", "aac"]
+    }
+    if !info.audioIsMP4Compatible {
+      // e.g. Opus/Vorbis can't be copied into .mp4 — transcode just the audio.
+      return ["-c:a", "aac", "-b:a", "128k"]
+    }
+    return ["-c:a", "copy"]
+  }
+
   private func trim(viewController: VideoTrimmerViewController, inputFile: URL, videoDuration: Double, startTime: Double, endTime: Double, isVideoType: Bool) {
     guard !isTrimming else { return }
     isTrimming = true
@@ -443,6 +519,10 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       return
     }
 
+    // Probe the source once so both the re-encode and stream-copy branches can
+    // keep audio passthrough when it is MP4-safe and only transcode when it isn't.
+    let mediaInfo = probeSourceMedia(vc?.asset ?? AVURLAsset(url: inputFile))
+
     if needsReEncode {
       // Preserve source quality by matching the original bitrate. Falls back to 10 Mbps
       // if the track's estimated data rate is unavailable.
@@ -459,8 +539,16 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       // rotation is baked into the pixels and the output carries no stale rotation matrix
       // (otherwise rotation-tagged portrait clips are double-rotated -> sideways on ffmpeg-kit 6).
       cmds.append(contentsOf: ["-i", inputFile.path])
-      // When enablePreciseTrimming is the only reason for re-encode (no transforms),
-      // videoFilters is empty — skip -vf entirely to avoid FFmpeg error on empty filter.
+      // Only HDR/10-bit sources (e.g. iPhone HDR, HEVC 10-bit Dolby Vision) need
+      // an explicit 8-bit 4:2:0 cast: on FFmpeg builds where h264_videotoolbox
+      // advertises a 10-bit input format the encoder fails to open. SDR sources
+      // are left untouched — FFmpeg already negotiates them to an 8-bit format.
+      if mediaInfo.videoIsHDR {
+        videoFilters.append("format=yuv420p")
+      }
+      // When precise trimming is the only reason for re-encode (no transforms and
+      // no HDR normalization), videoFilters is empty — skip -vf to avoid an
+      // FFmpeg error on an empty filter.
       if !videoFilters.isEmpty {
         cmds.append(contentsOf: ["-vf", videoFilters.joined(separator: ",")])
       }
@@ -471,13 +559,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
         "-b:v",
         bitrateStr,
       ])
-      if stripAudio {
-        cmds.append("-an")
-      } else if needsSpeed {
-        cmds.append(contentsOf: ["-af", buildAtempoChain(playbackSpeed), "-c:a", "aac"])
-      } else {
-        cmds.append(contentsOf: ["-c:a", "copy"])
-      }
+      cmds.append(contentsOf: audioArgs(stripAudio: stripAudio, needsSpeed: needsSpeed, speed: playbackSpeed, info: mediaInfo))
       cmds.append(contentsOf: [
         "-metadata",
         "creation_time=\(dateTime)",
@@ -488,8 +570,12 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       cmds.append(contentsOf: ["-i", inputFile.path])
       if stripAudio {
         cmds.append(contentsOf: ["-c:v", "copy", "-an"])
-      } else {
+      } else if mediaInfo.audioIsMP4Compatible {
         cmds.append(contentsOf: ["-c", "copy"])
+      } else {
+        // Container-incompatible audio (e.g. Opus in .mp4): keep the fast video
+        // passthrough but transcode just the audio to AAC.
+        cmds.append(contentsOf: ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k"])
       }
       cmds.append(contentsOf: [
         "-metadata",
@@ -658,11 +744,15 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     let speed = config["speed"] as? Double ?? 1.0
     let needsSpeed = abs(speed - 1.0) > 0.0001
     let needsReEncode = enablePrecise || needsSpeed
-    
+
+    // Probe the source once so both branches can keep audio passthrough when it
+    // is MP4-safe and only transcode when it isn't.
+    let asset = AVURLAsset(url: destPath)
+    let mediaInfo = probeSourceMedia(asset)
+
     if needsReEncode {
       // Match source bitrate to preserve quality; fall back to 10 Mbps.
       var bitrateStr = "10M"
-      let asset = AVURLAsset(url: destPath)
       if let videoTrack = asset.tracks(withMediaType: .video).first {
         let bitrate = Int(videoTrack.estimatedDataRate)
         if bitrate > 0 {
@@ -673,6 +763,11 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       var videoFilters: [String] = []
       if needsSpeed {
         videoFilters.append("setpts=\(1.0 / speed)*PTS")
+      }
+      // Only HDR/10-bit input needs an explicit 8-bit 4:2:0 cast for
+      // h264_videotoolbox; SDR sources are already negotiated to 8-bit by FFmpeg.
+      if mediaInfo.videoIsHDR {
+        videoFilters.append("format=yuv420p")
       }
       
       // No -noautorotate here: headless trim has no manual rotation filters,
@@ -687,13 +782,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
         "-b:v",
         bitrateStr,
       ])
-      if stripAudio {
-        cmds.append("-an")
-      } else if needsSpeed {
-        cmds.append(contentsOf: ["-af", buildAtempoChain(speed), "-c:a", "aac"])
-      } else {
-        cmds.append(contentsOf: ["-c:a", "copy"])
-      }
+      cmds.append(contentsOf: audioArgs(stripAudio: stripAudio, needsSpeed: needsSpeed, speed: speed, info: mediaInfo))
       cmds.append(contentsOf: [
         "-metadata",
         "creation_time=\(dateTime)",
@@ -704,8 +793,12 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       cmds.append(contentsOf: ["-i", destPath.path])
       if stripAudio {
         cmds.append(contentsOf: ["-c:v", "copy", "-an"])
-      } else {
+      } else if mediaInfo.audioIsMP4Compatible {
         cmds.append(contentsOf: ["-c", "copy"])
+      } else {
+        // Container-incompatible audio (e.g. Opus in .mp4): keep the fast video
+        // passthrough but transcode just the audio to AAC.
+        cmds.append(contentsOf: ["-c:v", "copy", "-c:a", "aac", "-b:a", "128k"])
       }
       cmds.append(contentsOf: [
         "-metadata",
@@ -911,21 +1004,42 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   /// common and reproducible) and to give consumers a more actionable
   /// `errorCode` than the generic `TRIMMING_FAILED` if it ever happens.
   ///
-  /// Detected signals:
-  ///   - `VTCompressionSession` errors
-  ///   - `Error initializing output stream` / `Error while opening encoder`
-  ///     combined with a `videotoolbox` mention in the same session log
+  /// Detected signals (checked in this order — hardware first):
+  ///   - `VTCompressionSession` -> VideoToolbox-specific hardware failure.
+  ///   - `Error while opening encoder` scoped by a `videotoolbox` mention ->
+  ///     hardware encoder failure. The bare `videotoolbox` substring is not a
+  ///     signal on its own, because the FFmpeg logs always name
+  ///     `h264_videotoolbox` on the re-encode path even when it opened fine.
+  ///   - `Error initializing output stream` -> container/muxer incompatibility
+  ///     (e.g. an audio codec the output container can't hold). Checked LAST as a
+  ///     fallback, because a genuine video-encoder open failure also emits this
+  ///     line right after "Error while opening encoder"; the hardware checks
+  ///     above must claim those first so a VideoToolbox failure isn't mislabeled
+  ///     as a format incompatibility.
   static func classifyFFmpegError(session: FFmpegSession?) -> ErrorCode {
     let logs = session?.getAllLogsAsString() ?? ""
-    let hardwareEncoderSignals = [
-      "VTCompressionSession",
-      "Error initializing output stream",
-      "Error while opening encoder",
-    ]
-    let matchedHardwareSignal = hardwareEncoderSignals.contains { logs.contains($0) }
-    if matchedHardwareSignal && logs.localizedCaseInsensitiveContains("videotoolbox") {
+
+    // Genuine VideoToolbox hardware-encoder failures. `VTCompressionSession` is
+    // VT-specific on its own; the generic `Error while opening encoder` is only
+    // treated as hardware when the session also mentions videotoolbox, so a plain
+    // audio-encoder open failure isn't misclassified. These are checked before the
+    // output-stream fallback because a video-encoder open failure ALSO logs
+    // "Error initializing output stream" for the same stream.
+    if logs.contains("VTCompressionSession") {
       return .hardwareEncoderFailed
     }
+    if logs.contains("Error while opening encoder"),
+       logs.localizedCaseInsensitiveContains("videotoolbox") {
+      return .hardwareEncoderFailed
+    }
+
+    // Container/muxer incompatibility (e.g. Opus audio into .mp4). Reached only
+    // when the failure isn't a videotoolbox encoder-open error, so the remaining
+    // "Error initializing output stream" is a muxer/codec-in-container mismatch.
+    if logs.contains("Error initializing output stream") {
+      return .outputFormatIncompatible
+    }
+
     return .trimmingFailed
   }
 }
