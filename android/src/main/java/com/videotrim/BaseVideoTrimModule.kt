@@ -807,7 +807,7 @@ open class BaseVideoTrimModule internal constructor(
         }
 
         val ext = if (format == "png") "png" else "jpg"
-        val timestamp = System.currentTimeMillis() / 1000
+        val timestamp = VideoTrimmerUtil.uniqueStamp()
         val file = File(reactApplicationContext.cacheDir, "${VideoTrimmerUtil.FILE_PREFIX}_frame_${timestamp}.$ext")
 
         val outputStream = FileOutputStream(file)
@@ -955,7 +955,7 @@ open class BaseVideoTrimModule internal constructor(
     val fps = options?.getInt("fps") ?: 10
     val width = options?.getInt("width") ?: -1
 
-    val timestamp = System.currentTimeMillis() / 1000
+    val timestamp = VideoTrimmerUtil.uniqueStamp()
     val paletteFile = File(reactApplicationContext.cacheDir, "${VideoTrimmerUtil.FILE_PREFIX}_palette_${timestamp}.png")
     val outputFile = File(reactApplicationContext.cacheDir, "${VideoTrimmerUtil.FILE_PREFIX}_gif_${timestamp}.gif")
 

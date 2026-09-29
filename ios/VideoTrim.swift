@@ -6,6 +6,16 @@ import ffmpegkit
 
 let FILE_PREFIX = "trimmedVideo"
 
+/// Filename stamp for every output file: the Unix time in seconds (kept so names
+/// still sort by creation time) plus 12 random hex characters. A seconds-only
+/// stamp gave two outputs created within the same second the same path, so one
+/// silently overwrote the other and deleting either removed both.
+func makeUniqueStamp() -> String {
+  let seconds = Int(Date().timeIntervalSince1970)
+  let unique = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)
+  return "\(seconds)_\(unique)"
+}
+
 @objc(VideoTrimSwift)
 public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate {
   // MARK: instance private props
@@ -365,7 +375,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
 
     vc?.pausePlayer()
     
-    let timestamp = Int(Date().timeIntervalSince1970)
+    let timestamp = makeUniqueStamp()
     let outputName = "\(FILE_PREFIX)_\(timestamp).\(outputExt)"
     let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     outputFile = documentsDirectory.appendingPathComponent(outputName)
@@ -716,7 +726,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       return
     }
     
-    let timestamp = Int(Date().timeIntervalSince1970)
+    let timestamp = makeUniqueStamp()
     let outputExt = config["outputExt"] as? String ?? "mp4"
     let outputName = "\(FILE_PREFIX)_\(timestamp).\(outputExt)"
     let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -1322,7 +1332,7 @@ extension VideoTrim {
         let cgImage = try generator.copyCGImage(at: cmTime, actualTime: nil)
         let uiImage = UIImage(cgImage: cgImage)
 
-        let timestamp = Int(Date().timeIntervalSince1970)
+        let timestamp = makeUniqueStamp()
         let ext = format == "png" ? "png" : "jpg"
         let outputName = "\(FILE_PREFIX)_frame_\(timestamp).\(ext)"
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -1368,7 +1378,7 @@ extension VideoTrim {
     let destPath = URL(string: url) ?? URL(fileURLWithPath: url)
 
     let outputExt = options["outputExt"] as? String ?? "m4a"
-    let timestamp = Int(Date().timeIntervalSince1970)
+    let timestamp = makeUniqueStamp()
     let outputName = "\(FILE_PREFIX)_audio_\(timestamp).\(outputExt)"
     let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
     let outputFile = cacheDirectory.appendingPathComponent(outputName)
@@ -1419,7 +1429,7 @@ extension VideoTrim {
     let outputExt = options["outputExt"] as? String ?? "mp4"
     let removeAudio = options["removeAudio"] as? Bool ?? false
 
-    let timestamp = Int(Date().timeIntervalSince1970)
+    let timestamp = makeUniqueStamp()
     let outputName = "\(FILE_PREFIX)_compressed_\(timestamp).\(outputExt)"
     let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
     let outputFile = cacheDirectory.appendingPathComponent(outputName)
@@ -1501,7 +1511,7 @@ extension VideoTrim {
     let fps = options["fps"] as? Int ?? 10
     let width = options["width"] as? Int ?? -1
 
-    let timestamp = Int(Date().timeIntervalSince1970)
+    let timestamp = makeUniqueStamp()
     let paletteName = "\(FILE_PREFIX)_palette_\(timestamp).png"
     let outputName = "\(FILE_PREFIX)_gif_\(timestamp).gif"
     let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -1572,7 +1582,7 @@ extension VideoTrim {
   @objc
   public static func merge(_ urls: [String], options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
     let outputExt = options["outputExt"] as? String ?? "mp4"
-    let timestamp = Int(Date().timeIntervalSince1970)
+    let timestamp = makeUniqueStamp()
     let outputName = "\(FILE_PREFIX)_merged_\(timestamp).\(outputExt)"
     let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
     let outputFile = cacheDirectory.appendingPathComponent(outputName)
@@ -1684,7 +1694,7 @@ extension VideoTrim {
     let loopAudio = options["loopAudio"] as? Bool ?? false
     let outputExt = options["outputExt"] as? String ?? "mp4"
 
-    let timestamp = Int(Date().timeIntervalSince1970)
+    let timestamp = makeUniqueStamp()
     let outputName = "\(FILE_PREFIX)_mixed_\(timestamp).\(outputExt)"
     let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
     let outputFile = cacheDirectory.appendingPathComponent(outputName)

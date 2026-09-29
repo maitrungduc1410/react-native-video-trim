@@ -48,6 +48,18 @@ object VideoTrimmerUtil {
 
   private val TAG: String = VideoTrimmerUtil::class.java.simpleName
   const val FILE_PREFIX = "trimmedVideo"
+
+  /**
+   * Filename stamp for every output file: the Unix time in seconds (kept so names
+   * still sort by creation time) plus 12 random hex characters. A seconds-only
+   * stamp gave two outputs created within the same second the same path, so one
+   * silently overwrote the other and deleting either removed both.
+   */
+  fun uniqueStamp(): String {
+    val seconds = System.currentTimeMillis() / 1000
+    val unique = java.util.UUID.randomUUID().toString().replace("-", "").take(12)
+    return "${seconds}_$unique"
+  }
   const val MIN_SHOOT_DURATION = 1000L
   const val VIDEO_MAX_TIME = 10
   const val MAX_SHOOT_DURATION = VIDEO_MAX_TIME * 1000L

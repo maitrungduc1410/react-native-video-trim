@@ -20,7 +20,7 @@ import java.io.OutputStream
 object StorageUtil {
 
   fun getOutputPath(context: Context, outputExt: String): String {
-    val timestamp = System.currentTimeMillis() / 1000
+    val timestamp = VideoTrimmerUtil.uniqueStamp()
     val file = File(context.filesDir, "${VideoTrimmerUtil.FILE_PREFIX}_${timestamp}.$outputExt")
     return file.absolutePath
   }
@@ -29,7 +29,7 @@ object StorageUtil {
   // cache directory. The OS may purge these files under storage pressure when the app is
   // not running, which avoids unbounded storage growth from repeated headless operations.
   fun getCacheOutputPath(context: Context, outputExt: String): String {
-    val timestamp = System.currentTimeMillis() / 1000
+    val timestamp = VideoTrimmerUtil.uniqueStamp()
     val file = File(context.cacheDir, "${VideoTrimmerUtil.FILE_PREFIX}_${timestamp}.$outputExt")
     return file.absolutePath
   }
