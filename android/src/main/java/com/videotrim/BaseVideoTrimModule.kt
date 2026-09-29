@@ -56,6 +56,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.min
 
@@ -1032,8 +1033,14 @@ open class BaseVideoTrimModule internal constructor(
       return
     }
 
+    val removeAudio = options?.hasKey("removeAudio") == true && options.getBoolean("removeAudio")
+
     val inputArgs = mutableListOf<String>()
     var maxBitrate = 0L
+    // An input that cannot be probed is assumed to carry audio, so a probe failure
+    // never silently drops the audio of clips that have it.
+    val hasAudio = BooleanArray(n) { true }
+    val durationsMs = LongArray(n)
     for (i in 0 until n) {
       val urlStr = urls.getString(i) ?: continue
       inputArgs.addAll(listOf("-i", urlStr))
@@ -1042,10 +1049,13 @@ open class BaseVideoTrimModule internal constructor(
         retriever.setDataSource(reactApplicationContext, Uri.parse(urlStr))
         val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toLongOrNull() ?: 0L
         if (bitrate > maxBitrate) maxBitrate = bitrate
+        hasAudio[i] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
+        durationsMs[i] = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
         retriever.release()
       } catch (_: Exception) {}
     }
     val bitrateStr = if (maxBitrate > 0) "$maxBitrate" else "10M"
+    val includeAudio = !removeAudio && hasAudio.any { it }
 
     // Use the first clip's dimensions and frame rate as the target for all inputs.
     var targetW = 1280; var targetH = 720
@@ -1074,21 +1084,32 @@ open class BaseVideoTrimModule internal constructor(
       // before concat. The fps filter prevents massive frame duplication when inputs have
       // very different frame rates (e.g. 24fps + 60fps would cause thousands of dupes).
       val scaleFilter = "scale=$outW:$outH:force_original_aspect_ratio=decrease,pad=$outW:$outH:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,fps=$targetFps"
-      val scaleParts = (0 until n).joinToString(";") { "[$it:v:0]${scaleFilter}[v$it]" }
-      val concatInputs = (0 until n).joinToString("") { "[v$it][$it:a:0]" }
-      val filterComplex = "$scaleParts;${concatInputs}concat=n=$n:v=1:a=1[outv][outa]"
+      val scaleParts = (0 until n).map { "[$it:v:0]${scaleFilter}[v$it]" }
+      val filterComplex = if (includeAudio) {
+        // Clips without audio get a silent track of their own length so concat still
+        // sees one audio stream per segment. atrim treats duration=0 as unlimited, which
+        // would make anullsrc run forever, so an unknown duration is clamped to 1 ms;
+        // concat pads short audio in every segment but the last with silence anyway.
+        val silenceParts = (0 until n).filter { !hasAudio[it] }.map { i ->
+          val seconds = String.format(Locale.US, "%.3f", durationsMs[i].coerceAtLeast(1L) / 1000.0)
+          "anullsrc=channel_layout=stereo:sample_rate=44100,atrim=duration=$seconds[a$i]"
+        }
+        val concatInputs = (0 until n).joinToString("") { if (hasAudio[it]) "[v$it][$it:a:0]" else "[v$it][a$it]" }
+        (scaleParts + silenceParts).joinToString(";") + ";${concatInputs}concat=n=$n:v=1:a=1[outv][outa]"
+      } else {
+        val concatInputs = (0 until n).joinToString("") { "[v$it]" }
+        scaleParts.joinToString(";") + ";${concatInputs}concat=n=$n:v=1:a=0[outv]"
+      }
 
       val cmds = mutableListOf<String>()
       cmds.addAll(inputArgs)
-      cmds.addAll(listOf(
-        "-filter_complex", filterComplex,
-        "-map", "[outv]", "-map", "[outa]",
-      ))
+      cmds.addAll(listOf("-filter_complex", filterComplex, "-map", "[outv]"))
+      if (includeAudio) {
+        cmds.addAll(listOf("-map", "[outa]"))
+      }
       cmds.addAll(config.args)
-      cmds.addAll(listOf(
-        "-c:a", "aac",
-        "-y", outputFile,
-      ))
+      cmds.addAll(if (includeAudio) listOf("-c:a", "aac") else listOf("-an"))
+      cmds.addAll(listOf("-y", outputFile))
       cmds.toTypedArray()
     }
 

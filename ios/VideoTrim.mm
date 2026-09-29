@@ -286,6 +286,7 @@ RCT_EXPORT_MODULE()
        reject:(nonnull RCTPromiseRejectBlock)reject {
   NSMutableDictionary *dict = [NSMutableDictionary dictionary];
   dict[@"outputExt"] = options.outputExt();
+  dict[@"removeAudio"] = @(options.removeAudio());
 
   [VideoTrimSwift merge:urls options:dict completion:^(NSDictionary<NSString *, id> * _Nonnull result) {
     if (result[@"error"]) {

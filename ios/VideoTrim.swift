@@ -1592,20 +1592,38 @@ extension VideoTrim {
       return
     }
 
+    let removeAudio = options["removeAudio"] as? Bool ?? false
+
+    // URL(string:) accepts a bare "/path" but yields a scheme-less URL that AVURLAsset
+    // cannot open, so bare paths must go through fileURLWithPath to be probed.
+    let inputURL: (String) -> URL = { str in
+      str.hasPrefix("/") ? URL(fileURLWithPath: str) : (URL(string: str) ?? URL(fileURLWithPath: str))
+    }
+
     var cmds: [String] = []
     var maxBitrate: Int = 0
+    var hasAudio: [Bool] = []
+    var durations: [Double] = []
     for urlStr in urls {
-      let u = URL(string: urlStr) ?? URL(fileURLWithPath: urlStr)
+      let u = inputURL(urlStr)
       cmds.append(contentsOf: ["-i", u.path])
       let asset = AVURLAsset(url: u)
-      if let track = asset.tracks(withMediaType: .video).first {
+      let videoTracks = asset.tracks(withMediaType: .video)
+      let audioTracks = asset.tracks(withMediaType: .audio)
+      if let track = videoTracks.first {
         maxBitrate = max(maxBitrate, Int(track.estimatedDataRate))
       }
+      // An asset that exposes no tracks at all could not be probed; assume it carries
+      // audio so a probe failure never silently drops the audio of clips that have it.
+      hasAudio.append(!audioTracks.isEmpty || videoTracks.isEmpty)
+      let seconds = CMTimeGetSeconds(asset.duration)
+      durations.append(seconds.isFinite ? seconds : 0)
     }
     let bitrateStr = maxBitrate > 0 ? "\(maxBitrate)" : "10M"
+    let includeAudio = !removeAudio && hasAudio.contains(true)
 
     // Use the first clip's dimensions and frame rate as the target for all inputs.
-    let firstURL = URL(string: urls[0]) ?? URL(fileURLWithPath: urls[0])
+    let firstURL = inputURL(urls[0])
     let firstAsset = AVURLAsset(url: firstURL)
     var targetW = 1280; var targetH = 720
     var targetFps = 30
@@ -1626,16 +1644,29 @@ extension VideoTrim {
     for i in 0..<n {
       scaleParts.append("[\(i):v:0]\(scaleFilter)[v\(i)]")
     }
-    let concatInputs = (0..<n).map { "[v\($0)][\($0):a:0]" }.joined()
-    let filterComplex = scaleParts.joined(separator: ";") + ";" + concatInputs + "concat=n=\(n):v=1:a=1[outv][outa]"
+    let filterComplex: String
+    if includeAudio {
+      // Clips without audio get a silent track of their own length so concat still
+      // sees one audio stream per segment. atrim treats duration=0 as unlimited, which
+      // would make anullsrc run forever, so an unknown duration is clamped to 1 ms;
+      // concat pads short audio in every segment but the last with silence anyway.
+      let silenceParts = (0..<n).filter { !hasAudio[$0] }.map { i in
+        "anullsrc=channel_layout=stereo:sample_rate=44100,atrim=duration=\(String(format: "%.3f", max(durations[i], 0.001)))[a\(i)]"
+      }
+      let concatInputs = (0..<n).map { hasAudio[$0] ? "[v\($0)][\($0):a:0]" : "[v\($0)][a\($0)]" }.joined()
+      filterComplex = (scaleParts + silenceParts).joined(separator: ";") + ";" + concatInputs + "concat=n=\(n):v=1:a=1[outv][outa]"
+    } else {
+      let concatInputs = (0..<n).map { "[v\($0)]" }.joined()
+      filterComplex = scaleParts.joined(separator: ";") + ";" + concatInputs + "concat=n=\(n):v=1:a=0[outv]"
+    }
 
-    cmds.append(contentsOf: [
-      "-filter_complex", filterComplex,
-      "-map", "[outv]", "-map", "[outa]",
-      "-c:v", "h264_videotoolbox", "-b:v", bitrateStr,
-      "-c:a", "aac",
-      "-y", outputFile.path
-    ])
+    cmds.append(contentsOf: ["-filter_complex", filterComplex, "-map", "[outv]"])
+    if includeAudio {
+      cmds.append(contentsOf: ["-map", "[outa]"])
+    }
+    cmds.append(contentsOf: ["-c:v", "h264_videotoolbox", "-b:v", bitrateStr])
+    cmds.append(contentsOf: includeAudio ? ["-c:a", "aac"] : ["-an"])
+    cmds.append(contentsOf: ["-y", outputFile.path])
     print("merge command:", cmds.joined(separator: " "))
 
     FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in

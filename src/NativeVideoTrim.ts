@@ -307,6 +307,12 @@ export interface GifResult {
 export interface MergeOptions {
   /** Output file extension (e.g. `"mp4"`, `"wav"`). Default `"mp4"`. */
   outputExt: string;
+  /**
+   * When `true`, the output has no audio track. Default `false`. Clips without
+   * audio can be merged either way: if none of them has audio the output is
+   * video-only, otherwise the silent clips are filled with silence.
+   */
+  removeAudio: boolean;
 }
 
 /**

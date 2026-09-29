@@ -366,8 +366,11 @@ merge(urls: string[], options?: Partial<MergeOptions>): Promise<MergeResult>
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `outputExt` | `string` | `"mp4"` | Output file extension |
+| `removeAudio` | `boolean` | `false` | Produce a video-only output |
 
 **Returns:** `{ outputPath: string, duration: number }` (duration in milliseconds)
+
+> **Note:** Clips without an audio track (for example outputs of `trim()` or `compress()` with `removeAudio: true`) are supported. If none of the inputs has audio, the output is video-only; if only some do, the clips without audio contribute silence for their duration.
 
 > **Note:** Merge uses FFmpeg's concat filter with hardware-accelerated re-encoding (h264_videotoolbox on iOS, h264_mediacodec on Android). Input clips can have different codecs, resolutions, or frame rates — each input is automatically scaled, padded (letterboxed/pillarboxed), and frame-rate-normalized to match the first clip's dimensions and fps (capped at 30 fps). The output bitrate matches the highest-quality input to preserve quality.
 >
@@ -659,7 +662,7 @@ Strip the audio track from the output. Available in both the editor UI and headl
 
 **Editor UI:** A mute toggle button appears in the toolbar (speaker icon). Tap to toggle audio on/off. The mute state carries over to the exported file.
 
-**Headless / Config:** Set `removeAudio: true` on `showEditor()`, `trim()`, or `compress()`.
+**Headless / Config:** Set `removeAudio: true` on `showEditor()`, `trim()`, `compress()`, or `merge()`.
 
 ```javascript
 // Editor with audio muted by default

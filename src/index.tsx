@@ -94,6 +94,7 @@ function createMergeOptions(
 ): MergeOptions {
   return {
     outputExt: 'mp4',
+    removeAudio: false,
     ...overrides,
   };
 }
