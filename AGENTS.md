@@ -279,6 +279,26 @@ Conventional commits enforced by `commitlint` (config in `package.json`, extends
 
 Commit prefixes: `fix`, `feat`, `refactor`, `docs`, `test`, `chore`.
 
+### Changesets (required for user visible changes)
+
+Every change that users of the library can see (a bug fix, a new API or option, changed behaviour, a native fix on either platform) must ship with a changeset in the same commit or pull request. Without one the change is not released and has no changelog entry.
+
+Add it with `yarn changeset`, or write `.changeset/<short-kebab-name>.md` directly, which is the easier path for an agent. The file must start with the `---` frontmatter line:
+
+```md
+---
+'react-native-video-trim': patch
+---
+
+Fix the crash when merging clips without an audio track.
+```
+
+- Bump: `patch` for fixes, `minor` for new features/options/APIs, `major` for breaking changes to the JS API, events, defaults or minimum platform versions.
+- Summary: one or two sentences written for library users, describing the behaviour change, not the implementation. Name the public API (`merge()`, `EditorConfig.theme`) and the platform when only one is affected.
+- One changeset per independent user visible change. Docs, CI, tests and `example/` changes need none.
+- Never edit `version` in `package.json` or `CHANGELOG.md` by hand; `yarn version-packages` in the release workflow owns both.
+- Run the CLI only through `yarn changeset ...` (`scripts/changeset.mjs`), never `npx changeset`. Because of the `example` workspace, the bare CLI does not see the library package and fails with "not in the workspace".
+
 ## Build & Development Commands
 
 ```bash
@@ -308,14 +328,14 @@ yarn turbo run build:ios
 ORG_GRADLE_PROJECT_newArchEnabled=true yarn example android   # New Arch
 ORG_GRADLE_PROJECT_newArchEnabled=false yarn example android  # Old Arch
 
-# Release (release-it with conventional changelog)
-yarn release
+# Add a changeset (release note) for a user visible change
+yarn changeset
 
 # Clean build artifacts
 yarn clean
 ```
 
-Node version: pinned to `v20.19.0` (`.nvmrc`).
+Node version: pinned to `v22.23.2` (`.nvmrc`). The Changesets CLI needs Node.js 22.11 or newer.
 
 ## CI Pipeline
 
@@ -330,6 +350,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on push/PR to `main` and merge 
 | `build-ios` | Turbo-cached iOS build with Xcode 16.2, CocoaPods |
 
 Caching: Yarn deps, Gradle, CocoaPods, Turborepo outputs.
+
+`.github/workflows/release.yml` runs on every push to `master` (see Release).
 
 ## Platform-Specific Notes
 
@@ -366,7 +388,16 @@ Caching: Yarn deps, Gradle, CocoaPods, Turborepo outputs.
 
 ## Release
 
-Uses `release-it` with `@release-it/conventional-changelog` (Angular preset). Bumps version, creates git tag (`v${version}`), publishes to npm, creates GitHub release. Run: `yarn release`.
+Uses [Changesets](https://github.com/changesets/changesets) and `.github/workflows/release.yml`; there is no local release command.
+
+1. Pending changesets on `master` → the workflow runs `yarn version-packages` (`changeset version` through `scripts/changeset.mjs`) and opens or updates the `chore: release vX.Y.Z` pull request from branch `release/vX.Y.Z`: `package.json` version bump, new `CHANGELOG.md` section, consumed changesets deleted; the body holds the release notes. The branch is rebuilt from `master` on every run, so fix wording in the changesets on `master`, not on the release branch. When more changesets raise the version, the old release pull request is closed ("Superseded by #N") and its branch deleted.
+2. Merging that pull request → no pending changesets, so the workflow publishes the version if it is not on npm yet (`npm publish --provenance` via npm trusted publishing, `next` dist-tag for prerelease versions) and creates the GitHub release `v${version}` with the notes extracted by `scripts/release-notes.mjs` from `CHANGELOG.md`.
+
+Every step checks npm and GitHub first, so rerunning the workflow is safe. Config: `.changeset/config.json` (`baseBranch: master`).
+
+`scripts/changeset.mjs` hides `yarn.lock` while the Changesets CLI runs. With `workspaces` plus `yarn.lock`, Changesets treats the repo as a Yarn monorepo whose only package is `example/`. Listing `"."` in `workspaces` would fix that but breaks turbo (`No "extends" key found`). For the same reason `.changeset/config.json` sets `"format": false`: Changesets formats through `yarn exec prettier`, which cannot run while `yarn.lock` is hidden. If a run is killed before it restores the lockfile, git shows `yarn.lock` as deleted and yarn fails with "This package doesn't seem to be present in your lockfile"; fix it with `mv yarn.lock.changeset yarn.lock`.
+
+The release pull request is created by a script step with `gh`, not `changesets/action`: the action always uses the branch `changeset-release/<base>` and a fixed title, so releases could not be found by version.
 
 ## Key Files Reference
 
@@ -392,4 +423,8 @@ Uses `release-it` with `@release-it/conventional-changelog` (Angular preset). Bu
 | `android/build.gradle` | Android library Gradle config |
 | `package.json` | Scripts, dependencies, prettier, commitlint, bob, codegen config |
 | `.github/workflows/ci.yml` | CI pipeline |
+| `.github/workflows/release.yml` | Release pull request, npm publish, GitHub release |
+| `.changeset/` | Pending changesets and Changesets config |
+| `scripts/changeset.mjs` | Runs the Changesets CLI with the library as the only package (`yarn changeset`, `yarn version-packages`) |
+| `CHANGELOG.md` | Generated by `changeset version`; do not edit by hand outside the release pull request |
 | `CONTRIBUTING.md` | Contributor guide |

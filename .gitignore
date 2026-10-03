@@ -62,6 +62,7 @@ android/app/libs
 android/keystores/debug.keystore
 
 # Yarn
+yarn.lock.changeset
 .yarn
 .yarn/*
 !.yarn/patches

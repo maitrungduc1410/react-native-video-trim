@@ -99,15 +99,43 @@ We use [TypeScript](https://www.typescriptlang.org/) for type checking, [ESLint]
 
 Our pre-commit hooks verify that the linter and tests pass when committing.
 
-### Publishing to npm
+### Changesets
 
-We use [release-it](https://github.com/release-it/release-it) to make it easier to publish new versions. It handles common tasks like bumping version based on semver, creating tags and releases etc.
-
-To publish new versions, run the following:
+Every pull request that changes published behaviour must include a changeset. A changeset is a small markdown file in `.changeset/` that says which version bump the change needs and what to write in the changelog. To add one, run:
 
 ```sh
-yarn release
+yarn changeset
 ```
+
+Pick the bump and write one or two sentences for users of the library:
+
+- `patch`: bug fixes.
+- `minor`: new features, new options or new APIs.
+- `major`: breaking changes.
+
+Commit the generated `.changeset/<random-name>.md` file with your change. The command needs Node.js 22.11 or newer (`.nvmrc`). Always use `yarn changeset`, not `npx changeset`: the bare CLI does not see the library package because of the `example` workspace. You can also write the file by hand:
+
+```md
+---
+'react-native-video-trim': patch
+---
+
+Fix the crash when merging clips without an audio track.
+```
+
+Changes that users do not see (docs, CI, tests, the example app) do not need a changeset.
+
+Write the summary for library users, not reviewers: describe the behaviour change, not the implementation. If a pull request contains several unrelated user visible changes, add one changeset per change. You can edit or delete a changeset until it is released.
+
+### Publishing to npm
+
+Releases are automated by the [release workflow](.github/workflows/release.yml) with [Changesets](https://github.com/changesets/changesets). Nobody publishes from a local machine.
+
+1. When pull requests with changesets are merged into `master`, the workflow opens (or updates) the release pull request `chore: release vX.Y.Z` from branch `release/vX.Y.Z`. It bumps `version` in `package.json`, adds the new section to `CHANGELOG.md` and removes the consumed changesets; the pull request body shows the release notes. If later changesets raise the version again, that pull request is closed and replaced by one for the new version.
+2. Review that pull request. To reword an entry, edit the changeset on `master`: the release branch is rebuilt on every run, so edits made there are lost when more changesets land.
+3. Merging it publishes the new version to npm with provenance, through npm trusted publishing, and creates the GitHub release `vX.Y.Z` from the `CHANGELOG.md` section.
+
+A version with a prerelease suffix such as `9.0.0-beta.0` is published under the `next` dist-tag and marked as a prerelease on GitHub.
 
 ### Scripts
 
@@ -117,6 +145,7 @@ The `package.json` file contains various scripts for common tasks:
 - `yarn typecheck`: type-check files with TypeScript.
 - `yarn lint`: lint files with ESLint.
 - `yarn test`: run unit tests with Jest.
+- `yarn changeset`: add a changeset for your change.
 - `yarn example start`: start the Metro server for the example app.
 - `yarn example android`: run the example app on Android.
 - `yarn example ios`: run the example app on iOS.
@@ -129,6 +158,7 @@ When you're sending a pull request:
 
 - Prefer small pull requests focused on one change.
 - Verify that linters and tests are passing.
+- Add a changeset (`yarn changeset`) if the change is visible to users of the library.
 - Review the documentation to make sure it looks good.
 - Follow the pull request template when opening a pull request.
 - For pull requests that change the API or implementation, discuss with maintainers first by opening an issue.
