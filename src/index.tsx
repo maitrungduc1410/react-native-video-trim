@@ -21,12 +21,32 @@ import type {
   ShareResult,
   TrimOptions,
   TrimResult,
+  Spec,
 } from './NativeVideoTrim';
+import type { EditorOptions } from './types';
 import { processColor } from 'react-native';
 
 // React Native runtime flags like nativeFabricUIManager are not in TypeScript types. Using `any` here is intentional and safe.
 const isFabric = !!(global as any).nativeFabricUIManager;
-const VideoTrim = isFabric ? VideoTrimNewArch : VideoTrimOldArch;
+/**
+ * The native module. Call the named functions ({@link showEditor},
+ * {@link trim}, ...) for everything else; use the default export to subscribe
+ * to editor events on the New Architecture. Each `on*` emitter takes a listener
+ * and returns a subscription with `remove()`. Payloads are described in
+ * {@link VideoTrimEventMap}.
+ *
+ * @example
+ * ```ts
+ * import VideoTrim from 'react-native-video-trim';
+ *
+ * const sub = VideoTrim.onFinishTrimming(({ outputPath, duration }) => {
+ *   console.log(outputPath, duration);
+ * });
+ * // later
+ * sub.remove();
+ * ```
+ */
+const VideoTrim: Spec = isFabric ? VideoTrimNewArch : VideoTrimOldArch;
 
 function createBaseOptions(overrides: Partial<BaseOptions> = {}): BaseOptions {
   return {
@@ -182,32 +202,27 @@ function createTrimOptions(overrides: Partial<TrimOptions> = {}): TrimOptions {
 }
 
 /**
- * Show video editor
+ * Open the full-screen trimmer editor for a video or audio file.
  *
- * @param {string} filePath: absolute non-empty file path to edit
- * @param {EditorConfig} config: editor configuration
- * @param {Function} onEvent: event callback
- * @returns {void}
+ * The call returns immediately. Follow what happens in the editor through the
+ * events on the default export (New Architecture) or the `"VideoTrim"` native
+ * event (Old Architecture); see {@link VideoTrimEventMap}.
+ *
+ * @param filePath - Local path, `file://` URI or (with the `https` FFmpegKit
+ *   package) an HTTPS URL of the media to edit.
+ * @param config - Editor options. Every field is optional.
+ *
+ * @example
+ * ```ts
+ * import { showEditor } from 'react-native-video-trim';
+ *
+ * showEditor(videoUri, {
+ *   maxDuration: 30_000, // milliseconds
+ *   saveToPhoto: true,
+ * });
+ * ```
  */
-export function showEditor(
-  filePath: string,
-  config: Partial<
-    Omit<
-      EditorConfig,
-      | 'headerTextColor'
-      | 'trimmerColor'
-      | 'handleIconColor'
-      | 'waveformColor'
-      | 'waveformBackgroundColor'
-    >
-  > & {
-    headerTextColor?: string;
-    trimmerColor?: string;
-    handleIconColor?: string;
-    waveformColor?: string;
-    waveformBackgroundColor?: string;
-  }
-): void {
+export function showEditor(filePath: string, config: EditorOptions): void {
   const {
     headerTextColor,
     trimmerColor,
@@ -242,28 +257,32 @@ export function showEditor(
 }
 
 /**
- * List output files generated at all time
+ * List every output file the library has produced and not yet deleted, in both
+ * the persistent and the cache output directories.
  *
- * @returns {Promise<string[]>} A **Promise** which resolves to array of files
+ * @returns Absolute paths of the files.
  */
 export function listFiles(): Promise<string[]> {
   return VideoTrim.listFiles();
 }
 
 /**
- * Clean output files generated at all time
+ * Delete every output file the library has produced, in both the persistent
+ * and the cache output directories.
  *
- * @returns {Promise<number>} A **Promise** which resolves to number of deleted files
+ * @returns The number of files deleted.
  */
 export function cleanFiles(): Promise<number> {
   return VideoTrim.cleanFiles();
 }
 
 /**
- * Delete a file
+ * Delete one output file. On Android, only files inside the library's own
+ * output directories can be deleted; other paths resolve `false`.
  *
- * @param {string} filePath: absolute non-empty file path to delete
- * @returns {Promise<boolean>} A **Promise** which resolves `true` if successful
+ * @param filePath - Absolute path of the file, as returned by another API.
+ * @returns `true` when the file was deleted (or, on Android, did not exist).
+ * @throws Error synchronously when `filePath` is empty.
  */
 export function deleteFile(filePath: string): Promise<boolean> {
   if (!filePath?.trim().length) {
@@ -273,28 +292,41 @@ export function deleteFile(filePath: string): Promise<boolean> {
 }
 
 /**
- * Close editor
+ * Close the editor if it is open.
  */
 export function closeEditor(): void {
   return VideoTrim.closeEditor();
 }
 
 /**
- * Check if a file is valid audio or video file
+ * Check whether a file is a playable audio or video file.
  *
- * @param {string} url: file path to validate
- * @returns {Promise<FileValidationResult>} A **Promise** which resolves file info if successful
+ * @param url - Local path or URL of the file.
+ * @returns Whether the file is valid, its type and its duration.
+ *
+ * @example
+ * ```ts
+ * const { isValid, fileType, duration } = await isValidFile(uri);
+ * ```
  */
 export function isValidFile(url: string): Promise<FileValidationResult> {
   return VideoTrim.isValidFile(url);
 }
 
 /**
- * Trim a video file
+ * Trim a video or audio file without showing any UI.
  *
- * @param {string} url: absolute non-empty file path to edit
- * @param {TrimOptions} options: trim options
- * @returns {Promise<TrimResult>} A **Promise** which resolves to the TrimResult interface
+ * @param url - Local path or URL of the media.
+ * @param options - Trim range and output options. Times are in milliseconds.
+ * @returns The trimmed range and the output path.
+ *
+ * @example
+ * ```ts
+ * const { outputPath } = await trim(videoUri, {
+ *   startTime: 5_000,
+ *   endTime: 25_000,
+ * });
+ * ```
  */
 export function trim(
   url: string,
@@ -304,11 +336,16 @@ export function trim(
 }
 
 /**
- * Extract a single frame from a video at a given timestamp
+ * Extract a single frame from a video as a JPEG or PNG image.
  *
- * @param {string} url: absolute non-empty file path
- * @param {Partial<FrameExtractionOptions>} options: extraction options
- * @returns {Promise<FrameResult>} A **Promise** which resolves to the FrameResult
+ * @param url - Local path of the video.
+ * @param options - Timestamp, format and size of the frame.
+ * @returns The path of the image, written to the cache directory.
+ *
+ * @example
+ * ```ts
+ * const { outputPath } = await getFrameAt(videoUri, { time: 5_000, maxWidth: 640 });
+ * ```
  */
 export function getFrameAt(
   url: string,
@@ -318,11 +355,16 @@ export function getFrameAt(
 }
 
 /**
- * Extract the audio track from a video file
+ * Extract the audio track of a video into a separate audio file.
  *
- * @param {string} url: absolute non-empty file path
- * @param {Partial<ExtractAudioOptions>} options: extraction options
- * @returns {Promise<ExtractAudioResult>} A **Promise** which resolves to the result
+ * @param url - Local path of the video.
+ * @param options - Output format. Defaults to `m4a` (AAC).
+ * @returns The path and duration of the audio file, written to the cache directory.
+ *
+ * @example
+ * ```ts
+ * const { outputPath, duration } = await extractAudio(videoUri);
+ * ```
  */
 export function extractAudio(
   url: string,
@@ -332,11 +374,16 @@ export function extractAudio(
 }
 
 /**
- * Compress a video file to reduce its size
+ * Re-encode a video to make it smaller.
  *
- * @param {string} url: absolute non-empty file path
- * @param {Partial<CompressOptions>} options: compression options
- * @returns {Promise<CompressResult>} A **Promise** which resolves to the result
+ * @param url - Local path of the video.
+ * @param options - Quality preset, or explicit bitrate, size and frame rate.
+ * @returns The path of the compressed video, written to the cache directory.
+ *
+ * @example
+ * ```ts
+ * const { outputPath } = await compress(videoUri, { quality: 'medium' });
+ * ```
  */
 export function compress(
   url: string,
@@ -346,11 +393,16 @@ export function compress(
 }
 
 /**
- * Convert a video segment to an animated GIF
+ * Convert a segment of a video to an animated GIF.
  *
- * @param {string} url: absolute non-empty file path
- * @param {Partial<GifOptions>} options: GIF conversion options
- * @returns {Promise<GifResult>} A **Promise** which resolves to the result
+ * @param url - Local path of the video.
+ * @param options - Segment, frame rate and width of the GIF.
+ * @returns The path of the GIF, written to the cache directory.
+ *
+ * @example
+ * ```ts
+ * const { outputPath } = await toGif(videoUri, { startTime: 2_000, endTime: 7_000, fps: 15, width: 320 });
+ * ```
  */
 export function toGif(
   url: string,
@@ -360,11 +412,19 @@ export function toGif(
 }
 
 /**
- * Merge multiple media files into a single file (headless, no UI)
+ * Concatenate several clips into one file, in order. Clips may differ in
+ * resolution, frame rate and codec; they are converted to match the first
+ * clip. Only local files are supported.
  *
- * @param {string[]} urls: array of file paths to merge in order
- * @param {Partial<MergeOptions>} options: merge options
- * @returns {Promise<MergeResult>} A **Promise** which resolves to the result
+ * @param urls - Local paths of the clips, in playback order.
+ * @param options - Output options.
+ * @returns The path and duration of the merged file, written to the cache directory.
+ * @throws Error synchronously when `urls` is empty.
+ *
+ * @example
+ * ```ts
+ * const { outputPath } = await merge([clip1, clip2, clip3]);
+ * ```
  */
 export function merge(
   urls: string[],
@@ -378,13 +438,22 @@ export function merge(
 
 /**
  * Mix (or replace) an external audio track, such as background music or a
- * voice-over, into a video (headless, no UI). The video stream is copied
- * unchanged, so only the audio is re-encoded.
+ * voice-over, into a video. The video stream is copied unchanged, so only the
+ * audio is re-encoded. Only local files are supported.
  *
- * @param {string} videoPath: absolute non-empty path to the source video
- * @param {string} audioPath: absolute non-empty path to the audio to mix in
- * @param {Partial<MixAudioOptions>} options: mixing options
- * @returns {Promise<MixAudioResult>} A **Promise** which resolves to the result
+ * @param videoPath - Local path of the source video.
+ * @param audioPath - Local path of the audio to mix in.
+ * @param options - Volumes, start offset and looping.
+ * @returns The path and duration of the output video, written to the cache directory.
+ * @throws Error synchronously when either path is empty.
+ *
+ * @example
+ * ```ts
+ * // Replace the original audio with a voice-over
+ * const { outputPath } = await mixAudio(videoPath, voiceOverPath, {
+ *   originalAudioVolume: 0,
+ * });
+ * ```
  */
 export function mixAudio(
   videoPath: string,
@@ -405,10 +474,12 @@ export function mixAudio(
 }
 
 /**
- * Save a file to the device's photo library
+ * Save an image or video to the device's photo library. Requires photo
+ * library permission.
  *
- * @param {string} filePath: absolute path to the file
- * @returns {Promise<SaveToPhotoResult>} A **Promise** which resolves to the result
+ * @param filePath - Absolute path of the file.
+ * @returns Whether the file was saved.
+ * @throws Error synchronously when `filePath` is empty.
  */
 export function saveToPhoto(filePath: string): Promise<SaveToPhotoResult> {
   if (!filePath?.trim().length) {
@@ -418,10 +489,12 @@ export function saveToPhoto(filePath: string): Promise<SaveToPhotoResult> {
 }
 
 /**
- * Present the system document picker to save a file
+ * Let the user save a file to a location of their choice with the system
+ * document picker.
  *
- * @param {string} filePath: absolute path to the file
- * @returns {Promise<SaveToDocumentsResult>} A **Promise** which resolves to the result
+ * @param filePath - Absolute path of the file.
+ * @returns Whether the file was saved.
+ * @throws Error synchronously when `filePath` is empty.
  */
 export function saveToDocuments(
   filePath: string
@@ -433,10 +506,12 @@ export function saveToDocuments(
 }
 
 /**
- * Open the system share sheet for a file
+ * Open the system share sheet for a file.
  *
- * @param {string} filePath: absolute path to the file
- * @returns {Promise<ShareResult>} A **Promise** which resolves to the result
+ * @param filePath - Absolute path of the file. On Android it must be inside
+ *   the library's output directories.
+ * @returns Whether the user completed the share.
+ * @throws Error synchronously when `filePath` is empty.
  */
 export function share(filePath: string): Promise<ShareResult> {
   if (!filePath?.trim().length) {
@@ -445,5 +520,39 @@ export function share(filePath: string): Promise<ShareResult> {
   return VideoTrim.share(filePath);
 }
 
-export * from './NativeVideoTrim';
+export type {
+  BaseOptions,
+  CompressOptions,
+  CompressResult,
+  EditorConfig,
+  ExtractAudioOptions,
+  ExtractAudioResult,
+  FileValidationResult,
+  FrameExtractionOptions,
+  FrameResult,
+  GifOptions,
+  GifResult,
+  MergeOptions,
+  MergeResult,
+  MixAudioOptions,
+  MixAudioResult,
+  SaveToDocumentsResult,
+  SaveToPhotoResult,
+  ShareResult,
+  Spec,
+  TrimOptions,
+  TrimResult,
+} from './NativeVideoTrim';
+export type {
+  EditorOptions,
+  ErrorCode,
+  FinishTrimmingEvent,
+  LoadEvent,
+  LogEvent,
+  StatisticsEvent,
+  VideoTrimErrorEvent,
+  VideoTrimEvent,
+  VideoTrimEventMap,
+  VideoTrimEventName,
+} from './types';
 export default VideoTrim;

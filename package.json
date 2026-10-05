@@ -39,7 +39,10 @@
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
     "prepare": "bob build",
     "changeset": "node scripts/changeset.mjs",
-    "version-packages": "node scripts/changeset.mjs version"
+    "version-packages": "node scripts/changeset.mjs version",
+    "docs:dev": "yarn workspace react-native-video-trim-docs dev",
+    "docs:build": "yarn workspace react-native-video-trim-docs build",
+    "docs:preview": "yarn workspace react-native-video-trim-docs preview"
   },
   "keywords": [
     "react-native",
@@ -55,7 +58,7 @@
   "bugs": {
     "url": "https://github.com/maitrungduc1410/react-native-video-trim/issues"
   },
-  "homepage": "https://github.com/maitrungduc1410/react-native-video-trim#readme",
+  "homepage": "https://maitrungduc1410.github.io/react-native-video-trim/",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
@@ -89,14 +92,16 @@
     "react-native": "*"
   },
   "workspaces": [
-    "example"
+    "example",
+    "docs"
   ],
   "packageManager": "yarn@4.13.0",
   "jest": {
     "preset": "react-native",
     "modulePathIgnorePatterns": [
       "<rootDir>/example/node_modules",
-      "<rootDir>/lib/"
+      "<rootDir>/lib/",
+      "<rootDir>/docs/"
     ]
   },
   "commitlint": {

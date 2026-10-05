@@ -54,6 +54,12 @@ example/                      # Yarn workspace example app
   src/App.tsx                 # Active demo (New Arch event listeners)
   src/App.OldArch.tsx         # Old Arch demo (NativeEventEmitter)
 
+docs/                         # Yarn workspace: VitePress site + TypeDoc API reference (GitHub Pages)
+  .vitepress/config.mts       # Site config, en/vi/zh locales, nav + sidebars
+  .vitepress/theme/           # Palette (style.css), HeroArt + ThemePlayground Vue components
+  guide/, vi/guide/, zh/guide/  # Hand-written guide pages, one copy per locale
+  typedoc.json                # API reference from src/index.tsx -> docs/api (generated, gitignored)
+
 VideoTrim.podspec             # CocoaPods spec (reads FFMPEGKIT_PACKAGE env var)
 ```
 
@@ -336,6 +342,21 @@ yarn clean
 ```
 
 Node version: pinned to `v22.23.2` (`.nvmrc`). The Changesets CLI needs Node.js 22.11 or newer.
+
+## Documentation Site
+
+`docs/` is its own Yarn workspace (`react-native-video-trim-docs`) so VitePress/TypeDoc stay out of the library's devDependencies. It is excluded from the root `tsc`, ESLint and Jest. Published at https://maitrungduc1410.github.io/react-native-video-trim/ by `.github/workflows/docs.yml` (build on PRs, deploy on push to `master`).
+
+```bash
+yarn docs:dev       # TypeDoc + VitePress dev server
+yarn docs:build     # TypeDoc + static build into docs/.vitepress/dist (fails on dead links)
+yarn docs:preview   # Serve the built site
+```
+
+- The API reference is generated from the TSDoc in `src/`, so public API changes are documented by writing TSDoc there. Only symbols exported from `src/index.tsx` appear; `@internal` hides one.
+- Guide pages exist in English (`docs/guide/`), Vietnamese (`docs/vi/guide/`) and Chinese (`docs/zh/guide/`). Change all three together; translated headings carry `{#english-slug}` ids so anchors match across locales. Sidebar labels live in `docs/.vitepress/config.mts`.
+- Every hand-written page needs a unique `description` frontmatter (about 110 to 160 characters; shorter for Chinese). It feeds the meta description, Open Graph and Twitter tags that `transformHead` in `config.mts` adds, together with canonical/hreflang links. API pages get a generated description. The link preview image is `docs/public/og.png`, rendered from `docs/public/og.svg`.
+- `VideoTrimEventMap` in `src/types.ts` mirrors the `Spec` event emitters and is type-checked against them; update it when adding an event.
 
 ## CI Pipeline
 

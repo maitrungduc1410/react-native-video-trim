@@ -20,13 +20,17 @@ export interface BaseOptions {
    * When `true`, FFmpeg re-encodes the video using the platform's hardware encoder
    * (h264_videotoolbox on iOS, h264_mediacodec on Android) for frame-accurate trimming.
    * When `false` (default), uses stream copy (`-c copy`) which is much faster but can
-   * only cut at keyframes — the actual start/end may drift by several seconds.
+   * only cut at keyframes, so the actual start/end may drift by several seconds.
    *
    * Note: if the user applies any transform (flip/rotate/crop), re-encoding already
    * happens regardless of this flag, so precise trimming comes for free in that case.
    */
   enablePreciseTrimming: boolean;
-  /** When `true`, strips the audio track from the output. Default `false`. */
+  /**
+   * When `true`, strips the audio track from the output. Default `false`.
+   * In the editor, playback also starts muted, and the output has no audio
+   * even if the user unmutes.
+   */
   removeAudio: boolean;
   /**
    * Playback speed multiplier applied during export. `1.0` is normal speed,
@@ -45,24 +49,27 @@ export interface EditorConfig extends BaseOptions {
   /**
    * Whether to show the top toolbar of edit tools (flip, rotate, crop, mute,
    * speed, undo, redo). Set to `false` to hide the entire toolbar. Default `true`.
-   * Video only — the toolbar never appears for audio files.
+   * Video only: the toolbar never appears for audio files.
    */
   enableEditTools: boolean;
   /** Maximum allowed duration for the trimmed clip in milliseconds. Set to `-1` for no limit. */
   maxDuration: number;
-  /** Minimum allowed duration for the trimmed clip in milliseconds. Set to `-1` for no limit. */
+  /**
+   * Minimum allowed duration for the trimmed clip in milliseconds. Set to `-1`
+   * for no limit. The editor never allows a selection shorter than 1 second.
+   */
   minDuration: number;
-  /** Whether to open the system documents/files app after trimming finishes. */
+  /** Whether to open the system document picker to save the output after trimming finishes. */
   openDocumentsOnFinish: boolean;
   /** Whether to open the share sheet after trimming finishes. */
   openShareSheetOnFinish: boolean;
-  /** Whether to remove the output file after it has been saved to documents. */
+  /** Whether to remove the output file after it has been saved through the document picker. */
   removeAfterSavedToDocuments: boolean;
-  /** Whether to remove the output file if saving to documents fails. */
+  /** Whether to remove the output file if saving through the document picker fails. */
   removeAfterFailedToSaveDocuments: boolean;
-  /** Whether to remove the output file after it has been shared. */
+  /** iOS only. Whether to remove the output file after it has been shared. */
   removeAfterShared: boolean;
-  /** Whether to remove the output file if sharing fails. */
+  /** iOS only. Whether to remove the output file if sharing fails. */
   removeAfterFailedToShare: boolean;
   /** Text for the cancel button. */
   cancelButtonText: string;
@@ -98,7 +105,7 @@ export interface EditorConfig extends BaseOptions {
   jumpToPositionOnLoad: number;
   /** Whether to automatically close the editor when trimming finishes. */
   closeWhenFinish: boolean;
-  /** Whether to allow the user to cancel an in-progress trim operation. */
+  /** Whether the user can cancel a trim that is in progress. */
   enableCancelTrimming: boolean;
   /** Text for the cancel-trimming button. */
   cancelTrimmingButtonText: string;
@@ -133,9 +140,9 @@ export interface EditorConfig extends BaseOptions {
   /** Color of the trimmer left/right handle icons as a `processColor` value. */
   handleIconColor?: number;
   /**
-   * Duration for the zoom-on-waiting feature in milliseconds (default: `5000`).
-   * When the user pauses while dragging trim handles, the view zooms to show
-   * this duration around the current trim position for more precise editing.
+   * How much time, in milliseconds, the timeline shows when it zooms in
+   * (default: `5000`). When the user holds a trim handle still while dragging,
+   * the timeline zooms in to this span around the handle for finer adjustment.
    */
   zoomOnWaitingDuration?: number;
   /**
@@ -146,11 +153,11 @@ export interface EditorConfig extends BaseOptions {
   /**
    * Format token for the editor's start / current / end time labels.
    * Allowed values:
-   * - `"mm:ss"` — minutes:seconds (e.g. `01:23`)
-   * - `"mm:ss.SS"` — centiseconds (e.g. `01:23.45`)
-   * - `"mm:ss.SSS"` — milliseconds (e.g. `01:23.456`) — **default**
-   * - `"hh:mm:ss"` — hours:minutes:seconds (e.g. `00:01:23`)
-   * - `"hh:mm:ss.SSS"` — hours:minutes:seconds.milliseconds (e.g. `00:01:23.456`)
+   * - `"mm:ss"`: minutes:seconds (e.g. `01:23`)
+   * - `"mm:ss.SS"`: centiseconds (e.g. `01:23.45`)
+   * - `"mm:ss.SSS"`: milliseconds (e.g. `01:23.456`), **default**
+   * - `"hh:mm:ss"`: hours:minutes:seconds (e.g. `00:01:23`)
+   * - `"hh:mm:ss.SSS"`: hours:minutes:seconds.milliseconds (e.g. `00:01:23.456`)
    *
    * Unknown values fall back to the default. Only affects on-screen labels;
    * `onLoad` / `onFinishTrimming` payloads continue to report raw milliseconds.
@@ -179,7 +186,7 @@ export interface TrimOptions extends BaseOptions {
 }
 
 /**
- * Result returned by {@link Spec.isValidFile}.
+ * Result returned by {@link isValidFile}.
  */
 export interface FileValidationResult {
   /** Whether the file is a valid audio or video file. */
@@ -223,7 +230,7 @@ export interface FrameExtractionOptions {
 }
 
 /**
- * Result returned by {@link Spec.getFrameAt}.
+ * Result returned by {@link getFrameAt}.
  */
 export interface FrameResult {
   /** Absolute path to the extracted image file. */
@@ -234,12 +241,15 @@ export interface FrameResult {
  * Options for extracting the audio track from a video file.
  */
 export interface ExtractAudioOptions {
-  /** Output audio file extension (e.g. `"mp3"`, `"m4a"`, `"wav"`). Default `"mp3"`. */
+  /**
+   * Output audio file extension (e.g. `"m4a"`, `"wav"`). Default `"m4a"` (AAC).
+   * `"mp3"` needs an FFmpegKit build with `libmp3lame`, which the default builds lack.
+   */
   outputExt: string;
 }
 
 /**
- * Result returned by {@link Spec.extractAudio}.
+ * Result returned by {@link extractAudio}.
  */
 export interface ExtractAudioResult {
   /** Absolute path to the extracted audio file. */
@@ -254,7 +264,8 @@ export interface ExtractAudioResult {
 export interface CompressOptions {
   /**
    * Quality preset: `"low"` (smallest file), `"medium"` (balanced), `"high"` (best quality).
-   * Maps to CRF 28, 23, 18 respectively. Ignored when `bitrate` is set.
+   * On Android the presets target 500 kbps, 2 Mbps and 5 Mbps; on iOS they set
+   * FFmpeg `-global_quality` to 28, 23 and 18. Ignored when `bitrate` is set.
    */
   quality: string;
   /** Explicit target bitrate in bits per second. Overrides `quality` when set. `-1` to use quality preset. */
@@ -272,7 +283,7 @@ export interface CompressOptions {
 }
 
 /**
- * Result returned by {@link Spec.compress}.
+ * Result returned by {@link compress}.
  */
 export interface CompressResult {
   /** Absolute path to the compressed output file. */
@@ -294,7 +305,7 @@ export interface GifOptions {
 }
 
 /**
- * Result returned by {@link Spec.toGif}.
+ * Result returned by {@link toGif}.
  */
 export interface GifResult {
   /** Absolute path to the generated GIF file. */
@@ -309,14 +320,14 @@ export interface MergeOptions {
   outputExt: string;
   /**
    * When `true`, the output has no audio track. Default `false`. Clips without
-   * audio can be merged either way: if none of them has audio the output is
-   * video-only, otherwise the silent clips are filled with silence.
+   * an audio track are accepted either way: if none of them has audio, the
+   * output is video-only; otherwise each silent clip is filled with silence.
    */
   removeAudio: boolean;
 }
 
 /**
- * Result returned by {@link Spec.merge}.
+ * Result returned by {@link merge}.
  */
 export interface MergeResult {
   /** Absolute path to the merged output file. */
@@ -346,8 +357,10 @@ export interface MixAudioOptions {
    */
   audioStartTime: number;
   /**
-   * When `true`, the background audio is looped to span the full video length.
-   * When `false`, the mix ends when the shorter stream ends. Default `false`.
+   * When `true`, the background audio is looped to cover the whole video.
+   * When `false`, it plays once. The output keeps the video's length either
+   * way, except when the video has no audio track and the background audio is
+   * shorter: the output then ends with the background audio. Default `false`.
    */
   loopAudio: boolean;
   /** Output file extension (e.g. `"mp4"`). Default `"mp4"`. */
@@ -355,7 +368,7 @@ export interface MixAudioOptions {
 }
 
 /**
- * Result returned by {@link Spec.mixAudio}.
+ * Result returned by {@link mixAudio}.
  */
 export interface MixAudioResult {
   /** Absolute path to the output video file. */
@@ -365,7 +378,7 @@ export interface MixAudioResult {
 }
 
 /**
- * Result returned by {@link Spec.saveToPhoto}.
+ * Result returned by {@link saveToPhoto}.
  */
 export interface SaveToPhotoResult {
   /** Whether the file was saved to the photo library successfully. */
@@ -373,7 +386,7 @@ export interface SaveToPhotoResult {
 }
 
 /**
- * Result returned by {@link Spec.saveToDocuments}.
+ * Result returned by {@link saveToDocuments}.
  */
 export interface SaveToDocumentsResult {
   /** Whether the file was saved to documents successfully. */
@@ -381,7 +394,7 @@ export interface SaveToDocumentsResult {
 }
 
 /**
- * Result returned by {@link Spec.share}.
+ * Result returned by {@link share}.
  */
 export interface ShareResult {
   /** Whether the user completed the share action. */
@@ -389,16 +402,25 @@ export interface ShareResult {
 }
 
 /**
- * TurboModule spec for the native VideoTrim module.
+ * TurboModule spec for the native `VideoTrim` module, and the type of the
+ * package's default export.
+ *
+ * Prefer the named functions (they fill in defaults and convert colors) for
+ * calling methods. Use the `on*` emitters on the default export to subscribe
+ * to editor events on the New Architecture; see `VideoTrimEventMap` for the
+ * payloads.
  */
 export interface Spec extends TurboModule {
-  /** Open the video trimmer editor for the given file. */
+  /** Open the trimmer editor for the given video or audio file. */
   showEditor(filePath: string, config: EditorConfig): void;
   /** List all output files generated by past trim operations. */
   listFiles(): Promise<string[]>;
   /** Delete all output files generated by past trim operations. Returns the number of files removed. */
   cleanFiles(): Promise<number>;
-  /** Delete a single file at the given path. Resolves `true` on success. */
+  /**
+   * Delete a single file at the given path. Resolves `true` on success. On
+   * Android, paths outside the library's output directories resolve `false`.
+   */
   deleteFile(filePath: string): Promise<boolean>;
   /** Programmatically close the editor if it is currently open. */
   closeEditor(): void;
@@ -479,7 +501,7 @@ export interface Spec extends TurboModule {
     bitrate: number;
     speed: number;
   }>;
-  /** Emitted when an error occurs during trimming or file loading. */
+  /** Emitted when loading, trimming or saving fails. */
   readonly onError: EventEmitter<{
     message: string;
     errorCode: string;

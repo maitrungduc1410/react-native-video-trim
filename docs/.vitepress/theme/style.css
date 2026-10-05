@@ -1,0 +1,135 @@
+/*
+ * Identity: the editor's default trimmerColor #F1D247, shading to #F59E0B.
+ * Yellow fails contrast as text on white, so text-bearing brand colors are
+ * dark amber in the light theme (#B45309 is 5.0:1 on white) and buttons keep
+ * the yellow background with dark text.
+ */
+:root {
+  --rnvt-identity: #f1d247;
+  --rnvt-identity-2: #f59e0b;
+
+  --vp-c-brand-1: #b45309;
+  --vp-c-brand-2: #92400e;
+  --vp-c-brand-3: #f2b233;
+  --vp-c-brand-soft: rgba(242, 178, 51, 0.16);
+
+  --vp-button-brand-text: #1b1b1f;
+  --vp-button-brand-bg: #f2b233;
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-hover-text: #1b1b1f;
+  --vp-button-brand-hover-bg: #f5c542;
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-active-text: #1b1b1f;
+  --vp-button-brand-active-bg: #e0a21f;
+  --vp-button-brand-active-border: transparent;
+
+  /* Large display text only needs 3:1; #D97706 is 3.2:1 on white. */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #b45309 20%, #d97706);
+  --vp-home-hero-image-background-image: radial-gradient(
+    closest-side,
+    rgba(241, 210, 71, 0.35),
+    rgba(245, 158, 11, 0.12) 55%,
+    transparent
+  );
+  --vp-home-hero-image-filter: blur(28px);
+}
+
+.dark {
+  --vp-c-brand-1: #f5c542;
+  --vp-c-brand-2: #f2b233;
+  --vp-c-brand-3: #f2b233;
+  --vp-c-brand-soft: rgba(245, 197, 66, 0.16);
+
+  --vp-home-hero-name-background: linear-gradient(
+    120deg,
+    var(--rnvt-identity) 20%,
+    var(--rnvt-identity-2)
+  );
+  --vp-home-hero-image-background-image: radial-gradient(
+    closest-side,
+    rgba(241, 210, 71, 0.28),
+    rgba(245, 158, 11, 0.1) 55%,
+    transparent
+  );
+}
+
+.home-section {
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 48px 24px 0;
+}
+
+.home-section h2 {
+  margin-bottom: 8px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.home-section > p {
+  color: var(--vp-c-text-2);
+}
+
+.home-section .vp-doc div[class*='language-'] {
+  margin: 16px 0;
+}
+
+.demo-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  justify-content: center;
+  margin: 24px 0;
+}
+
+.demo-shots figure {
+  margin: 0;
+  text-align: center;
+}
+
+.demo-shots img {
+  width: 260px;
+  max-width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--vp-c-divider);
+}
+
+.demo-shots figcaption {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc .screenshots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.vp-doc .screenshots img {
+  width: 220px;
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--vp-c-divider);
+}
+
+/* VPNavBar sets white-space: nowrap; long site titles must wrap inside the title area instead of overflowing. */
+.VPNavBar .container > .title {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.VPNavBarTitle .title {
+  min-width: 0;
+}
+
+.VPNavBarTitle .title > span {
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.VPNavBarTitle .logo {
+  flex-shrink: 0;
+}

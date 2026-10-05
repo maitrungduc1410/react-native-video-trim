@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>react-native-video-trim</title>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F1D247" />
+      <stop offset="1" stop-color="#F59E0B" />
+    </linearGradient>
+  </defs>
+  <!-- thumbnail strip inside the trimmer -->
+  <rect x="17" y="21" width="9" height="22" rx="1.5" fill="#F1D247" opacity="0.35" />
+  <rect x="27.5" y="21" width="9" height="22" rx="1.5" fill="#F1D247" opacity="0.55" />
+  <rect x="38" y="21" width="9" height="22" rx="1.5" fill="#F1D247" opacity="0.35" />
+  <!-- trimmer frame: handles plus top and bottom bars -->
+  <path
+    d="M15 14h34M15 50h34"
+    stroke="url(#g)"
+    stroke-width="4"
+    stroke-linecap="round"
+  />
+  <rect x="4" y="12" width="12" height="40" rx="4" fill="url(#g)" />
+  <rect x="48" y="12" width="12" height="40" rx="4" fill="url(#g)" />
+  <path
+    d="m11.5 27-3 5 3 5M52.5 27l3 5-3 5"
+    stroke="#1b1b1f"
+    stroke-width="2.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

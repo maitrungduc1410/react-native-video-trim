@@ -86,3 +86,8 @@ android/generated
 
 # React Native Nitro Modules
 nitrogen/
+
+# Docs site: TypeDoc output and VitePress build/cache
+docs/api/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
