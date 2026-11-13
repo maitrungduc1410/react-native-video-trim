@@ -8,7 +8,7 @@ description: "Every showEditor() option in react-native-video-trim: duration lim
 showEditor(filePath: string, config: EditorOptions): void
 ```
 
-[`showEditor()`](/api/functions/showEditor) presents the native trimmer full screen. `filePath` can be a local path, a `file://` URI, or an HTTPS URL if you installed the [`https` FFmpegKit package](/guide/remote-files). Every option is optional, but always pass an object (`{}` is fine).
+[`showEditor()`](/api/functions/showEditor) presents the native trimmer full screen. `filePath` can be a local path, a `file://` URI, or an HTTPS URL if you installed the [`https` FFmpegKit package](/guide/remote-files). Every option is optional, and so is the options object itself.
 
 ```ts
 import { showEditor } from 'react-native-video-trim';

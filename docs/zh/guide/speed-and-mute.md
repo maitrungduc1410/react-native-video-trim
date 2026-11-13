@@ -26,7 +26,7 @@ const result = await trim(videoUri, {
 
 ## 调整倍速 {#change-the-speed}
 
-输出倍速的范围为 0.25x 到 4x。
+输出倍速的范围为 0.25x 到 4x。超出范围的值会被限制到最近的边界，`0` 或负数按正常倍速处理。
 
 **在编辑器中**，工具栏会显示当前倍速（例如 "1x"）。点击后会打开原生菜单（iOS 14 及以上为 `UIMenu`，更早的 iOS 为操作表（action sheet），Android 上为 `PopupMenu`），可选 0.25x、0.5x、1x、1.5x、2x、3x 和 4x。预览按所选倍速播放，导出时也使用该倍速。如果希望以其他倍速开始：
 

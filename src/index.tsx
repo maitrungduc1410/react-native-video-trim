@@ -48,8 +48,39 @@ const isFabric = !!(global as any).nativeFabricUIManager;
  */
 const VideoTrim: Spec = isFabric ? VideoTrimNewArch : VideoTrimOldArch;
 
+/**
+ * Drops keys whose value is `undefined` or `null`, so an option passed as
+ * `{ maxDuration: cond ? 30000 : undefined }` falls back to its default instead
+ * of erasing it. Native reads most options without a presence check, and a
+ * missing key crashes there.
+ */
+function defined<T extends object>(obj: T | undefined | null): Partial<T> {
+  const out: Partial<T> = {};
+  if (!obj) {
+    return out;
+  }
+  for (const key of Object.keys(obj) as (keyof T)[]) {
+    const value = obj[key];
+    if (value !== undefined && value !== null) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+const MIN_SPEED = 0.25;
+const MAX_SPEED = 4.0;
+
+/** Clamps `speed` to the supported range; anything unusable becomes `1.0`. */
+function normalizeSpeed(speed: unknown): number {
+  if (typeof speed !== 'number' || !Number.isFinite(speed) || speed <= 0) {
+    return 1.0;
+  }
+  return Math.min(Math.max(speed, MIN_SPEED), MAX_SPEED);
+}
+
 function createBaseOptions(overrides: Partial<BaseOptions> = {}): BaseOptions {
-  return {
+  const options: BaseOptions = {
     saveToPhoto: false,
     type: 'video',
     outputExt: 'mp4',
@@ -58,8 +89,10 @@ function createBaseOptions(overrides: Partial<BaseOptions> = {}): BaseOptions {
     enablePreciseTrimming: false,
     removeAudio: false,
     speed: 1.0,
-    ...overrides,
+    ...defined(overrides),
   };
+  options.speed = normalizeSpeed(options.speed);
+  return options;
 }
 
 function createCompressOptions(
@@ -73,7 +106,7 @@ function createCompressOptions(
     frameRate: -1,
     outputExt: 'mp4',
     removeAudio: false,
-    ...overrides,
+    ...defined(overrides),
   };
 }
 
@@ -86,7 +119,7 @@ function createFrameExtractionOptions(
     quality: 80,
     maxWidth: -1,
     maxHeight: -1,
-    ...overrides,
+    ...defined(overrides),
   };
 }
 
@@ -95,7 +128,7 @@ function createExtractAudioOptions(
 ): ExtractAudioOptions {
   return {
     outputExt: 'm4a',
-    ...overrides,
+    ...defined(overrides),
   };
 }
 
@@ -105,7 +138,7 @@ function createGifOptions(overrides: Partial<GifOptions> = {}): GifOptions {
     endTime: -1,
     fps: 10,
     width: -1,
-    ...overrides,
+    ...defined(overrides),
   };
 }
 
@@ -115,7 +148,7 @@ function createMergeOptions(
   return {
     outputExt: 'mp4',
     removeAudio: false,
-    ...overrides,
+    ...defined(overrides),
   };
 }
 
@@ -128,7 +161,7 @@ function createMixAudioOptions(
     audioStartTime: 0,
     loopAudio: false,
     outputExt: 'mp4',
-    ...overrides,
+    ...defined(overrides),
   };
 }
 
@@ -187,8 +220,8 @@ function createEditorConfig(
     waveformBarGap: 2,
     waveformBarCornerRadius: 1.5,
     durationFormat: 'mm:ss.SSS',
+    ...defined(overrides),
     ...createBaseOptions(overrides),
-    ...overrides,
   };
 }
 
@@ -196,8 +229,8 @@ function createTrimOptions(overrides: Partial<TrimOptions> = {}): TrimOptions {
   return {
     startTime: 0,
     endTime: 1000,
+    ...defined(overrides),
     ...createBaseOptions(overrides),
-    ...overrides,
   };
 }
 
@@ -222,7 +255,7 @@ function createTrimOptions(overrides: Partial<TrimOptions> = {}): TrimOptions {
  * });
  * ```
  */
-export function showEditor(filePath: string, config: EditorOptions): void {
+export function showEditor(filePath: string, config: EditorOptions = {}): void {
   const {
     headerTextColor,
     trimmerColor,

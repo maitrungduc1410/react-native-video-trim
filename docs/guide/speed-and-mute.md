@@ -26,7 +26,7 @@ const result = await trim(videoUri, {
 
 ## Change the speed
 
-The output speed can range from 0.25x to 4x.
+The output speed can range from 0.25x to 4x. Values outside that range are clamped to it, and `0` or a negative value means normal speed.
 
 **In the editor**, the toolbar shows the current speed (for example "1x"). Tapping it opens a native menu (`UIMenu` on iOS 14 and later, an action sheet on older iOS, `PopupMenu` on Android) with 0.25x, 0.5x, 1x, 1.5x, 2x, 3x and 4x. The preview plays at the chosen speed and the export uses it. To start at a different speed:
 

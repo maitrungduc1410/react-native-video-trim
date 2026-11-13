@@ -8,7 +8,7 @@ description: "Toàn bộ tùy chọn của showEditor() trong react-native-video
 showEditor(filePath: string, config: EditorOptions): void
 ```
 
-[`showEditor()`](/api/functions/showEditor) hiển thị trình cắt native ở chế độ toàn màn hình. `filePath` có thể là đường dẫn cục bộ, URI `file://`, hoặc URL HTTPS nếu bạn đã cài [package FFmpegKit `https`](/vi/guide/remote-files). Mọi tùy chọn đều không bắt buộc, nhưng bạn vẫn phải truyền một object (`{}` cũng được).
+[`showEditor()`](/api/functions/showEditor) hiển thị trình cắt native ở chế độ toàn màn hình. `filePath` có thể là đường dẫn cục bộ, URI `file://`, hoặc URL HTTPS nếu bạn đã cài [package FFmpegKit `https`](/vi/guide/remote-files). Mọi tùy chọn đều không bắt buộc, kể cả chính object tùy chọn.
 
 ```ts
 import { showEditor } from 'react-native-video-trim';

@@ -22,10 +22,6 @@ Native module không có trong bản build.
 
 Giá trị thời gian tính bằng **mili giây**. `maxDuration: 30` cho phép 30 ms; giá trị bạn cần là `30_000`. Trình chỉnh sửa không bao giờ cho phép chọn đoạn ngắn hơn 1 giây, bất kể `minDuration` là gì.
 
-## `showEditor(uri)` throw lỗi {#showeditor-uri-throws}
-
-Truyền một object tùy chọn, kể cả khi rỗng: `showEditor(uri, {})`.
-
 ## Điểm cắt sớm hoặc muộn hơn đoạn đã chọn {#the-cut-starts-earlier-or-later-than-selected}
 
 Khi không bật cắt chính xác, điểm cắt sẽ bám theo keyframe. Hãy bật [`enablePreciseTrimming`](/vi/guide/precise-trimming).

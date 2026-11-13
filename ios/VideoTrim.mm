@@ -60,6 +60,9 @@ RCT_EXPORT_MODULE()
       reject:(nonnull RCTPromiseRejectBlock)reject {
   if (!self->videoTrim) {
     self->videoTrim = [[VideoTrimSwift alloc] init];
+    // Same setup as showEditor: without the delegate, an editor opened after a
+    // headless trim would never deliver its events to JS.
+    self->videoTrim.delegate = self;
     self->videoTrim.isNewArch = true;
   }
   

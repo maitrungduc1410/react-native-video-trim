@@ -111,7 +111,7 @@ const { outputPath: small } = await compress(videoUri, {
 
 | Tùy chọn | Mặc định | Mô tả |
 | --- | --- | --- |
-| `quality` | `'medium'` | `'low'`, `'medium'` hoặc `'high'`. Bị bỏ qua khi đã đặt `bitrate`. Trên Android, các preset nhắm tới 500 kbps, 2 Mbps và 5 Mbps. |
+| `quality` | `'medium'` | `'low'`, `'medium'` hoặc `'high'`. Bị bỏ qua khi đã đặt `bitrate`. Các preset nhắm tới 500 kbps, 2 Mbps và 5 Mbps. |
 | `bitrate` | `-1` | Bitrate mục tiêu, tính bằng bit/giây. |
 | `width` | `-1` | Chiều rộng mục tiêu; chiều cao tính theo tỷ lệ khung hình. |
 | `height` | `-1` | Chiều cao mục tiêu; chiều rộng tính theo tỷ lệ khung hình. |

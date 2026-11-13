@@ -26,7 +26,7 @@ const result = await trim(videoUri, {
 
 ## Đổi tốc độ {#change-the-speed}
 
-Tốc độ đầu ra có thể nằm trong khoảng từ 0.25x đến 4x.
+Tốc độ đầu ra có thể nằm trong khoảng từ 0.25x đến 4x. Giá trị ngoài khoảng này được đưa về giới hạn gần nhất, còn `0` hoặc số âm được tính là tốc độ bình thường.
 
 **Trong trình chỉnh sửa**, thanh công cụ hiển thị tốc độ hiện tại (ví dụ "1x"). Nhấn vào đó sẽ mở một menu native (`UIMenu` trên iOS 14 trở lên, action sheet trên iOS cũ hơn, `PopupMenu` trên Android) với các mức 0.25x, 0.5x, 1x, 1.5x, 2x, 3x và 4x. Bản xem trước phát ở tốc độ đã chọn và tệp xuất ra cũng dùng tốc độ đó. Để mở trình chỉnh sửa với tốc độ khác:
 

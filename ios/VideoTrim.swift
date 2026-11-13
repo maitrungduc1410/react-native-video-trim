@@ -16,6 +16,33 @@ func makeUniqueStamp() -> String {
   return "\(seconds)_\(unique)"
 }
 
+/// Turns a path or URL string from JS into a URL that AVFoundation can open.
+/// `URL(string:)` accepts a bare "/path" but returns a URL without a scheme,
+/// which AVURLAsset, Photos and the share sheet all reject, so anything that is
+/// not a real URL goes through `fileURLWithPath`.
+func makeInputURL(_ str: String) -> URL {
+  if str.hasPrefix("/") {
+    return URL(fileURLWithPath: str)
+  }
+  if let url = URL(string: str), url.scheme != nil {
+    return url
+  }
+  return URL(fileURLWithPath: str)
+}
+
+/// The `-i` argument for FFmpeg: a plain path for local files, the full URL
+/// (scheme, host and query included) for remote ones.
+func ffmpegInput(_ url: URL) -> String {
+  return url.isFileURL ? url.path : url.absoluteString
+}
+
+/// Keeps the export speed inside the documented 0.25 to 4.0 range. Zero,
+/// negative or non-finite values fall back to normal speed.
+func sanitizeSpeed(_ speed: Double) -> Double {
+  guard speed.isFinite, speed > 0 else { return 1.0 }
+  return min(max(speed, 0.25), 4.0)
+}
+
 @objc(VideoTrimSwift)
 public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDelegate {
   // MARK: instance private props
@@ -279,7 +306,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   
   /// Chains FFmpeg `atempo` filters so each stage stays within 0.5–2.0.
   private func buildAtempoChain(_ speed: Double) -> String {
-    var remaining = speed
+    var remaining = sanitizeSpeed(speed)
     var filters: [String] = []
     while remaining < 0.5 {
       filters.append("atempo=0.5")
@@ -460,7 +487,10 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     let hasUserTransform = vc != nil && (vc!.rotationCount != 0 || vc!.isFlipped)
     let cropNorm = vc?.cropNormalizedRect
     let stripAudio = removeAudio || viewController.isMuted
-    let playbackSpeed = viewController.speed
+    let playbackSpeed = sanitizeSpeed(viewController.speed)
+    // Length of the output clip. FFmpeg reports progress in output time, so this
+    // (not the full source duration) is what the progress bar is measured against.
+    let outputDurationMs = max((endTime - startTime) * 1000 / playbackSpeed, 1)
     let needsSpeed = abs(playbackSpeed - 1.0) > 0.0001
     // Re-encode is required when: (1) user applied flip/rotate, (2) user cropped, or
     // (3) enablePreciseTrimming is on, or (4) export speed != 1.0. In those cases, -c copy
@@ -548,7 +578,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       // NOTE: intentionally NO -noautorotate. FFmpeg autorotates the input so the source
       // rotation is baked into the pixels and the output carries no stale rotation matrix
       // (otherwise rotation-tagged portrait clips are double-rotated -> sideways on ffmpeg-kit 6).
-      cmds.append(contentsOf: ["-i", inputFile.path])
+      cmds.append(contentsOf: ["-i", ffmpegInput(inputFile)])
       // Only HDR/10-bit sources (e.g. iPhone HDR, HEVC 10-bit Dolby Vision) need
       // an explicit 8-bit 4:2:0 cast: on FFmpeg builds where h264_videotoolbox
       // advertises a 10-bit input format the encoder fails to open. SDR sources
@@ -577,7 +607,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       ])
     } else {
       // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
-      cmds.append(contentsOf: ["-i", inputFile.path])
+      cmds.append(contentsOf: ["-i", ffmpegInput(inputFile)])
       if stripAudio {
         cmds.append(contentsOf: ["-c:v", "copy", "-an"])
       } else if mediaInfo.audioIsMP4Compatible {
@@ -609,7 +639,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       var shouldCloseEditor = false
       
       if ReturnCode.isSuccess(returnCode) {
-        let eventPayload: [String: Any] = ["outputPath": outputFile.absoluteString, "startTime": (startTime * 1000).rounded(), "endTime": (endTime * 1000).rounded(), "duration": (videoDuration * 1000).rounded()]
+        let eventPayload: [String: Any] = ["outputPath": outputFile.absoluteString, "startTime": (startTime * 1000).rounded(), "endTime": (endTime * 1000).rounded(), "duration": ((endTime - startTime) * 1000).rounded()]
         self.emitEventToJS("onFinishTrimming", eventData: eventPayload)
         
         if (self.saveToPhoto && isVideoType) {
@@ -694,7 +724,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       
       let timeInMilliseconds = statistics.getTime()
       if timeInMilliseconds > 0 {
-        let completePercentage = timeInMilliseconds / (videoDuration * 1000); // from 0 -> 1
+        let completePercentage = min(Double(timeInMilliseconds) / outputDurationMs, 1) // from 0 -> 1
         DispatchQueue.main.async {
           progressAlert.setProgress(Float(completePercentage))
         }
@@ -717,7 +747,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
   // New Arch
   @objc(trimWithInputFile:config:completion:)
   public func _trim(inputFile: String, config: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
-    let destPath = URL(string: inputFile) ?? URL(fileURLWithPath: inputFile)
+    let destPath = makeInputURL(inputFile)
     if destPath.path.isEmpty {
       completion([
         "success": false,
@@ -751,7 +781,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
     // Headless trim: no editor UI, so no transforms (flip/rotate/crop) are possible.
     let enablePrecise = config["enablePreciseTrimming"] as? Bool ?? false
     let stripAudio = config["removeAudio"] as? Bool ?? false
-    let speed = config["speed"] as? Double ?? 1.0
+    let speed = sanitizeSpeed(config["speed"] as? Double ?? 1.0)
     let needsSpeed = abs(speed - 1.0) > 0.0001
     let needsReEncode = enablePrecise || needsSpeed
 
@@ -782,7 +812,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       
       // No -noautorotate here: headless trim has no manual rotation filters,
       // so FFmpeg's auto-rotation produces the correct output orientation.
-      cmds.append(contentsOf: ["-i", destPath.path])
+      cmds.append(contentsOf: ["-i", ffmpegInput(destPath)])
       if !videoFilters.isEmpty {
         cmds.append(contentsOf: ["-vf", videoFilters.joined(separator: ",")])
       }
@@ -800,7 +830,7 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       ])
     } else {
       // Stream copy: no re-encoding, extremely fast but only cuts at keyframes.
-      cmds.append(contentsOf: ["-i", destPath.path])
+      cmds.append(contentsOf: ["-i", ffmpegInput(destPath)])
       if stripAudio {
         cmds.append(contentsOf: ["-c:v", "copy", "-an"])
       } else if mediaInfo.audioIsMP4Compatible {
@@ -992,12 +1022,22 @@ public class VideoTrim: RCTEventEmitter, AssetLoaderDelegate, UIDocumentPickerDe
       
       // Present the share sheet
       if let root = RCTPresentedViewController() {
+        VideoTrim.anchorPopover(of: activityViewController, to: root)
         root.present(activityViewController, animated: true, completion: nil)
       }
     }
     
   }
   
+  /// On iPad the share sheet is a popover and UIKit throws if it has no anchor.
+  /// Centers it on the presenting view; a no-op on iPhone.
+  static func anchorPopover(of controller: UIViewController, to presenter: UIViewController) {
+    guard let popover = controller.popoverPresentationController else { return }
+    popover.sourceView = presenter.view
+    popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0)
+    popover.permittedArrowDirections = []
+  }
+
   private func onError(message: String, code: ErrorCode) {
     let eventPayload: [String: String] = [
       "message": message,
@@ -1065,7 +1105,7 @@ extension VideoTrim {
     editorConfig = config
     print("Show editor called with URI: \(uri)")
     
-    guard let destPath = URL(string: uri) ?? URL(fileURLWithPath: uri) as URL? else { return }
+    let destPath = makeInputURL(uri)
     print("Destination Path: \(destPath.absoluteString), path: \(destPath.path)")
     
     DispatchQueue.main.async {
@@ -1223,7 +1263,7 @@ extension VideoTrim {
   // New Arch
   @objc(deleteFile:)
   public static func deleteFile(uri: String) -> Bool {
-    guard let url = URL(string: uri) else { return false }
+    let url = makeInputURL(uri)
     let state = deleteFile(url: url)
     return state == 0
   }
@@ -1264,10 +1304,7 @@ extension VideoTrim {
   // New Arch
   @objc(isValidFile:url:)
   public static func isValidFile(url: String, completion: @escaping ([String: Any]) -> Void) -> Void {
-    guard let fileURL = URL(string: url) ?? URL(fileURLWithPath: url) as URL? else {
-      completion(["isValid": false, "fileType": "unknown", "duration": -1])
-      return
-    }
+    let fileURL = makeInputURL(url)
     checkFileValidity(url: fileURL) { isValid, fileType, duration in
       if isValid {
         print("Valid \(fileType) file with duration: \(duration) milliseconds")
@@ -1298,7 +1335,7 @@ extension VideoTrim {
   // Output goes to the caches directory (OS-managed, auto-purged under storage pressure).
   @objc
   public static func getFrameAt(_ url: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
-    let destPath = URL(string: url) ?? URL(fileURLWithPath: url)
+    let destPath = makeInputURL(url)
 
     let time = options["time"] as? Double ?? 0
     let format = options["format"] as? String ?? "jpeg"
@@ -1375,7 +1412,7 @@ extension VideoTrim {
   // default FFmpegKit builds do not include libmp3lame, so mp3 encoding would fail.
   @objc
   public static func extractAudio(_ url: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
-    let destPath = URL(string: url) ?? URL(fileURLWithPath: url)
+    let destPath = makeInputURL(url)
 
     let outputExt = options["outputExt"] as? String ?? "m4a"
     let timestamp = makeUniqueStamp()
@@ -1383,7 +1420,7 @@ extension VideoTrim {
     let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
     let outputFile = cacheDirectory.appendingPathComponent(outputName)
 
-    let cmds = ["-i", destPath.path, "-vn", "-y", outputFile.path]
+    let cmds = ["-i", ffmpegInput(destPath), "-vn", "-y", outputFile.path]
     print("extractAudio command:", cmds.joined(separator: " "))
 
     FFmpegKit.execute(withArgumentsAsync: cmds, withCompleteCallback: { session in
@@ -1416,10 +1453,12 @@ extension VideoTrim {
 
   // MARK: - Headless API: compress
   // Re-encodes video with h264_videotoolbox (hardware) at the requested quality/bitrate.
-  // Uses CRF-style -global_quality for quality presets, or explicit -b:v for custom bitrate.
+  // Quality presets map to the same target bitrates as Android. h264_videotoolbox only
+  // reads -global_quality together with -q:v, so without -b:v it would fall back to
+  // FFmpeg's 200 kbps default whatever the preset.
   @objc
   public static func compress(_ url: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
-    let destPath = URL(string: url) ?? URL(fileURLWithPath: url)
+    let destPath = makeInputURL(url)
 
     let quality = options["quality"] as? String ?? "medium"
     let bitrate = options["bitrate"] as? Double ?? -1
@@ -1434,7 +1473,7 @@ extension VideoTrim {
     let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
     let outputFile = cacheDirectory.appendingPathComponent(outputName)
 
-    var cmds: [String] = ["-i", destPath.path]
+    var cmds: [String] = ["-i", ffmpegInput(destPath)]
     var videoFilters: [String] = []
 
     if width > 0 && height > 0 {
@@ -1454,13 +1493,13 @@ extension VideoTrim {
     if bitrate > 0 {
       cmds.append(contentsOf: ["-b:v", "\(Int(bitrate))"])
     } else {
-      let crf: String
+      let presetBitrate: String
       switch quality {
-      case "low": crf = "28"
-      case "high": crf = "18"
-      default: crf = "23"
+      case "low": presetBitrate = "500K"
+      case "high": presetBitrate = "5M"
+      default: presetBitrate = "2M"
       }
-      cmds.append(contentsOf: ["-global_quality", crf])
+      cmds.append(contentsOf: ["-b:v", presetBitrate])
     }
 
     if frameRate > 0 {
@@ -1504,7 +1543,7 @@ extension VideoTrim {
   // using that palette for better color accuracy than single-pass dithering.
   @objc
   public static func toGif(_ url: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
-    let destPath = URL(string: url) ?? URL(fileURLWithPath: url)
+    let destPath = makeInputURL(url)
 
     let startTime = options["startTime"] as? Double ?? 0
     let endTime = options["endTime"] as? Double ?? -1
@@ -1525,7 +1564,7 @@ extension VideoTrim {
     if startTime > 0 { timeArgs.append(contentsOf: ["-ss", "\(startTime)ms"]) }
     if endTime > 0 { timeArgs.append(contentsOf: ["-to", "\(endTime)ms"]) }
 
-    let pass1 = timeArgs + ["-i", destPath.path, "-vf", "\(filterBase),palettegen", "-y", paletteFile.path]
+    let pass1 = timeArgs + ["-i", ffmpegInput(destPath), "-vf", "\(filterBase),palettegen", "-y", paletteFile.path]
     print("toGif pass1 command:", pass1.joined(separator: " "))
 
     FFmpegKit.execute(withArgumentsAsync: pass1, withCompleteCallback: { session in
@@ -1536,7 +1575,7 @@ extension VideoTrim {
       }
 
       let pass2 = timeArgs + [
-        "-i", destPath.path,
+        "-i", ffmpegInput(destPath),
         "-i", paletteFile.path,
         "-lavfi", "[0:v]\(filterBase)[x];[x][1:v]paletteuse",
         "-y", outputFile.path
@@ -1594,11 +1633,7 @@ extension VideoTrim {
 
     let removeAudio = options["removeAudio"] as? Bool ?? false
 
-    // URL(string:) accepts a bare "/path" but yields a scheme-less URL that AVURLAsset
-    // cannot open, so bare paths must go through fileURLWithPath to be probed.
-    let inputURL: (String) -> URL = { str in
-      str.hasPrefix("/") ? URL(fileURLWithPath: str) : (URL(string: str) ?? URL(fileURLWithPath: str))
-    }
+    let inputURL: (String) -> URL = makeInputURL
 
     var cmds: [String] = []
     var maxBitrate: Int = 0
@@ -1606,7 +1641,7 @@ extension VideoTrim {
     var durations: [Double] = []
     for urlStr in urls {
       let u = inputURL(urlStr)
-      cmds.append(contentsOf: ["-i", u.path])
+      cmds.append(contentsOf: ["-i", ffmpegInput(u)])
       let asset = AVURLAsset(url: u)
       let videoTracks = asset.tracks(withMediaType: .video)
       let audioTracks = asset.tracks(withMediaType: .audio)
@@ -1716,8 +1751,8 @@ extension VideoTrim {
   // because the default FFmpegKit build does not include OpenSSL.
   @objc
   public static func mixAudio(_ videoPath: String, audioPath: String, options: NSDictionary, completion: @escaping ([String: Any]) -> Void) {
-    let videoURL = URL(string: videoPath) ?? URL(fileURLWithPath: videoPath)
-    let audioURL = URL(string: audioPath) ?? URL(fileURLWithPath: audioPath)
+    let videoURL = makeInputURL(videoPath)
+    let audioURL = makeInputURL(audioPath)
 
     let originalAudioVolume = options["originalAudioVolume"] as? Double ?? 1.0
     let backgroundAudioVolume = options["backgroundAudioVolume"] as? Double ?? 1.0
@@ -1732,11 +1767,11 @@ extension VideoTrim {
 
     let hasOriginalAudio = !AVURLAsset(url: videoURL).tracks(withMediaType: .audio).isEmpty
 
-    var cmds: [String] = ["-i", videoURL.path]
+    var cmds: [String] = ["-i", ffmpegInput(videoURL)]
     if loopAudio {
       cmds.append(contentsOf: ["-stream_loop", "-1"])
     }
-    cmds.append(contentsOf: ["-i", audioURL.path])
+    cmds.append(contentsOf: ["-i", ffmpegInput(audioURL)])
 
     // Background leg: optional delay, resample to a common format, apply volume.
     let delayMs = max(Int(audioStartTime), 0)
@@ -1800,7 +1835,7 @@ extension VideoTrim {
 
   @objc
   public static func saveToPhoto(_ filePath: String, completion: @escaping ([String: Any]) -> Void) {
-    let fileURL = URL(string: filePath) ?? URL(fileURLWithPath: filePath)
+    let fileURL = makeInputURL(filePath)
 
     guard FileManager.default.fileExists(atPath: fileURL.path) else {
       completion(["error": "File does not exist at path: \(filePath)"])
@@ -1851,7 +1886,7 @@ extension VideoTrim {
 
   @objc
   public static func saveToDocuments(_ filePath: String, completion: @escaping ([String: Any]) -> Void) {
-    let fileURL = URL(string: filePath) ?? URL(fileURLWithPath: filePath)
+    let fileURL = makeInputURL(filePath)
 
     guard FileManager.default.fileExists(atPath: fileURL.path) else {
       completion(["error": "File does not exist at path: \(filePath)"])
@@ -1892,7 +1927,7 @@ extension VideoTrim {
 
   @objc
   public static func share(_ filePath: String, completion: @escaping ([String: Any]) -> Void) {
-    let fileURL = URL(string: filePath) ?? URL(fileURLWithPath: filePath)
+    let fileURL = makeInputURL(filePath)
 
     guard FileManager.default.fileExists(atPath: fileURL.path) else {
       completion(["error": "File does not exist at path: \(filePath)"])
@@ -1911,6 +1946,7 @@ extension VideoTrim {
       }
 
       if let root = RCTPresentedViewController() {
+        anchorPopover(of: activityVC, to: root)
         root.present(activityVC, animated: true, completion: nil)
       } else {
         completion(["error": "No root view controller available"])

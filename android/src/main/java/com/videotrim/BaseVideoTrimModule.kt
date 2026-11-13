@@ -80,6 +80,11 @@ open class BaseVideoTrimModule internal constructor(
   private var originalStatusBarColor: Int = Color.TRANSPARENT
   private val shouldChangeStatusBarColorOnOpen: Boolean
     get() = editorConfig?.hasKey("changeStatusBarColorOnOpen") == true && editorConfig?.getBoolean("changeStatusBarColorOnOpen") == true
+  private var statusBarChanged = false
+  private var hadTranslucentStatusFlag = false
+  private var hadDrawsSystemBarBackgroundsFlag = false
+  // True while the editor's own "save to documents" picker is open.
+  private var pendingEditorSaveToDocuments = false
   private var pendingSaveToDocumentsPromise: Promise? = null
   private var pendingSaveToDocumentsFile: File? = null
 
@@ -97,29 +102,36 @@ open class BaseVideoTrimModule internal constructor(
         resultCode: Int,
         intent: Intent?
       ) {
-        if (requestCode == REQUEST_CODE_SAVE_FILE && resultCode == Activity.RESULT_OK) {
-
-          val uri = intent?.data ?: return
+        // Only act on a result we asked for: other code in the host app may use
+        // the same request code, and its URI must never receive our output file.
+        if (requestCode == REQUEST_CODE_SAVE_FILE && pendingEditorSaveToDocuments) {
+          pendingEditorSaveToDocuments = false
+          // A cancelled picker (back button) arrives here without RESULT_OK or a URI.
+          val uri = if (resultCode == Activity.RESULT_OK) intent?.data else null
           try {
-            reactApplicationContext.contentResolver?.openOutputStream(uri)
-              ?.use { outputStream ->
-                FileInputStream(outputFile).use { fileInputStream ->
-                  val buffer = ByteArray(1024)
-                  var length: Int
-                  while (fileInputStream.read(buffer).also { length = it } > 0) {
-                    outputStream.write(buffer, 0, length)
+            var saved = false
+            if (uri != null) {
+              reactApplicationContext.contentResolver?.openOutputStream(uri)
+                ?.use { outputStream ->
+                  FileInputStream(outputFile).use { fileInputStream ->
+                    val buffer = ByteArray(8192)
+                    var length: Int
+                    while (fileInputStream.read(buffer).also { length = it } > 0) {
+                      outputStream.write(buffer, 0, length)
+                    }
                   }
+                  saved = true
                 }
-              } ?: return
-            // File saved successfully
-            Log.d(TAG, "File saved successfully to $uri")
-
-            if (
-              editorConfig?.getBoolean("removeAfterSavedToDocuments") == true
-            ) {
-              StorageUtil.deleteFile(outputFile)
             }
 
+            if (saved) {
+              Log.d(TAG, "File saved successfully to $uri")
+              if (editorConfigBoolean("removeAfterSavedToDocuments")) {
+                StorageUtil.deleteFile(outputFile)
+              }
+            } else if (editorConfigBoolean("removeAfterFailedToSaveDocuments")) {
+              StorageUtil.deleteFile(outputFile)
+            }
           } catch (e: Exception) {
             e.printStackTrace()
             // Handle the error
@@ -127,10 +139,12 @@ open class BaseVideoTrimModule internal constructor(
               "Failed to save edited video to Documents: ${e.localizedMessage}",
               ErrorCode.FAIL_TO_SAVE_TO_DOCUMENTS
             )
-            if (editorConfig?.getBoolean("removeAfterFailedToSaveDocuments") == true) {
+            if (editorConfigBoolean("removeAfterFailedToSaveDocuments")) {
               StorageUtil.deleteFile(outputFile)
             }
           } finally {
+            // Always take the progress dialog down, also when the user backed out
+            // of the picker, otherwise it stays on screen with no way to dismiss it.
             hideDialog(true)
           }
         }
@@ -232,11 +246,21 @@ open class BaseVideoTrimModule internal constructor(
     }
   }
 
+  private fun editorConfigBoolean(key: String): Boolean {
+    val config = editorConfig ?: return false
+    return config.hasKey(key) && config.getBoolean(key)
+  }
+
   private fun changeStatusBarColor() {
     val window = reactApplicationContext.currentActivity?.window
     window?.let {
-      // Store the original color
+      // Store the original color and flags so they can be put back exactly
       originalStatusBarColor = it.statusBarColor
+      val flags = it.attributes.flags
+      hadTranslucentStatusFlag = flags and WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS != 0
+      hadDrawsSystemBarBackgroundsFlag =
+        flags and WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS != 0
+      statusBarChanged = true
 
       // 2. Clear flags and set the new color
       it.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
@@ -250,15 +274,24 @@ open class BaseVideoTrimModule internal constructor(
   }
 
   private fun restoreStatusBarColor() {
+    if (!statusBarChanged) return
+    statusBarChanged = false
     val window = reactApplicationContext.currentActivity?.window
     window?.let {
       // 1. Restore the color to the previously stored value
       it.statusBarColor = originalStatusBarColor
 
-      // 2. restore flags to their previous state
-      //    For most cases, just setting the color is enough.
-      it.addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-      it.clearFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+      // 2. Put both flags back the way the host app had them
+      if (hadTranslucentStatusFlag) {
+        it.addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+      } else {
+        it.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+      }
+      if (hadDrawsSystemBarBackgroundsFlag) {
+        it.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+      } else {
+        it.clearFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+      }
     }
   }
 
@@ -475,8 +508,8 @@ open class BaseVideoTrimModule internal constructor(
         ViewGroup.LayoutParams.WRAP_CONTENT
       )
       // Set the text and style it like a text button
-      button.text = editorConfig?.getString("cancelTrimmingText")
-        ?: "Cancel Trimming"
+      button.text = editorConfig?.getString("cancelTrimmingButtonText")
+        ?: "Cancel"
       button.setTextColor(
         ContextCompat.getColor(
           activity,
@@ -557,7 +590,7 @@ open class BaseVideoTrimModule internal constructor(
       }
     }
 
-    if (shouldChangeStatusBarColorOnOpen) {
+    if (shouldCloseEditor) {
       restoreStatusBarColor()
     }
   }
@@ -615,7 +648,9 @@ open class BaseVideoTrimModule internal constructor(
     val endTime = options?.getDouble("endTime") ?: 1000.0
 
     val removeAudio = options?.hasKey("removeAudio") == true && options.getBoolean("removeAudio")
-    val speed = if (options?.hasKey("speed") == true) options.getDouble("speed") else 1.0
+    val speed = VideoTrimmerUtil.sanitizeSpeed(
+      if (options?.hasKey("speed") == true) options.getDouble("speed") else 1.0
+    )
 
     val outputFile = StorageUtil.getOutputPath(reactApplicationContext, options?.getString("outputExt") ?: "mp4")
 
@@ -777,8 +812,17 @@ open class BaseVideoTrimModule internal constructor(
         val videoWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
         val videoHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
 
+        // The returned frame is already rotated for display and gets scaled to fit
+        // inside the box passed here, so the box has to be in display orientation
+        // too. Otherwise a portrait recording (stored 1920x1080, rotation 90) is
+        // squeezed into a landscape box and comes back at roughly a third of its size.
+        val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        val isRotated = rotation == 90 || rotation == 270
+        val displayWidth = if (isRotated) videoHeight else videoWidth
+        val displayHeight = if (isRotated) videoWidth else videoHeight
+
         var bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && videoWidth > 0 && videoHeight > 0) {
-          retriever.getScaledFrameAtTime(time * 1000, MediaMetadataRetriever.OPTION_CLOSEST, videoWidth, videoHeight)
+          retriever.getScaledFrameAtTime(time * 1000, MediaMetadataRetriever.OPTION_CLOSEST, displayWidth, displayHeight)
         } else {
           retriever.getFrameAtTime(time * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
         }
@@ -1065,6 +1109,15 @@ open class BaseVideoTrimModule internal constructor(
       retriever.setDataSource(reactApplicationContext, Uri.parse(urls.getString(0)))
       targetW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
       targetH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
+      // Width/height are the stored (unrotated) size, but FFmpeg autorotates every
+      // input before the filter graph. Swap them for 90/270 so a portrait recording
+      // keeps a portrait target instead of being pillarboxed into a landscape frame.
+      val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+      if (rotation == 90 || rotation == 270) {
+        val swapped = targetW
+        targetW = targetH
+        targetH = swapped
+      }
       val fpsStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
       val fps = fpsStr?.toDoubleOrNull()?.let { kotlin.math.ceil(it).toInt() } ?: 30
       targetFps = fps.coerceIn(1, 30)
@@ -1247,7 +1300,13 @@ open class BaseVideoTrimModule internal constructor(
     intent.addCategory(Intent.CATEGORY_OPENABLE)
     intent.type = "*/*" // Change MIME type as needed
     intent.putExtra(Intent.EXTRA_TITLE, file.name)
-    reactApplicationContext.currentActivity?.startActivityForResult(intent, REQUEST_CODE_SAVE_FILE)
+    val activity = reactApplicationContext.currentActivity
+    if (activity == null) {
+      hideDialog(true)
+      return
+    }
+    pendingEditorSaveToDocuments = true
+    activity.startActivityForResult(intent, REQUEST_CODE_SAVE_FILE)
   }
 
   private fun shareFile(context: Context, file: File) {
@@ -1364,8 +1423,10 @@ open class BaseVideoTrimModule internal constructor(
   companion object {
     const val NAME = "VideoTrim"
     const val TAG = "VideoTrimModule"
-    const val REQUEST_CODE_SAVE_FILE = 1
-    const val REQUEST_CODE_SAVE_TO_DOCUMENTS = 2
+    // Deliberately not 1 and 2: those collide with request codes commonly used
+    // by host apps and other libraries sharing the same Activity.
+    const val REQUEST_CODE_SAVE_FILE = 48151
+    const val REQUEST_CODE_SAVE_TO_DOCUMENTS = 48152
 
     // KEEP IN SYNC with android:authorities in AndroidManifest.xml. getUriForFile
     // resolves the provider by authority alone, so a mismatch fails at runtime.

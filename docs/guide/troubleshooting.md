@@ -22,10 +22,6 @@ The native module is missing from the build.
 
 Durations are in **milliseconds**. `maxDuration: 30` means 30 ms; for 30 seconds use `30_000`. The editor never allows a selection shorter than 1 second, regardless of `minDuration`.
 
-## `showEditor(uri)` throws
-
-Always pass an options object, even an empty one: `showEditor(uri, {})`.
-
 ## The cut starts earlier or later than selected
 
 Without precise trimming, cuts snap to keyframes. Set [`enablePreciseTrimming`](/guide/precise-trimming) to `true`.

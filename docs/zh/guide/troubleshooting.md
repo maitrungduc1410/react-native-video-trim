@@ -22,10 +22,6 @@ description: "解决 react-native-video-trim 的常见问题：未链接报错�
 
 时长以**毫秒**为单位。`maxDuration: 30` 表示 30 毫秒，30 秒应写成 `30_000`。无论 `minDuration` 如何设置，编辑器都不允许选择短于 1 秒的范围。
 
-## `showEditor(uri)` 报错 {#showeditor-uri-throws}
-
-请始终传入选项对象，没有选项时也要传空对象：`showEditor(uri, {})`。
-
 ## 裁剪起点比所选位置偏早或偏晚 {#the-cut-starts-earlier-or-later-than-selected}
 
 未开启精确裁剪时，裁剪点会对齐到关键帧。请将 [`enablePreciseTrimming`](/zh/guide/precise-trimming) 设为 `true`。

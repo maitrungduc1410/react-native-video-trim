@@ -34,7 +34,8 @@ export interface BaseOptions {
   removeAudio: boolean;
   /**
    * Playback speed multiplier applied during export. `1.0` is normal speed,
-   * `2.0` is double speed, `0.5` is half speed. Valid range: 0.25–4.0.
+   * `2.0` is double speed, `0.5` is half speed. Valid range: 0.25 to 4.0; values
+   * outside it are clamped, and `0` or a negative value means `1.0`.
    * When not `1.0`, re-encoding is forced regardless of `enablePreciseTrimming`.
    */
   speed: number;
@@ -264,8 +265,7 @@ export interface ExtractAudioResult {
 export interface CompressOptions {
   /**
    * Quality preset: `"low"` (smallest file), `"medium"` (balanced), `"high"` (best quality).
-   * On Android the presets target 500 kbps, 2 Mbps and 5 Mbps; on iOS they set
-   * FFmpeg `-global_quality` to 28, 23 and 18. Ignored when `bitrate` is set.
+   * The presets target 500 kbps, 2 Mbps and 5 Mbps. Ignored when `bitrate` is set.
    */
   quality: string;
   /** Explicit target bitrate in bits per second. Overrides `quality` when set. `-1` to use quality preset. */

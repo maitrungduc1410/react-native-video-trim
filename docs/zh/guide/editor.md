@@ -8,7 +8,7 @@ description: "react-native-video-trim 中 showEditor() 的全部选项：时长�
 showEditor(filePath: string, config: EditorOptions): void
 ```
 
-[`showEditor()`](/api/functions/showEditor) 会全屏打开原生裁剪界面。`filePath` 可以是本地路径或 `file://` URI；安装了 [`https` FFmpegKit 包](/zh/guide/remote-files)后，也可以是 HTTPS URL。所有选项都是可选的，但请始终传入一个对象（`{}` 即可）。
+[`showEditor()`](/api/functions/showEditor) 会全屏打开原生裁剪界面。`filePath` 可以是本地路径或 `file://` URI；安装了 [`https` FFmpegKit 包](/zh/guide/remote-files)后，也可以是 HTTPS URL。所有选项都是可选的，选项对象本身也可以省略。
 
 ```ts
 import { showEditor } from 'react-native-video-trim';

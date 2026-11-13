@@ -40,7 +40,7 @@ if (uri) {
 `maxDuration`, `minDuration`, `startTime`, `endTime`, `jumpToPositionOnLoad` và các giá trị thời gian trong payload sự kiện đều tính bằng mili giây. `maxDuration: 20` nghĩa là 20 ms, không phải 20 giây.
 :::
 
-`showEditor()` trả về ngay. Luôn truyền object tùy chọn, kể cả object rỗng: `showEditor(uri, {})`.
+`showEditor()` trả về ngay. Object tùy chọn không bắt buộc: `showEditor(uri)` mở trình chỉnh sửa với các giá trị mặc định.
 
 ## 3. Nhận kết quả {#_3-get-the-result}
 

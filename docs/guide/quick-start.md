@@ -40,7 +40,7 @@ if (uri) {
 `maxDuration`, `minDuration`, `startTime`, `endTime`, `jumpToPositionOnLoad` and the times in event payloads are milliseconds. `maxDuration: 20` means 20 ms, not 20 seconds.
 :::
 
-`showEditor()` returns immediately. Always pass an options object, even an empty one: `showEditor(uri, {})`.
+`showEditor()` returns immediately. The options object is optional: `showEditor(uri)` opens the editor with the defaults.
 
 ## 3. Get the result
 

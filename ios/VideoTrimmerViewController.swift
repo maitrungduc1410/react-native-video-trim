@@ -1073,12 +1073,12 @@ class VideoTrimmerViewController: UIViewController {
     jumpToPositionOnLoad = config["jumpToPositionOnLoad"] as? Double ?? 0
     enableHapticFeedback = config["enableHapticFeedback"] as? Bool ?? true
     enableEditTools = config["enableEditTools"] as? Bool ?? true
-    zoomOnWaitingDuration = (config["zoomOnWaitingDuration"] as? Double ?? 5.0) / 1000.0 // convert ms to s
+    zoomOnWaitingDuration = (config["zoomOnWaitingDuration"] as? Double ?? 5000.0) / 1000.0 // convert ms to s
     autoplay = config["autoplay"] as? Bool ?? false
     isVideoType = (config["type"] as? String ?? "video") == "video"
     isMuted = config["removeAudio"] as? Bool ?? false
     if let cfgSpeed = config["speed"] as? Double {
-        speed = cfgSpeed
+        speed = sanitizeSpeed(cfgSpeed)
     }
     headerText = config["headerText"] as? String
     headerTextSize = config["headerTextSize"] as? Int ?? 16

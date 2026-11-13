@@ -40,7 +40,7 @@ if (uri) {
 `maxDuration`、`minDuration`、`startTime`、`endTime`、`jumpToPositionOnLoad` 以及事件数据中的时间都是毫秒。`maxDuration: 20` 表示 20 毫秒，而不是 20 秒。
 :::
 
-`showEditor()` 会立即返回。请始终传入选项对象，没有选项时也要传空对象：`showEditor(uri, {})`。
+`showEditor()` 会立即返回。选项对象可以省略：`showEditor(uri)` 会使用默认值打开编辑器。
 
 ## 3. 获取结果 {#_3-get-the-result}
 

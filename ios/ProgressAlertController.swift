@@ -13,6 +13,7 @@ class ProgressAlertController: UIViewController {
     private let titleLabel = UILabel()
     private let progressBar = UIProgressView(progressViewStyle: .default)
     private let actionButton = UIButton(type: .system)
+    private var cancelTitle = "Cancel"
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -52,7 +53,7 @@ class ProgressAlertController: UIViewController {
         alertView.addSubview(progressBar)
         
         // Action Button
-        actionButton.setTitle("Cancel", for: .normal)
+        actionButton.setTitle(cancelTitle, for: .normal)
         actionButton.setTitleColor(.systemPink, for: .normal)
         actionButton.titleLabel?.font = UIFont.systemFont(ofSize: 16)
         actionButton.addTarget(self, action: #selector(dismissAlert), for: .touchUpInside)
@@ -85,6 +86,8 @@ class ProgressAlertController: UIViewController {
     }
     
     func setCancelTitle(_ text: String) {
+        // Kept so viewDidLoad, which can run after this call, does not reset it.
+        cancelTitle = text
         actionButton.setTitle(text, for: .normal)
     }
     

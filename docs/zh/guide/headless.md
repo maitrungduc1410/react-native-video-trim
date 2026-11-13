@@ -111,7 +111,7 @@ const { outputPath: small } = await compress(videoUri, {
 
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `quality` | `'medium'` | `'low'`、`'medium'` 或 `'high'`。设置了 `bitrate` 时忽略此项。在 Android 上，三个预设的目标码率分别为 500 kbps、2 Mbps 和 5 Mbps。 |
+| `quality` | `'medium'` | `'low'`、`'medium'` 或 `'high'`。设置了 `bitrate` 时忽略此项。三个预设的目标码率分别为 500 kbps、2 Mbps 和 5 Mbps。 |
 | `bitrate` | `-1` | 目标码率，单位为 bps（比特每秒）。 |
 | `width` | `-1` | 目标宽度，高度按宽高比自动计算。 |
 | `height` | `-1` | 目标高度，宽度按宽高比自动计算。 |

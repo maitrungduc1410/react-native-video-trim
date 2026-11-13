@@ -73,6 +73,13 @@ class VideoTrimmerView(
   }
 
   private var mContext: ReactApplicationContext = context
+  // Declared before the init block on purpose: init() assigns it, and a later
+  // property initializer would reset it.
+  private var originalOrientation: Int? = null
+  // Video player that is still preparing. Kept so onDestroy can release it when
+  // the editor is closed before the media is ready.
+  private var preparingPlayer: MediaPlayer? = null
+  private var isDestroyed = false
   private lateinit var mVideoView: TextureView
   private var videoSurface: Surface? = null
 
@@ -232,7 +239,10 @@ class VideoTrimmerView(
   private fun init(context: ReactApplicationContext, config: ReadableMap?) {
     mContext = context
 
-    context.currentActivity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    context.currentActivity?.let {
+      originalOrientation = it.requestedOrientation
+      it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
     LayoutInflater.from(context).inflate(R.layout.video_trimmer_view, this, true)
     vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
 
@@ -356,21 +366,30 @@ class VideoTrimmerView(
   }
 
   private fun setupVideoPlayer(surfaceTexture: SurfaceTexture, videoURI: Uri) {
-    if (mediaPlayer != null) return
+    if (isDestroyed || mediaPlayer != null || preparingPlayer != null) return
     val mp = MediaPlayer()
+    preparingPlayer = mp
     try {
       videoSurface = Surface(surfaceTexture)
       mp.setSurface(videoSurface)
       mp.setDataSource(mContext, videoURI)
       mp.setOnPreparedListener {
-        mediaPlayer = mp
-        mediaPrepared()
+        preparingPlayer = null
+        if (isDestroyed) {
+          // Editor was closed while preparing: never start on a torn-down view.
+          mp.release()
+        } else {
+          mediaPlayer = mp
+          mediaPrepared()
+        }
       }
       mp.setOnErrorListener { mpCb, what, extra -> onFailToLoadMedia(mpCb, what, extra) }
       mp.setOnCompletionListener { mediaCompleted() }
       mp.prepareAsync()
     } catch (e: Exception) {
       e.printStackTrace()
+      preparingPlayer = null
+      try { mp.release() } catch (_: Exception) {}
       mediaFailed()
       mOnTrimVideoListener.onError("Error initializing video player.", ErrorCode.FAIL_TO_LOAD_MEDIA)
     }
@@ -769,7 +788,7 @@ class VideoTrimmerView(
 
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
-    mContext.currentActivity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    restoreOrientation()
   }
 
   /**
@@ -786,13 +805,25 @@ class VideoTrimmerView(
    *  • SurfaceTexture listener is cleared to avoid stale references.
    */
   override fun onDestroy() {
+    isDestroyed = true
+    preparingPlayer?.let {
+      try {
+        it.setOnPreparedListener(null)
+        it.setOnCompletionListener(null)
+        it.setOnErrorListener(null)
+        it.release()
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+    }
+    preparingPlayer = null
     isGeneratingThumbnails = false
     isGeneratingWaveform = false
     BackgroundExecutor.cancelAll("initial_thumbs", true)
     BackgroundExecutor.cancelAll("progressive_thumbs", true)
     BackgroundExecutor.cancelAll("waveform_gen", true)
     UiThreadExecutor.cancelAll("")
-    mContext.currentActivity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    restoreOrientation()
     mTimingRunnable?.let { mTimingHandler.removeCallbacks(it) }
     zoomRunnable?.let { zoomWaitTimer.removeCallbacks(it) }
 
@@ -838,6 +869,13 @@ class VideoTrimmerView(
     videoSurface = null
   }
 
+  // Hands the Activity back in the orientation mode the host app had, so an app
+  // locked to portrait (or landscape) stays locked after the editor closes.
+  private fun restoreOrientation() {
+    val orientation = originalOrientation ?: return
+    mContext.currentActivity?.requestedOrientation = orientation
+  }
+
   private fun getScreenWidthInPortraitMode(): Int {
     val screenWidth = DeviceUtil.getDeviceWidth()
     val screenHeight = DeviceUtil.getDeviceHeight()
@@ -876,14 +914,15 @@ class VideoTrimmerView(
       isMuted = configRemoveAudio
     }
     if (config.hasKey("speed") && config.getDouble("speed") > 0) {
-      speed = config.getDouble("speed")
+      speed = VideoTrimmerUtil.sanitizeSpeed(config.getDouble("speed"))
       speedBtn.text = if (speed == 1.0) "1x" else "${speed}x"
     }
     muteBtn.setImageResource(if (isMuted) R.drawable.speaker_slash_fill else R.drawable.speaker_wave_2_fill)
     muteBtn.visibility = if (isVideoType) View.VISIBLE else View.GONE
 
     if (config.hasKey("jumpToPositionOnLoad") && config.getDouble("jumpToPositionOnLoad") > 0) {
-      jumpToPositionOnLoad = maxOf(0, (config.getDouble("jumpToPositionOnLoad") * 1000L).toLong())
+      // Milliseconds, same unit as on iOS and in the JS docs.
+      jumpToPositionOnLoad = maxOf(0L, config.getDouble("jumpToPositionOnLoad").toLong())
     }
     headerText.text = if (config.hasKey("headerText")) config.getString("headerText") ?: "" else ""
 

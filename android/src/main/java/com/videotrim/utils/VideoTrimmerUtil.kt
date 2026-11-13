@@ -78,8 +78,18 @@ object VideoTrimmerUtil {
   @JvmField val THUMB_WIDTH = UnitConverter.dpToPx(25)
   private const val THUMB_RESOLUTION_RES = 2
 
+  /**
+   * Keeps the export speed inside the documented 0.25 to 4.0 range. Zero,
+   * negative or non-finite values fall back to normal speed; without this
+   * [buildAtempoChain] would loop forever on a speed of 0.
+   */
+  internal fun sanitizeSpeed(speed: Double): Double {
+    if (speed.isNaN() || speed.isInfinite() || speed <= 0.0) return 1.0
+    return speed.coerceIn(0.25, 4.0)
+  }
+
   internal fun buildAtempoChain(speed: Double): String {
-    var remaining = speed
+    var remaining = sanitizeSpeed(speed)
     val filters = mutableListOf<String>()
     while (remaining < 0.5) {
       filters.add("atempo=0.5")
@@ -373,7 +383,7 @@ object VideoTrimmerUtil {
     }, { statistics ->
       val timeInMilliseconds = statistics.time.toInt()
       if (timeInMilliseconds > 0 && videoDurationMs > 0) {
-        val completePercentage = (timeInMilliseconds * 100) / videoDurationMs
+        val completePercentage = (timeInMilliseconds.toLong() * 100 / videoDurationMs).toInt()
         UiThreadUtil.runOnUiThread {
           callbacks.onProgress(completePercentage.coerceIn(0, 100))
         }
@@ -429,11 +439,16 @@ object VideoTrimmerUtil {
     // won't work because either we need video filters or we need frame-accurate cut points.
     val needsReEncode = hasUserTransform || cropNormalized != null || enablePreciseTrimming || speed != 1.0
 
+    // FFmpeg reports progress in output time, so measure it against the length
+    // of the clip being written, not the full source duration.
+    val trimmedDurationMs = (endMs - startMs).coerceAtLeast(0L)
+    val outputDurationMs = (trimmedDurationMs / sanitizeSpeed(speed)).toInt().coerceAtLeast(1)
+
     val callbacks = TrimCallbacks(
       onLog = { callback.onLog(it) },
       onStatistics = { callback.onStatistics(it) },
       onProgress = { callback.onTrimmingProgress(it) },
-      onSuccess = { callback.onFinishTrim(outputFile, startMs, endMs, videoDuration) },
+      onSuccess = { callback.onFinishTrim(outputFile, startMs, endMs, trimmedDurationMs.toInt()) },
       onCancel = { callback.onCancelTrim() },
       onError = { msg, code, _ -> callback.onError(msg, code) },
     )
@@ -452,7 +467,7 @@ object VideoTrimmerUtil {
       return executeWithEncoderFallback(
         encoderConfigs = listOf(EncoderConfig(emptyList())),
         buildCommand = { cmds.toTypedArray() },
-        videoDurationMs = videoDuration,
+        videoDurationMs = outputDurationMs,
         callbacks = callbacks,
       )
     }
@@ -526,7 +541,7 @@ object VideoTrimmerUtil {
     return executeWithEncoderFallback(
       encoderConfigs = reEncodeEncoderConfigs(bitrateStr),
       buildCommand = buildCommand,
-      videoDurationMs = videoDuration,
+      videoDurationMs = outputDurationMs,
       callbacks = callbacks,
     )
   }

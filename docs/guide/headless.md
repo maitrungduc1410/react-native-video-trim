@@ -111,7 +111,7 @@ const { outputPath: small } = await compress(videoUri, {
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `quality` | `'medium'` | `'low'`, `'medium'` or `'high'`. Ignored when `bitrate` is set. On Android the presets target 500 kbps, 2 Mbps and 5 Mbps. |
+| `quality` | `'medium'` | `'low'`, `'medium'` or `'high'`. Ignored when `bitrate` is set. The presets target 500 kbps, 2 Mbps and 5 Mbps. |
 | `bitrate` | `-1` | Target bitrate in bits per second. |
 | `width` | `-1` | Target width; height follows the aspect ratio. |
 | `height` | `-1` | Target height; width follows the aspect ratio. |
